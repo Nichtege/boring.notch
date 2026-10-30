@@ -203,11 +203,9 @@ struct MusicControlsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .overlay(alignment: .trailing) {
-            GeometryReader { geo in
-                // The name only fits when the last slot is empty and the calendar leaves enough room
-                MusicOutputButton(showsName: slots.last == MusicControlButton.none && geo.size.width > 300)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            }
+            // The name only fits when the last slot is empty
+            MusicOutputButton(showsName: slots.last == MusicControlButton.none)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
     }
 
@@ -508,16 +506,6 @@ struct NotchHomeView: View {
     private var mainContent: some View {
         HStack(alignment: .top, spacing: 15) {
             MusicPlayerView(albumArtNamespace: albumArtNamespace)
-
-            if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
-                    }
-                    .environmentObject(vm)
-                    .transition(.opacity)
-            }
 
         }
         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))

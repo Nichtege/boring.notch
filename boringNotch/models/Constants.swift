@@ -8,11 +8,6 @@
 import SwiftUI
 import Defaults
 
-enum CalendarSelectionState: Codable, Defaults.Serializable {
-    case all
-    case selected(Set<String>)
-}
-
 enum HideNotchOption: String, Defaults.Serializable {
     case always
     case nowPlayingOnly
@@ -68,8 +63,6 @@ extension Defaults.Keys {
     static let cornerRadiusScaling = Key<Bool>("cornerRadiusScaling", default: true)
 
     static let showNotHumanFace = Key<Bool>("showNotHumanFace", default: false)
-    static let showCalendar = Key<Bool>("showCalendar", default: false)
-    static let hideCompletedReminders = Key<Bool>("hideCompletedReminders", default: true)
     static let sliderColor = Key<SliderColorEnum>(
         "sliderUseAlbumArtColor",
         default: SliderColorEnum.white
@@ -129,11 +122,6 @@ extension Defaults.Keys {
     static let copyOnDrag = Key<Bool>("copyOnDrag", default: false)
     static let autoRemoveShelfItems = Key<Bool>("autoRemoveShelfItems", default: false)
     static let expandedDragDetection = Key<Bool>("expandedDragDetection", default: true)
-    
-    // MARK: Calendar
-    static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)
-    static let hideAllDayEvents = Key<Bool>("hideAllDayEvents", default: false)
-    static let showFullEventTitles = Key<Bool>("showFullEventTitles", default: false)
     
     // MARK: Fullscreen Media Detection
     static let hideNotchOption = Key<HideNotchOption>("hideNotchOption", default: .videoOnly)
