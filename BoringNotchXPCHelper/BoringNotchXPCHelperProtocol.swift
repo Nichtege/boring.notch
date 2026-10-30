@@ -20,6 +20,18 @@ import Foundation
     func isScreenBrightnessAvailable(with reply: @escaping (Bool) -> Void)
     func currentScreenBrightness(with reply: @escaping (NSNumber?) -> Void)
     func setScreenBrightness(_ value: Float, with reply: @escaping (Bool) -> Void)
+    // Notification Center banners (read and moved by the helper)
+    func startNotificationWatching(with reply: @escaping (Bool) -> Void)
+    func stopNotificationWatching()
+    func parkNotification(_ token: String, with reply: @escaping (Bool) -> Void)
+    func restoreNotification(_ token: String)
+    func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void)
+    func restoreStrandedNotifications()
+}
+
+/// Calls from the helper back to the app.
+@objc protocol BoringNotchXPCAppDelegate {
+    func notificationDidAppear(_ payload: [String: String])
 }
 
 /*

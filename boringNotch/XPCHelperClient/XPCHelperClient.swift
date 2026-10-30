@@ -27,17 +27,23 @@ final class XPCHelperClient: NSObject {
         
         let conn = NSXPCConnection(serviceName: serviceName)
         
-        conn.interruptionHandler = { [weak self] in
+        // Late handlers of an old connection must not touch a newer one, and the helper's state is
+        // only lost once per connection.
+        conn.interruptionHandler = { [weak self, weak conn] in
             Task { @MainActor in
-                self?.connection = nil
-                self?.remoteService = nil
+                guard let self, let conn, self.connection === conn else { return }
+                self.connection = nil
+                self.remoteService = nil
+                NotificationCenter.default.post(name: .xpcHelperConnectionLost, object: nil)
             }
         }
         
-        conn.invalidationHandler = { [weak self] in
+        conn.invalidationHandler = { [weak self, weak conn] in
             Task { @MainActor in
-                self?.connection = nil
-                self?.remoteService = nil
+                guard let self, let conn, self.connection === conn else { return }
+                self.connection = nil
+                self.remoteService = nil
+                NotificationCenter.default.post(name: .xpcHelperConnectionLost, object: nil)
             }
         }
         
@@ -243,8 +249,92 @@ final class XPCHelperClient: NSObject {
     }
 }
 
+// MARK: - Notification Center banners
+
+extension XPCHelperClient {
+    nonisolated func startNotificationWatching() async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.startNotificationWatching { started in
+                    continuation.resume(returning: started)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+    
+    nonisolated func stopNotificationWatching() {
+        Task {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            try? await service.withService { service in
+                service.stopNotificationWatching()
+            }
+        }
+    }
+    
+    nonisolated func parkNotification(_ token: String) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.parkNotification(token) { parked in
+                    continuation.resume(returning: parked)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+    
+    nonisolated func restoreNotification(_ token: String) {
+        Task {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            try? await service.withService { service in
+                service.restoreNotification(token)
+            }
+        }
+    }
+    
+    nonisolated func pressNotification(_ token: String) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.pressNotification(token) { pressed in
+                    continuation.resume(returning: pressed)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+    
+    nonisolated func restoreStrandedNotifications() {
+        Task {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            try? await service.withService { service in
+                service.restoreStrandedNotifications()
+            }
+        }
+    }
+}
+
 extension Notification.Name {
     static let accessibilityAuthorizationChanged = Notification.Name("accessibilityAuthorizationChanged")
+    /// The helper crashed or was killed, and its state with it. The next call relaunches a fresh one.
+    static let xpcHelperConnectionLost = Notification.Name("xpcHelperConnectionLost")
 }
 
 

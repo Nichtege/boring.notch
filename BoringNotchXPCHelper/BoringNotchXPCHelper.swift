@@ -9,6 +9,7 @@ import Foundation
 import ApplicationServices
 import IOKit
 import CoreGraphics
+import XPC
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
     
@@ -36,6 +37,82 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         }
     }
     
+    // MARK: - Notification Center banners
+
+    private static let watcher = NotificationWatcher()
+    /// Held while banners are watched. Between XPC messages launchd treats the helper as idle and may
+    /// kill it under memory pressure, which would leave a parked banner off screen. Main queue only.
+    nonisolated(unsafe) private static var holdsWatchingTransaction = false
+
+    @objc func startNotificationWatching(with reply: @escaping (Bool) -> Void) {
+        // Capture the delegate for this connection before hopping queues:
+        // NSXPCConnection.current() is only valid inside the incoming call.
+        let proxy = NSXPCConnection.current()?.remoteObjectProxyWithErrorHandler { error in
+            NSLog("[boringNotch] notification callback failed: \((error as NSError).code)")
+        }
+        let delegate = proxy as? BoringNotchXPCAppDelegate
+        if delegate == nil {
+            NSLog("[boringNotch] could not obtain notification delegate proxy")
+        }
+
+        DispatchQueue.main.async {
+            let watcher = Self.watcher
+            watcher.onBanner = { notification in
+                delegate?.notificationDidAppear([
+                    "token": notification.token,
+                    "appName": notification.appName ?? "",
+                    "bundleID": notification.bundleID ?? "",
+                    "title": notification.title ?? "",
+                    "subtitle": notification.subtitle ?? "",
+                    "body": notification.body ?? ""
+                ])
+            }
+            watcher.onStopped = { Self.stopWatching() }
+            let started = watcher.isRunning || watcher.start()
+            if started && !Self.holdsWatchingTransaction {
+                xpc_transaction_begin()
+                Self.holdsWatchingTransaction = true
+            }
+            reply(started)
+        }
+    }
+
+    @objc func stopNotificationWatching() {
+        DispatchQueue.main.async { Self.stopWatching() }
+    }
+
+    @objc func parkNotification(_ token: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async { reply(Self.watcher.park(token: token)) }
+    }
+
+    @objc func restoreNotification(_ token: String) {
+        DispatchQueue.main.async { Self.watcher.restore(token: token) }
+    }
+
+    @objc func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async { reply(Self.watcher.press(token: token)) }
+    }
+
+    @objc func restoreStrandedNotifications() {
+        DispatchQueue.main.async { Self.watcher.restoreStranded() }
+    }
+
+    /// The app quit or crashed. Stop at once: the open transaction keeps the helper alive just long
+    /// enough to put back whatever is parked.
+    static func appConnectionDidInvalidate() {
+        DispatchQueue.main.async { stopWatching() }
+    }
+
+    private static func stopWatching() {
+        watcher.stop()
+        if holdsWatchingTransaction {
+            xpc_transaction_end()
+            holdsWatchingTransaction = false
+        }
+    }
+
+    // MARK: - Keyboard Brightness
+
     private class KeyboardBrightnessClient {
         private static let keyboardID: UInt64 = 1
         private var clientInstance: NSObject?
