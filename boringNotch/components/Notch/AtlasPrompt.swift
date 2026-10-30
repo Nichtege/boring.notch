@@ -432,10 +432,7 @@ final class AtlasPromptController {
     static let shared = AtlasPromptController()
 
     private let width: CGFloat = 560
-    private let gapBelowNotch: CGFloat = 6
-    private let moveDuration: TimeInterval = 0.3
     private var panel: AtlasPromptPanel?
-    private var screensWithOpenNotch: Set<String> = []
 
     private init() {}
 
@@ -457,14 +454,7 @@ final class AtlasPromptController {
         show(focus: false)
     }
 
-    /// The line sits under the notch, so it moves down with an opening notch and back up with a closing one.
-    func notchChanged(isOpen: Bool, screenUUID: String?) {
-        guard let uuid = screenUUID ?? NSScreen.main?.displayUUID else { return }
-        if isOpen {
-            screensWithOpenNotch.insert(uuid)
-        } else {
-            screensWithOpenNotch.remove(uuid)
-        }
+    func notchMoved() {
         if let panel, panel.isVisible {
             place(panel, height: panel.frame.height, animated: true)
         }
@@ -547,24 +537,12 @@ final class AtlasPromptController {
     }
 
     private func place(_ panel: NSPanel, height: CGFloat, animated: Bool = false) {
-        let mouse = NSEvent.mouseLocation
-        let screen = panel.isVisible ? (panel.screen ?? NSScreen.main) : (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)
-        guard let screen else { return }
+        let layout = NotchPanelLayout.shared
+        guard let screen = layout.screen(for: panel) else { return }
 
-        let closedHeight = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        let isOpen = screen.displayUUID.map(screensWithOpenNotch.contains) ?? false
-        let top = screen.frame.maxY - (isOpen ? openNotchSize.height : closedHeight) - gapBelowNotch
+        let top = layout.notchBottom(on: screen) - layout.gapBelowNotch
         let frame = NSRect(x: screen.frame.midX - width / 2, y: top - height, width: width, height: height)
-
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = moveDuration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                panel.animator().setFrame(frame, display: true)
-            }
-        } else {
-            panel.setFrame(frame, display: true)
-        }
+        layout.move(panel, to: frame, animated: animated)
     }
 }
 

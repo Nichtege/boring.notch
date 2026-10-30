@@ -219,7 +219,7 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: vm.notchState) { _, newState in
-                        AtlasPromptController.shared.notchChanged(isOpen: newState == .open, screenUUID: vm.screenUUID)
+                        NotchPanelLayout.shared.notchChanged(isOpen: newState == .open, screenUUID: vm.screenUUID)
                         if newState == .closed && isHovering {
                             withAnimation {
                                 isHovering = false
