@@ -10,6 +10,7 @@
 
 import AppKit
 import ApplicationServices
+import CoreServices
 import Foundation
 
 private let notificationCenterPath = "/System/Library/CoreServices/NotificationCenter.app/Contents/MacOS/NotificationCenter"
@@ -847,7 +848,10 @@ final class NotificationWatcher {
         let directories = [
             URL(fileURLWithPath: "/Applications"),
             URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Applications", isDirectory: true),
-            URL(fileURLWithPath: "/System/Applications")
+            URL(fileURLWithPath: "/System/Applications"),
+            URL(fileURLWithPath: "/Applications/Utilities"),
+            URL(fileURLWithPath: "/System/Applications/Utilities"),
+            URL(fileURLWithPath: "/System/Library/CoreServices")
         ]
 
         for directory in directories {
@@ -870,6 +874,7 @@ final class NotificationWatcher {
                 guard let bundle = Bundle(url: entry), let bundleID = bundle.bundleIdentifier else { continue }
                 let names = [
                     entry.deletingPathExtension().lastPathComponent,
+                    Self.shownName(of: entry),
                     bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
                     bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
                 ]
@@ -882,6 +887,13 @@ final class NotificationWatcher {
             }
         }
         return nil
+    }
+
+    /// The name in the language of this Mac, which is what banners say: Calendar.app is "Kalender" on a German one.
+    private static func shownName(of appURL: URL) -> String? {
+        guard let item = MDItemCreateWithURL(kCFAllocatorDefault, appURL as CFURL),
+              let name = MDItemCopyAttribute(item, kMDItemDisplayName) as? String else { return nil }
+        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
     }
 
     private func bundleIdentifier(at appURL: URL) -> String? {
@@ -909,13 +921,14 @@ final class NotificationWatcher {
     }
 
     private static func cleanedAppName(_ name: String) -> String {
-        name.filter { !$0.unicodeScalars.allSatisfy(bidiControlCharacters.contains) }
+        name.filter { !$0.unicodeScalars.allSatisfy(invisibleCharacters.contains) }
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static let bidiControlCharacters: CharacterSet = {
+    // Bidi controls, and the soft hyphen macOS puts into long names like "System\u{AD}einstellungen"
+    private static let invisibleCharacters: CharacterSet = {
         var set = CharacterSet()
-        set.insert(charactersIn: "\u{200E}\u{200F}")
+        set.insert(charactersIn: "\u{AD}\u{200E}\u{200F}")
         set.insert(charactersIn: "\u{2066}"..."\u{2069}")
         set.insert(charactersIn: "\u{202A}"..."\u{202E}")
         return set
