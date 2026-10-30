@@ -109,15 +109,17 @@ class AppleMusicController {
         await updatePlaybackInfo()
     }
     
+    /// On the main actor since updates can overlap. The scripts themselves run detached.
+    @MainActor
     func updatePlaybackInfo() async {
         guard isActive() else {
-            await publishNotPlaying()
+            publishNotPlaying()
             return
         }
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
         guard descriptor.numberOfItems >= 11 else {
             // Only a script that found Music gone has nothing to say
-            await publishNotPlaying()
+            publishNotPlaying()
             return
         }
 
