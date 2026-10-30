@@ -83,7 +83,6 @@ final class AtlasChat: ObservableObject {
     @Published private(set) var answer = ""
     @Published private(set) var step = ""
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var focusRequest = 0
 
     var isBusy: Bool {
         phase == .sending || phase == .running
@@ -145,10 +144,6 @@ final class AtlasChat: ObservableObject {
     private init() {}
 
     // MARK: - Actions
-    func requestFocus() {
-        focusRequest += 1
-    }
-
     func attachClipboard() {
         let board = NSPasteboard.general
         let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
@@ -489,10 +484,31 @@ final class AtlasPromptController {
 
         if focus {
             panel.makeKeyAndOrderFront(nil)
-            AtlasChat.shared.requestFocus()
+            focusField(in: panel)
         } else {
             panel.orderFrontRegardless()
         }
+    }
+
+    /// SwiftUI still takes the field for focused after the line was hidden, so this asks AppKit directly.
+    /// A new line's field takes a moment to exist.
+    private func focusField(in panel: NSPanel) {
+        Task { @MainActor in
+            for _ in 0..<10 {
+                if let field = Self.textField(in: panel.contentView), panel.makeFirstResponder(field) {
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        }
+    }
+
+    private static func textField(in view: NSView?) -> NSTextField? {
+        guard let view else { return nil }
+        if let field = view as? NSTextField, field.isEditable {
+            return field
+        }
+        return view.subviews.lazy.compactMap { textField(in: $0) }.first
     }
 
     private func makePanel() -> AtlasPromptPanel {
@@ -586,7 +602,6 @@ struct AtlasPromptView: View {
             Spacer(minLength: 0)
         }
         .onAppear { fieldFocused = true }
-        .onChange(of: chat.focusRequest) { fieldFocused = true }
         .onChange(of: chat.includeScreen) { fieldFocused = true }
         .onChange(of: chat.attachments.count) { fieldFocused = true }
     }
