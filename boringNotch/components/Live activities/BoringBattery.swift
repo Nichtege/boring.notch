@@ -179,7 +179,6 @@ struct BoringBatteryView: View {
     @State var isForNotification: Bool = false
     
     @State private var showPopupMenu: Bool = false
-    @State private var isPressed: Bool = false
     @State private var isHoveringButton: Bool = false
     @State private var isHoveringPopover: Bool = false
     @State private var hideTask: Task<Void, Never>? = nil

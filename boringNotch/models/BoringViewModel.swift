@@ -27,7 +27,6 @@ class BoringViewModel: NSObject, ObservableObject {
     
     @Published var hideOnClosed: Bool = true
 
-    @Published var edgeAutoOpenActive: Bool = false
     @Published var isHoveringCalendar: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
 
@@ -175,19 +174,6 @@ class BoringViewModel: NSObject, ObservableObject {
         }
     }
     
-    func isMouseHovering(position: NSPoint = NSEvent.mouseLocation) -> Bool {
-        let screenFrame = getScreenFrame(screenUUID)
-        if let frame = screenFrame {
-            
-            let baseY = frame.maxY - notchSize.height
-            let baseX = frame.midX - notchSize.width / 2
-            
-            return position.y >= baseY && position.x >= baseX && position.x <= baseX + notchSize.width
-        }
-        
-        return false
-    }
-
     func open() {
         self.notchSize = openNotchSize
         self.notchState = .open
@@ -206,7 +192,6 @@ class BoringViewModel: NSObject, ObservableObject {
         self.notchState = .closed
         self.isBatteryPopoverActive = false
         self.coordinator.sneakPeek.show = false
-        self.edgeAutoOpenActive = false
 
         // Set the current view to shelf if it contains files and the user enables openShelfByDefault
         // Otherwise, if the user has not enabled openLastShelfByDefault, set the view to home
