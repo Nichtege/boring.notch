@@ -37,7 +37,12 @@ class AppleMusicController {
                 named: NSNotification.Name("com.apple.Music.playerInfo")
             )
             
-            for await _ in notifications {
+            for await notification in notifications {
+                if notification.userInfo?["Player State"] as? String == "Stopped" {
+                    // Music may be quitting, and asking it right now could start it again
+                    await self?.publishNotPlaying()
+                    try? await Task.sleep(for: .seconds(2))
+                }
                 await self?.updatePlaybackInfo()
             }
         }
@@ -105,8 +110,16 @@ class AppleMusicController {
     }
     
     func updatePlaybackInfo() async {
-        guard isActive(), let descriptor = try? await fetchPlaybackInfoAsync() else { return }
-        guard descriptor.numberOfItems >= 11 else { return }
+        guard isActive() else {
+            await publishNotPlaying()
+            return
+        }
+        guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
+        guard descriptor.numberOfItems >= 11 else {
+            // Only a script that found Music gone has nothing to say
+            await publishNotPlaying()
+            return
+        }
 
         // Artwork is the heavy part, so only a new track asks for it. Streamed artwork can come
         // late, so a track keeps asking until it has some.
@@ -138,6 +151,14 @@ class AppleMusicController {
     }
     
     // MARK: - Private Methods
+    
+    /// Without Music nothing would say so any more, and the notch would go on showing it as playing.
+    @MainActor
+    private func publishNotPlaying() {
+        if playbackState.isPlaying {
+            playbackState.isPlaying = false
+        }
+    }
     
     private func executeCommand(_ command: String) async {
         guard isActive() else { return }
