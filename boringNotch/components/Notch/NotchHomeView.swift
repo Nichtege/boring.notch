@@ -313,6 +313,9 @@ struct MusicOutputButton: View {
         }
         .onChange(of: showPopover) {
             vm.isBatteryPopoverActive = showPopover
+            if showPopover {
+                Task { await outputController.refreshPairedAirPods() }
+            }
         }
         .task(id: musicManager.bundleIdentifier) {
             while !Task.isCancelled {
@@ -328,7 +331,7 @@ struct MusicOutputButton: View {
 
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(outputController.devices) { device in
+            ForEach(outputController.pickerDevices) { device in
                 Button {
                     showPopover = false
                     Task { await outputController.select(device) }

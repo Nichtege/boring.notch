@@ -27,6 +27,9 @@ import Foundation
     func restoreStrandedNotifications()
     // The microphone (set by the helper, which isn't sandboxed)
     func keepMicOnMacBook()
+    // AirPods that aren't connected (Bluetooth too is the helper's)
+    func pairedAirPods(with reply: @escaping ([[String: String]]) -> Void)
+    func connectAirPods(_ address: String, with reply: @escaping (Bool) -> Void)
 }
 
 /// Calls from the helper back to the app.

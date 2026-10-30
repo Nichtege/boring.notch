@@ -10,6 +10,7 @@ import ApplicationServices
 import IOKit
 import CoreAudio
 import CoreGraphics
+import IOBluetooth
 import XPC
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
@@ -142,6 +143,29 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
               current != builtIn
         else { return }
         AudioObjectSetPropertyData(system, &defaultInput, 0, nil, size, &builtIn)
+    }
+
+    // MARK: - AirPods
+
+    private static var pairedAirPods: [IOBluetoothDevice] {
+        (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []).filter { $0.name?.contains("AirPods") == true }
+    }
+
+    @objc func pairedAirPods(with reply: @escaping ([[String: String]]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            reply(Self.pairedAirPods.compactMap { device in
+                guard let name = device.name, let address = device.addressString else { return nil }
+                return ["name": name, "address": address]
+            })
+        }
+    }
+
+    /// Blocks until connected or failed, so it's kept away from the queues that park and restore banners.
+    @objc func connectAirPods(_ address: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let device = Self.pairedAirPods.first { $0.addressString == address }
+            reply(device?.openConnection() == kIOReturnSuccess)
+        }
     }
 
     // MARK: - Keyboard Brightness

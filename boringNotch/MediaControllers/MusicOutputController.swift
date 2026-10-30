@@ -100,8 +100,10 @@ struct MusicOutputDevice: Identifiable, Equatable {
     let isSelected: Bool
     /// Set on the "this Mac" entry when its sound really comes out of another device.
     var localRoute: LocalAudioRoute.Route? = nil
+    /// Set on paired AirPods that Music doesn't list. Choosing them connects them.
+    var bluetoothAddress: String? = nil
 
-    var id: String { name }
+    var id: String { bluetoothAddress ?? name }
 
     var displayName: String {
         localRoute?.name ?? (kind == "computer" ? "MacBook" : name)
@@ -132,6 +134,7 @@ final class MusicOutputController: ObservableObject {
     static let shared = MusicOutputController()
 
     @Published private(set) var devices: [MusicOutputDevice] = []
+    @Published private var pairedAirPods: [MusicOutputDevice] = []
 
     // Music keeps the old device selected for a few seconds after a switch
     private let switchSettleTime: TimeInterval = 15
@@ -140,6 +143,13 @@ final class MusicOutputController: ObservableObject {
 
     var selectedDevices: [MusicOutputDevice] {
         devices.filter(\.isSelected)
+    }
+
+    /// What the picker offers: Music's list, and paired AirPods it can't have because they aren't connected.
+    var pickerDevices: [MusicOutputDevice] {
+        devices + pairedAirPods.filter { airPods in
+            !devices.contains { $0.name == airPods.name || $0.localRoute?.name == airPods.name }
+        }
     }
 
     private var isMusicRunning: Bool {
@@ -166,6 +176,14 @@ final class MusicOutputController: ObservableObject {
         devices = showingLocalRoute(in: await fetchDevices() ?? [])
     }
 
+    @MainActor
+    func refreshPairedAirPods() async {
+        pairedAirPods = await XPCHelperClient.shared.pairedAirPods().compactMap { entry in
+            guard let name = entry["name"], let address = entry["address"] else { return nil }
+            return MusicOutputDevice(name: name, kind: "Bluetooth device", isSelected: false, bluetoothAddress: address)
+        }
+    }
+
     /// Music says "this Mac", so what the Mac does with the sound decides where it really goes.
     private func showingLocalRoute(in devices: [MusicOutputDevice]) -> [MusicOutputDevice] {
         let selected = devices.filter(\.isSelected)
@@ -185,6 +203,10 @@ final class MusicOutputController: ObservableObject {
 
     @MainActor
     func select(_ device: MusicOutputDevice) async {
+        if let address = device.bluetoothAddress {
+            await connectAirPods(address)
+            return
+        }
         ignoreSelectionUntil = Date().addingTimeInterval(switchSettleTime)
         Defaults[.lastMusicOutputDevices] = [device.name]
         devices = devices.map {
@@ -212,6 +234,16 @@ final class MusicOutputController: ObservableObject {
     }
 
     // MARK: - Private Methods
+    /// macOS makes them the default output once they're connected, which Music only follows from "this Mac".
+    /// If they can't connect (in their case, say) nothing changes and nothing is said.
+    @MainActor
+    private func connectAirPods(_ address: String) async {
+        guard await XPCHelperClient.shared.connectAirPods(address) else { return }
+        if let computer = devices.first(where: { $0.kind == "computer" }), !computer.isSelected {
+            await select(computer)
+        }
+    }
+
     @MainActor
     private func rememberCurrentOutput() async {
         guard Date() >= ignoreSelectionUntil, let current = await fetchDevices() else { return }

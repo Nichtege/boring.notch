@@ -204,6 +204,14 @@ extension XPCHelperClient {
     nonisolated func keepMicOnMacBook() {
         send { $0.keepMicOnMacBook() }
     }
+    
+    nonisolated func pairedAirPods() async -> [[String: String]] {
+        await ask { $0.pairedAirPods(with: $1) } ?? []
+    }
+    
+    nonisolated func connectAirPods(_ address: String) async -> Bool {
+        await ask { $0.connectAirPods(address, with: $1) } ?? false
+    }
 }
 
 extension Notification.Name {
