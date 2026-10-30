@@ -200,6 +200,12 @@ private struct NotificationCardView: View {
                 isHovering = false
             }
         }
+        // Hovered on its way out, and then gone: there's no exit to come
+        .onChange(of: model.notification == nil) {
+            if model.notification == nil {
+                isHovering = false
+            }
+        }
     }
 
     private func card(_ notification: SystemNotification) -> some View {

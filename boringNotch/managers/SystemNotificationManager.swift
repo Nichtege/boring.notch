@@ -136,7 +136,7 @@ final class SystemNotificationManager {
             hasBanner: true
         )
 
-        guard !isCardHovered else {
+        guard activeNotification == nil || !isCardHovered else {
             // Its banner stays up until its card comes, so nothing is lost if this one gets dropped
             queuedNotifications.append(notification)
             if queuedNotifications.count > queueLimit {
@@ -175,9 +175,11 @@ final class SystemNotificationManager {
         dismissActive()
     }
 
+    /// Only a card that's staying can be hovered. One on its way out reports it too, but it has no exit
+    /// to come once it's gone.
     func cardHoverChanged(_ hovering: Bool) {
-        isCardHovered = hovering
-        if hovering {
+        isCardHovered = hovering && activeNotification != nil
+        if isCardHovered {
             dismissTask?.cancel()
             dismissTask = nil
         } else {
@@ -210,7 +212,13 @@ final class SystemNotificationManager {
 
     private func present(_ notification: SystemNotification) {
         let previous = activeNotification
-        guard NotificationCardController.shared.show(notification) else { return }
+        guard NotificationCardController.shared.show(notification) else {
+            if previous == nil {
+                isCardHovered = false
+                queuedNotifications.removeAll()
+            }
+            return
+        }
         activeNotification = notification
         scheduleDismiss()
 
