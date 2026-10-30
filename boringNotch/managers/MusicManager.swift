@@ -35,7 +35,6 @@ class MusicManager: ObservableObject {
     @Published var isPlaying = false
     @Published var album: String = "Self Love"
     @Published var isPlayerIdle: Bool = true
-    @Published var animations: BoringAnimations = .init()
     @Published var avgColor: NSColor = .white
     @Published var bundleIdentifier: String? = nil
     @Published var songDuration: TimeInterval = 0
@@ -60,12 +59,6 @@ class MusicManager: ObservableObject {
     private var lastArtworkArtist: String = "Me"
     private var lastArtworkAlbum: String = "Self Love"
     private var lastArtworkBundleIdentifier: String? = nil
-
-    @Published var isFlipping: Bool = false
-    private var flipWorkItem: DispatchWorkItem?
-
-    @Published var isTransitioning: Bool = false
-    private var transitionWorkItem: DispatchWorkItem?
 
     // MARK: - Initialization
     init() {
@@ -94,16 +87,10 @@ class MusicManager: ObservableObject {
         }
     }
 
-    deinit {
-        destroy()
-    }
-    
     public func destroy() {
         debounceIdleTask?.cancel()
         cancellables.removeAll()
         controllerCancellables.removeAll()
-        flipWorkItem?.cancel()
-        transitionWorkItem?.cancel()
 
         // Release active controller
         activeController = nil
@@ -164,9 +151,6 @@ class MusicManager: ObservableObject {
     }
 
     private func setActiveController(_ controller: any MediaControllerProtocol) {
-        // Cancel any existing flip animation
-        flipWorkItem?.cancel()
-
         // Set new active controller
         activeController = controller
         
@@ -204,8 +188,6 @@ class MusicManager: ObservableObject {
 
         // Handle artwork and visual transitions for changed content
         if hasContentChange {
-            self.triggerFlipAnimation()
-
             if artworkChanged, let artwork = state.artwork {
                 self.updateArtwork(artwork)
             } else if state.artwork == nil {
@@ -295,33 +277,6 @@ class MusicManager: ObservableObject {
         setFavorite(!isFavoriteTrack)
     }
 
-    @MainActor
-    private func toggleAppleMusicFavorite() async {
-        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
-        guard !runningApps.isEmpty else { return }
-
-        let script = """
-        tell application \"Music\"
-            if it is running then
-                try
-                    set loved of current track to (not loved of current track)
-                    return loved of current track
-                on error
-                    return false
-                end try
-            else
-                return false
-            end if
-        end tell
-        """
-
-        if let result = try? await AppleScriptHelper.execute(script) {
-            let loved = result.booleanValue
-            self.isFavoriteTrack = loved
-            self.forceUpdate()
-        }
-    }
-
     func setFavorite(_ favorite: Bool) {
         guard canFavoriteTrack else { return }
         guard let controller = activeController else { return }
@@ -331,11 +286,6 @@ class MusicManager: ObservableObject {
             try? await Task.sleep(for: .milliseconds(150))
             await controller.updatePlaybackInfo()
         }
-    }
-
-    /// Placeholder dislike function
-    func dislikeCurrentTrack() {
-        setFavorite(false)
     }
 
     // MARK: - Lyrics
@@ -393,22 +343,6 @@ class MusicManager: ObservableObject {
         }
     }
 
-    private func triggerFlipAnimation() {
-        // Cancel any existing animation
-        flipWorkItem?.cancel()
-
-        // Create a new animation
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.isFlipping = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self?.isFlipping = false
-            }
-        }
-
-        flipWorkItem = workItem
-        DispatchQueue.main.async(execute: workItem)
-    }
-
     private func updateArtwork(_ artworkData: Data) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -438,10 +372,7 @@ class MusicManager: ObservableObject {
         }
     }
 
-    private var workItem: DispatchWorkItem?
-
     func updateAlbumArt(newAlbumArt: NSImage) {
-        workItem?.cancel()
         withAnimation(.smooth) {
             self.albumArt = newAlbumArt
             if Defaults[.coloredSpectrogram] {
@@ -480,24 +411,6 @@ class MusicManager: ObservableObject {
     }
 
     // MARK: - Public Methods for controlling playback
-    func playPause() {
-        Task {
-            await activeController?.togglePlay()
-        }
-    }
-
-    func play() {
-        Task {
-            await activeController?.play()
-        }
-    }
-
-    func pause() {
-        Task {
-            await activeController?.pause()
-        }
-    }
-
     func toggleShuffle() {
         Task {
             await activeController?.toggleShuffle()
@@ -549,24 +462,9 @@ class MusicManager: ObservableObject {
         }
     }
     func openMusicApp() {
-        guard let bundleID = bundleIdentifier else {
-            print("Error: appBundleIdentifier is nil")
-            return
-        }
-
-        let workspace = NSWorkspace.shared
-        if let appURL = workspace.urlForApplication(withBundleIdentifier: bundleID) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            workspace.openApplication(at: appURL, configuration: configuration) { (app, error) in
-                if let error = error {
-                    print("Failed to launch app with bundle ID: \(bundleID), error: \(error)")
-                } else {
-                    print("Launched app with bundle ID: \(bundleID)")
-                }
-            }
-        } else {
-            print("Failed to find app with bundle ID: \(bundleID)")
-        }
+        guard let bundleID = bundleIdentifier,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }
 
     func forceUpdate() {
@@ -580,28 +478,20 @@ class MusicManager: ObservableObject {
     
     
     func syncVolumeFromActiveApp() async {
-        // Check if bundle identifier is valid and if the app is actually running
-        guard let bundleID = bundleIdentifier, !bundleID.isEmpty,
-              NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == bundleID }) else { return }
+        guard bundleIdentifier == "com.apple.Music",
+              !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty else { return }
         
-        var script: String?
-        if bundleID == "com.apple.Music" {
-            script = """
-            tell application "Music"
-                if it is running then
-                    get sound volume
-                else
-                    return 50
-                end if
-            end tell
-            """
-        } else {
-            // For unsupported apps, don't sync volume
-            return
-        }
+        let script = """
+        tell application "Music"
+            if it is running then
+                get sound volume
+            else
+                return 50
+            end if
+        end tell
+        """
         
-        if let volumeScript = script,
-           let result = try? await AppleScriptHelper.execute(volumeScript) {
+        if let result = try? await AppleScriptHelper.execute(script) {
             let volumeValue = result.int32Value
             let currentVolume = Double(volumeValue) / 100.0
             

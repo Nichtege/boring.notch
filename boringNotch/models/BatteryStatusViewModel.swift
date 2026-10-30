@@ -98,9 +98,6 @@ class BatteryStatusViewModel: ObservableObject {
             withAnimation {
                 self.maxCapacity = capacity
             }
-
-        case .error(let description):
-            print("⚠️ Error: \(description)")
         }
     }
 
@@ -124,13 +121,6 @@ class BatteryStatusViewModel: ObservableObject {
         Task {
             try? await Task.sleep(for: .seconds(delay))
             self.coordinator.toggleExpandingView(status: true, type: .battery)
-        }
-    }
-
-    deinit {
-        print("🔌 Cleaning up battery monitoring...")
-        if let managerBatteryId: Int = managerBatteryId {
-            managerBattery.removeObserver(byId: managerBatteryId)
         }
     }
 

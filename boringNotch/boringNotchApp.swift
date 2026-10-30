@@ -5,11 +5,9 @@
 //  Created by Harsh Vardhan  Goswami  on 02/08/24.
 //
 
-import AVFoundation
-import Combine
 import Defaults
 import KeyboardShortcuts
-import LaunchAtLogin
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -39,19 +37,15 @@ struct DynamicNotchApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: BoringViewModel] = [:] // UUID -> BoringViewModel
     var window: NSWindow?
     let vm: BoringViewModel = .init()
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     var quickShareService = QuickShareService.shared
-    var timer: Timer?
     var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
-    private var screenLockedObserver: Any?
-    private var screenUnlockedObserver: Any?
     private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
@@ -61,15 +55,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        NotificationCenter.default.removeObserver(self)
-        if let observer = screenLockedObserver {
-            DistributedNotificationCenter.default().removeObserver(observer)
-            screenLockedObserver = nil
-        }
-        if let observer = screenUnlockedObserver {
-            DistributedNotificationCenter.default().removeObserver(observer)
-            screenUnlockedObserver = nil
-        }
         MusicManager.shared.destroy()
         cleanupDragDetectors()
         cleanupWindows()
@@ -91,25 +76,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func onScreenUnlocked(_ notification: Notification) {
         isScreenLocked = false
         if !Defaults[.showOnLockScreen] {
-            adjustWindowPosition(changeAlpha: true)
+            adjustWindowPosition()
         } else {
             disableSkyLightOnAllWindows()
         }
     }
     
+    private var skyLightWindows: [BoringNotchSkyLightWindow] {
+        let all = Defaults[.showOnAllDisplays] ? Array(windows.values) : [window].compactMap { $0 }
+        return all.compactMap { $0 as? BoringNotchSkyLightWindow }
+    }
+
     @MainActor
     private func enableSkyLightOnAllWindows() {
-        if Defaults[.showOnAllDisplays] {
-            windows.values.forEach { window in
-                if let skyWindow = window as? BoringNotchSkyLightWindow {
-                    skyWindow.enableSkyLight()
-                }
-            }
-        } else {
-            if let skyWindow = window as? BoringNotchSkyLightWindow {
-                skyWindow.enableSkyLight()
-            }
-        }
+        skyLightWindows.forEach { $0.enableSkyLight() }
     }
     
     @MainActor
@@ -117,19 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Delay disabling SkyLight to avoid flicker during unlock transition
         Task {
             try? await Task.sleep(for: .milliseconds(150))
-            await MainActor.run {
-                if Defaults[.showOnAllDisplays] {
-                    self.windows.values.forEach { window in
-                        if let skyWindow = window as? BoringNotchSkyLightWindow {
-                            skyWindow.disableSkyLight()
-                        }
-                    }
-                } else {
-                    if let skyWindow = self.window as? BoringNotchSkyLightWindow {
-                        skyWindow.disableSkyLight()
-                    }
-                }
-            }
+            self.skyLightWindows.forEach { $0.disableSkyLight() }
         }
     }
 
@@ -254,11 +222,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    private func positionWindow(_ window: NSWindow, on screen: NSScreen, changeAlpha: Bool = false) {
-        if changeAlpha {
-            window.alphaValue = 0
-        }
-
+    private func positionWindow(_ window: NSWindow, on screen: NSScreen) {
         let screenFrame = screen.frame
         window.setFrameOrigin(
             NSPoint(
@@ -275,7 +239,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
             Defaults[.didEnableLaunchAtLogin] = true
-            LaunchAtLogin.isEnabled = true
+            try? SMAppService.mainApp.register()
         }
 
         NotificationCenter.default.addObserver(
@@ -289,7 +253,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: Notification.Name.selectedScreenChanged, object: nil, queue: nil
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.adjustWindowPosition(changeAlpha: true)
+                self?.adjustWindowPosition()
                 self?.setupDragDetectors()
             }
         }
@@ -318,7 +282,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 guard let self = self else { return }
                 self.cleanupWindows(shouldInvert: true)
-                self.adjustWindowPosition(changeAlpha: true)
+                self.adjustWindowPosition()
                 self.setupDragDetectors()
             }
         }
@@ -331,8 +295,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Use closure-based observers for DistributedNotificationCenter and keep tokens for removal
-        screenLockedObserver = DistributedNotificationCenter.default().addObserver(
+        DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name(rawValue: "com.apple.screenIsLocked"),
             object: nil, queue: .main) { [weak self] notification in
                 Task { @MainActor in
@@ -340,7 +303,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
         }
 
-        screenUnlockedObserver = DistributedNotificationCenter.default().addObserver(
+        DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
             object: nil, queue: .main) { [weak self] notification in
                 Task { @MainActor in
@@ -418,9 +381,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let window = createBoringNotchWindow(
                 for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
             self.window = window
-            adjustWindowPosition(changeAlpha: true)
+            adjustWindowPosition()
         } else {
-            adjustWindowPosition(changeAlpha: true)
+            adjustWindowPosition()
         }
 
         setupDragDetectors()
@@ -442,19 +405,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func playWelcomeSound() {
-        let audioPlayer = AudioPlayer()
-        audioPlayer.play(fileName: "boring", fileExtension: "m4a")
-    }
-
-    func deviceHasNotch() -> Bool {
-        if #available(macOS 12.0, *) {
-            for screen in NSScreen.screens {
-                if screen.safeAreaInsets.top > 0 {
-                    return true
-                }
-            }
+        if let url = Bundle.main.url(forResource: "boring", withExtension: "m4a") {
+            NSSound(contentsOf: url, byReference: false)?.play()
         }
-        return false
     }
 
     @objc func screenConfigurationDidChange() {
@@ -477,7 +430,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func adjustWindowPosition(changeAlpha: Bool = false) {
+    func adjustWindowPosition() {
         if Defaults[.showOnAllDisplays] {
             let currentScreenUUIDs = Set(NSScreen.screens.compactMap { $0.displayUUID })
 
@@ -504,7 +457,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 if let window = windows[uuid], let viewModel = viewModels[uuid] {
-                    positionWindow(window, on: screen, changeAlpha: changeAlpha)
+                    positionWindow(window, on: screen)
 
                     if viewModel.notchState == .closed {
                         viewModel.close()
@@ -536,29 +489,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             if let window = window {
-                positionWindow(window, on: selectedScreen, changeAlpha: changeAlpha)
+                positionWindow(window, on: selectedScreen)
 
                 if vm.notchState == .closed {
                     vm.close()
                 }
             }
         }
-    }
-
-    @objc func togglePopover(_ sender: Any?) {
-        if window?.isVisible == true {
-            window?.orderOut(nil)
-        } else {
-            window?.orderFrontRegardless()
-        }
-    }
-
-    @objc func showMenu() {
-        statusItem?.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
-    @objc func quitAction() {
-        NSApplication.shared.terminate(self)
     }
 
     private func showOnboardingWindow(step: OnboardingStep = .welcome) {
@@ -578,7 +515,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     step: step,
                     onFinish: {
                         window.orderOut(nil)
-//                        NSApp.setActivationPolicy(.accessory)
                         window.close()
                         NSApp.deactivate()
                     },
@@ -593,10 +529,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             onboardingWindowController = NSWindowController(window: window)
         }
 
-//        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         onboardingWindowController?.window?.makeKeyAndOrderFront(nil)
         onboardingWindowController?.window?.orderFrontRegardless()
+    }
+}
+
+/// Shows what macOS has made of it, since turning the login item on or off can fail.
+struct LaunchAtLoginToggle: View {
+    @State private var isEnabled = SMAppService.mainApp.status == .enabled
+
+    var body: some View {
+        Toggle("Launch at login", isOn: Binding(
+            get: { isEnabled },
+            set: { enabled in
+                try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                isEnabled = SMAppService.mainApp.status == .enabled
+            }
+        ))
     }
 }
 

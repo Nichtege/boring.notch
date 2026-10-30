@@ -13,12 +13,8 @@ final class DragDetector {
     // MARK: - Callbacks
 
     typealias VoidCallback = () -> Void
-    typealias PositionCallback = (_ globalPoint: CGPoint) -> Void
 
     var onDragEntersNotchRegion: VoidCallback?
-    var onDragExitsNotchRegion: VoidCallback?
-    var onDragMove: PositionCallback?
-
 
     private var mouseDownMonitor: Any?
     private var mouseDraggedMonitor: Any?
@@ -65,27 +61,22 @@ final class DragDetector {
             guard let self = self else { return }
             guard self.isDragging else { return }
 
-            let newContent = self.dragPasteboard.changeCount != self.pasteboardChangeCount
-            
+            // The pasteboard is another process, so only a drag that reaches the notch asks it
+            guard self.notchRegion.contains(NSEvent.mouseLocation) else {
+                self.hasEnteredNotchRegion = false
+                return
+            }
+
             // Detect if actual content is being dragged AND it's valid content
-            if newContent && !self.isContentDragging && self.hasValidDragContent() {
+            if !self.isContentDragging
+                && self.dragPasteboard.changeCount != self.pasteboardChangeCount
+                && self.hasValidDragContent() {
                 self.isContentDragging = true
             }
 
-            // Only process position when content is being dragged
-            if self.isContentDragging {
-                let mouseLocation = NSEvent.mouseLocation
-                self.onDragMove?(mouseLocation)
-                
-                // Track notch region entry/exit
-                let containsMouse = self.notchRegion.contains(mouseLocation)
-                if containsMouse && !self.hasEnteredNotchRegion {
-                    self.hasEnteredNotchRegion = true
-                    self.onDragEntersNotchRegion?()
-                } else if !containsMouse && self.hasEnteredNotchRegion {
-                    self.hasEnteredNotchRegion = false
-                    self.onDragExitsNotchRegion?()
-                }
+            if self.isContentDragging && !self.hasEnteredNotchRegion {
+                self.hasEnteredNotchRegion = true
+                self.onDragEntersNotchRegion?()
             }
         }
 

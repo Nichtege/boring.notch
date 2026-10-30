@@ -283,7 +283,9 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
 
     private func apply(_ newSummary: StarlaneSummary) {
         failures = 0
-        status = .connected
+        if status != .connected {
+            status = .connected
+        }
 
         let needs = Set(newSummary.needsNames)
         if let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
@@ -303,7 +305,9 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
 
     private func failed() {
         failures += 1
-        status = .unreachable
+        if status != .unreachable {
+            status = .unreachable
+        }
         if failures >= failuresBeforeHiding {
             clear()
         }

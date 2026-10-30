@@ -36,6 +36,9 @@ private let centerClosingDelay: TimeInterval = 1
 private let restoreAttempts = 3
 private let maxRestoreRetries = 10
 private let reattachAttempts = 30
+/// How long an app name that can't be found isn't searched for again. The search reads every installed
+/// app on the main queue, where windows also get put back.
+private let bundleIDMissLifetime: TimeInterval = 60
 
 private func isParked(_ position: CGPoint) -> Bool {
     abs(position.x - parkingPosition.x) < 1 && abs(position.y - parkingPosition.y) < 1
@@ -181,6 +184,7 @@ final class NotificationWatcher {
     private var restoreRetries = 0
     private var centerLastOpen: Date?
     private var bundleIDCache: [String: String] = [:]
+    private var bundleIDMisses: [String: Date] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
     /// an OS update) the observer goes silent, so the exit is watched and the watcher attaches to the
     /// relaunched instance.
@@ -724,7 +728,7 @@ final class NotificationWatcher {
     private func watchHealth() {
         healthTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
+        timer.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval, leeway: .seconds(1))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             if !AXIsProcessTrusted() {
@@ -818,7 +822,11 @@ final class NotificationWatcher {
             .compactMap { $0.bundleIdentifier }
             .first
 
-        // A miss isn't kept: the app may be installed or start by the next banner
+        // A miss is only kept for a moment: the app may be installed by a later banner
+        if running == nil, let missed = bundleIDMisses[target],
+           Date().timeIntervalSince(missed) < bundleIDMissLifetime {
+            return nil
+        }
         let resolved = resolveBundleID(
             forRunningBundleID: running,
             appName: name,
@@ -826,6 +834,8 @@ final class NotificationWatcher {
         )
         if let resolved {
             bundleIDCache[target] = resolved
+        } else {
+            bundleIDMisses[target] = Date()
         }
         return resolved
     }

@@ -119,14 +119,6 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
 
     // MARK: - Protocol Implementation
-    func play() async {
-        MRMediaRemoteSendCommandFunction(0, nil)
-    }
-
-    func pause() async {
-        MRMediaRemoteSendCommandFunction(1, nil)
-    }
-
     func togglePlay() async {
         MRMediaRemoteSendCommandFunction(2, nil)
     }

@@ -15,8 +15,6 @@ protocol MediaControllerProtocol: ObservableObject {
     var supportsFavorite: Bool { get }
     
     func setFavorite(_ favorite: Bool) async
-    func play() async
-    func pause() async
     func seek(to time: Double) async
     func nextTrack() async
     func previousTrack() async

@@ -6,23 +6,16 @@
 //  Modified by Richard Kunkli on 24/08/2024.
 //
 
-import AVFoundation
 import Combine
 import Defaults
-import KeyboardShortcuts
 import SwiftUI
-import SwiftUIIntrospect
 
 @MainActor
 struct ContentView: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject var webcamManager = WebcamManager.shared
-
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var brightnessManager = BrightnessManager.shared
-    @ObservedObject var volumeManager = VolumeManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @ObservedObject var starlane = StarlaneManager.shared
@@ -40,9 +33,8 @@ struct ContentView: View {
 
     // Shared interactive spring for movement/resizing to avoid conflicting animations
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
-
-    private let extendedHoverPadding: CGFloat = 30
-    private let zeroHeightHoverPadding: CGFloat = 10
+    private let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+    private let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
 
     private var topCornerRadius: CGFloat {
        ((vm.notchState == .open) && Defaults[.cornerRadiusScaling])
@@ -105,16 +97,13 @@ struct ContentView: View {
             chinWidth = 640
         } else if isShowingWideBanner {
             chinWidth += 2 * starlaneBannerSideWidth + 10
-        } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
+        } else if ((!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
-            && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
-        {
-            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
-        } else if showsFocusLiveActivity || showsStarlaneLiveActivity {
-            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
-        } else if !coordinator.expandingView.show && vm.notchState == .closed
-            && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
-            && !vm.hideOnClosed
+            && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed)
+            || showsFocusLiveActivity || showsStarlaneLiveActivity
+            || (!coordinator.expandingView.show && vm.notchState == .closed
+                && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
+                && !vm.hideOnClosed)
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         }
@@ -179,14 +168,8 @@ struct ContentView: View {
                 
                 mainLayout
                     .frame(height: vm.notchState == .open ? vm.notchSize.height : nil)
-                    .conditionalModifier(true) { view in
-                        let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
-                        let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
-                        
-                        return view
-                            .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
-                            .animation(.smooth, value: gestureProgress)
-                    }
+                    .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
+                    .animation(.smooth, value: gestureProgress)
                     .contentShape(Rectangle())
                     .onHover { hovering in
                         handleHover(hovering)
@@ -207,18 +190,7 @@ struct ContentView: View {
                             }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .sharingDidFinish)) { _ in
-                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive {
-                            hoverTask?.cancel()
-                            hoverTask = Task {
-                                try? await Task.sleep(for: .milliseconds(100))
-                                guard !Task.isCancelled else { return }
-                                await MainActor.run {
-                                    if self.vm.notchState == .open && !self.isHovering && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
-                                        self.vm.close()
-                                    }
-                                }
-                            }
-                        }
+                        closeSoonIfIdle()
                     }
                     .onChange(of: vm.notchState) { _, newState in
                         NotchPanelLayout.shared.notchChanged(isOpen: newState == .open, screenUUID: vm.screenUUID)
@@ -229,17 +201,8 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
-                        if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
-                            hoverTask?.cancel()
-                            hoverTask = Task {
-                                try? await Task.sleep(for: .milliseconds(100))
-                                guard !Task.isCancelled else { return }
-                                await MainActor.run {
-                                    if !self.vm.isBatteryPopoverActive && !self.isHovering && self.vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
-                                        self.vm.close()
-                                    }
-                                }
-                            }
+                        if !SharingStateManager.shared.preventNotchClose {
+                            closeSoonIfIdle()
                         }
                     }
                     .sensoryFeedback(.alignment, trigger: haptics)
@@ -250,11 +213,6 @@ struct ContentView: View {
                             }
                         }
                         .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
-                        //                    Button("Edit") { // Doesnt work....
-                        //                        let dn = DynamicNotch(content: EditPanelView())
-                        //                        dn.toggle()
-                        //                    }
-                        //                    .keyboardShortcut("E", modifiers: .command)
                     }
                 if vm.chinHeight > 0 {
                     Rectangle()
@@ -604,6 +562,19 @@ struct ContentView: View {
 
     // MARK: - Hover Management
 
+    /// Closes the notch shortly after whatever kept it open has let go.
+    private func closeSoonIfIdle() {
+        guard vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive else { return }
+        hoverTask?.cancel()
+        hoverTask = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                vm.close()
+            }
+        }
+    }
+
     private func handleHover(_ hovering: Bool) {
         if coordinator.firstLaunch { return }
         hoverTask?.cancel()
@@ -625,27 +596,23 @@ struct ContentView: View {
                 try? await Task.sleep(for: .seconds(Defaults[.minimumHoverDuration]))
                 guard !Task.isCancelled else { return }
                 
-                await MainActor.run {
-                    guard self.vm.notchState == .closed,
-                          self.isHovering,
-                          !self.coordinator.sneakPeek.show else { return }
-                    
-                    self.doOpen()
-                }
+                guard vm.notchState == .closed,
+                      isHovering,
+                      !coordinator.sneakPeek.show else { return }
+                
+                doOpen()
             }
         } else {
             hoverTask = Task {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard !Task.isCancelled else { return }
                 
-                await MainActor.run {
-                    withAnimation(animationSpring) {
-                        self.isHovering = false
-                    }
-                    
-                    if self.vm.notchState == .open && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
-                        self.vm.close()
-                    }
+                withAnimation(animationSpring) {
+                    isHovering = false
+                }
+                
+                if vm.notchState == .open && !vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                    vm.close()
                 }
             }
         }
@@ -703,26 +670,6 @@ struct ContentView: View {
             }
         }
     }
-}
-
-struct FullScreenDropDelegate: DropDelegate {
-    @Binding var isTargeted: Bool
-    let onDrop: () -> Void
-
-    func dropEntered(info _: DropInfo) {
-        isTargeted = true
-    }
-
-    func dropExited(info _: DropInfo) {
-        isTargeted = false
-    }
-
-    func performDrop(info _: DropInfo) -> Bool {
-        isTargeted = false
-        onDrop()
-        return true
-    }
-
 }
 
 struct GeneralDropTargetDelegate: DropDelegate {

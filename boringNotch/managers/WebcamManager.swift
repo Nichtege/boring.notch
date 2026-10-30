@@ -37,27 +37,6 @@ class WebcamManager: NSObject, ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "BoringNotch.WebcamManager.SessionQueue", qos: .userInitiated)
     
-    private var isCleaningUp: Bool = false
-    
-    // MARK: - Constants
-    
-    enum WebcamError: Error, LocalizedError {
-        case deviceUnavailable
-        case accessDenied
-        case configurationFailed(String)
-        
-        var errorDescription: String? {
-            switch self {
-            case .deviceUnavailable:
-                return "No camera devices available"
-            case .accessDenied:
-                return "Camera access denied"
-            case .configurationFailed(let message):
-                return "Camera configuration failed: \(message)"
-            }
-        }
-    }
-    
     // MARK: - Properties
     
     private override init() {
@@ -67,19 +46,6 @@ class WebcamManager: NSObject, ObservableObject {
         checkCameraAvailability()
     }
     
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        
-        if let session = captureSession {
-            if session.isRunning {
-                session.stopRunning()
-            }
-        }
-        captureSession = nil
-            
-        previewLayer = nil
-    }
-
     // MARK: - Camera Management
     
     /// Checks current authorization status and requests access if needed
