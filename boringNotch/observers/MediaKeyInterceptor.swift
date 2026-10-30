@@ -64,6 +64,9 @@ final class MediaKeyInterceptor {
             }
         }
         
+        // The Option key can show this level before anything has changed it
+        _ = BrightnessManager.shared
+
         let mask = CGEventMask(1 << kSystemDefinedEventType.rawValue)
         eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
