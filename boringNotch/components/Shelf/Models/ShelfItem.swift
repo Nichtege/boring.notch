@@ -123,12 +123,6 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
         return ShelfStateViewModel.shared.resolveFileURL(for: self)
     }
     
-    var URL: URL? {
-        if case let .file(bookmark) = kind { return resolvedContext(for: bookmark)?.url }
-        else if case let .link(url) = kind { return url }
-        else { return nil }
-    }
-    
     var icon: NSImage {
         guard case .file = kind else {
             return Self.thumbnailSymbolImage(systemName: kind.iconSymbolName) ?? NSImage()
@@ -142,9 +136,7 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
 
     func cleanupStoredData() {
         guard case let .file(bookmark) = kind,
-              let context = resolvedContext(for: bookmark) else { return }
-        
-        let url = context.url
+              let url = Bookmark(data: bookmark).resolveURL() else { return }
         
         // Handle temporary files
         if isTemporary {
@@ -159,8 +151,7 @@ private extension ShelfItem {
         systemName: String,
     size: CGSize = CGSize(width: 64, height: 80), 
     symbolPointSize: CGFloat = 38,
-    backgroundColor: NSColor = NSColor.white,
-    symbolColor: NSColor = NSColor.labelColor
+    backgroundColor: NSColor = NSColor.white
     ) -> NSImage? {
         let image = NSImage(size: size)
         image.lockFocus()
@@ -191,7 +182,7 @@ extension ShelfItem {
     var identityKey: String {
         switch kind {
         case .file(let bookmark):
-            if let url = resolvedContext(for: bookmark)?.url {
+            if let url = Bookmark(data: bookmark).resolveURL() {
                 return "file://" + url.standardizedFileURL.path
             }
             return "file://missing/" + bookmark.base64EncodedString()
@@ -214,15 +205,5 @@ private extension ShelfItemKind {
         case .link:
             return "link"
         }
-    }
-}
-
-private extension ShelfItem {
-    func resolvedContext(for bookmarkData: Data) -> (url: URL, bookmark: Data)? {
-        let bookmark = Bookmark(data: bookmarkData)
-        if let url = bookmark.resolveURL() {
-            return (url, bookmark.refreshedData ?? bookmarkData)
-        }
-        return nil
     }
 }

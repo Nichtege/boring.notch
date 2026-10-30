@@ -15,8 +15,6 @@ final class ShelfStateViewModel: ObservableObject {
         didSet { ShelfPersistenceService.shared.save(items) }
     }
 
-    @Published var isLoading: Bool = false
-
     var isEmpty: Bool { items.isEmpty }
 
     // Queue for deferred bookmark updates to avoid publishing during view updates
@@ -79,12 +77,10 @@ final class ShelfStateViewModel: ObservableObject {
 
     func load(_ providers: [NSItemProvider]) {
         guard !providers.isEmpty else { return }
-        isLoading = true
         Task { [weak self] in
             let dropped = await ShelfDropService.items(from: providers)
             await MainActor.run {
                 self?.add(dropped)
-                self?.isLoading = false
             }
         }
     }
@@ -116,7 +112,6 @@ final class ShelfStateViewModel: ObservableObject {
         let bookmark = Bookmark(data: bookmarkData)
         let result = bookmark.resolve()
         if let refreshed = result.refreshedData, refreshed != bookmarkData {
-            NSLog("Bookmark for \(item) stale; refreshing")
             scheduleDeferredBookmarkUpdate(for: item, bookmark: refreshed)
         }
         return result.url
@@ -127,17 +122,8 @@ final class ShelfStateViewModel: ObservableObject {
         let bookmark = Bookmark(data: bookmarkData)
         let result = bookmark.resolve()
         if let refreshed = result.refreshedData, refreshed != bookmarkData {
-            NSLog("Bookmark for \(item) stale; refreshing")
             updateBookmark(for: item, bookmark: refreshed)
         }
         return result.url
-    }
-
-    func resolveFileURLs(for items: [ShelfItem]) -> [URL] {
-        var urls: [URL] = []
-        for it in items {
-            if let u = resolveFileURL(for: it) { urls.append(u) }
-        }
-        return urls
     }
 }

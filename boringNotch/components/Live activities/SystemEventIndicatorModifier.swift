@@ -20,7 +20,6 @@ struct SystemEventIndicatorModifier: View {
         }
     }
     @Binding var icon: String
-    let showSlider: Bool = false
     var sendEventBack: (CGFloat) -> Void
     
     var body: some View {
@@ -96,12 +95,10 @@ struct SystemEventIndicatorModifier: View {
 }
 
 struct DraggableProgressBar: View {
-    @EnvironmentObject var vm: BoringViewModel
     @Binding var value: CGFloat
     var onChange: ((CGFloat) -> Void)? = nil
     
     @State private var isDragging = false
-    @State private var dragOffset: CGFloat = 0
     
     var body: some View {
         VStack {

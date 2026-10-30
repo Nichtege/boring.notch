@@ -179,8 +179,6 @@ struct BoringBatteryView: View {
     @State var isForNotification: Bool = false
     
     @State private var showPopupMenu: Bool = false
-    @State private var isPressed: Bool = false
-    @State private var isHoveringButton: Bool = false
     @State private var isHoveringPopover: Bool = false
     @State private var hideTask: Task<Void, Never>? = nil
 
@@ -243,7 +241,7 @@ struct BoringBatteryView: View {
     }
 
     private func scheduleHideIfNeeded() {
-        if isHoveringButton || isHoveringPopover { return }
+        if isHoveringPopover { return }
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(for: .milliseconds(350))

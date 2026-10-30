@@ -43,21 +43,12 @@ actor ThumbnailService {
         return await task.value
     }
     
-    func clearCache() {
-        cache.removeAll()
-    }
-    
-    func clearCache(for url: URL) {
-        cache = cache.filter { !$0.key.starts(with: url.path) }
-    }
-    
     // MARK: - Private Methods
     
     private func generateQuickLookThumbnail(for url: URL, size: CGSize) async -> NSImage? {
         let scale = await MainActor.run { NSScreen.main?.backingScaleFactor ?? 2.0 }
         
         return await url.accessSecurityScopedResource { scopedURL in
-            NSLog("🔐 ThumbnailService: obtaining security scope for \(scopedURL.path)")
             let request = QLThumbnailGenerator.Request(
                 fileAt: scopedURL,
                 size: size,
@@ -69,7 +60,6 @@ actor ThumbnailService {
             return await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
                 thumbnailGenerator.generateBestRepresentation(for: request) { representation, error in
                     if let rep = representation {
-                        NSLog("🔍 ThumbnailService: generated thumbnail for \(scopedURL.path)")
                         continuation.resume(returning: rep.nsImage)
                     } else {
                         if let err = error { 

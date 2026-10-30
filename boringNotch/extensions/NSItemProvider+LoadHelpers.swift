@@ -13,21 +13,20 @@ import UniformTypeIdentifiers
 extension NSItemProvider {
     
     func extractItem() async -> URL? {
-        return await loadFileURL(typeIdentifier: UTType.item.identifier)
+        return await loadURL(typeIdentifier: UTType.item.identifier, forFile: true)
     }
 
     
     /// Detects if this is a file dragged from the filesystem
     func extractFileURL() async -> URL? {
         if hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            return await loadFileURL(typeIdentifier: UTType.fileURL.identifier)
+            return await loadURL(typeIdentifier: UTType.fileURL.identifier, forFile: true)
         }
         return nil
     }
     
     /// Loads raw data for the given type identifier
     func loadData() async -> Data? {
-        NSLog(String(describing: self.registeredTypeIdentifiers))
         guard hasItemConformingToTypeIdentifier(UTType.data.identifier) else { return nil }
         return await withCheckedContinuation { (cont: CheckedContinuation<Data?, Never>) in
             loadItem(forTypeIdentifier: UTType.data.identifier, options: nil) { item, error in
@@ -49,15 +48,11 @@ extension NSItemProvider {
                     do {
                         // Delete the file first
                         try fileManager.removeItem(at: url)
-                        print("Deleted file: \(url.path)")
 
                         // Check folder contents
                         let contents = try fileManager.contentsOfDirectory(atPath: folderURL.path)
                         if contents.isEmpty {
                             try fileManager.removeItem(at: folderURL)
-                            print("Folder was empty, deleted folder: \(folderURL.path)")
-                        } else {
-                            print("Folder not deleted — it still contains \(contents.count) item(s).")
                         }
 
                     } catch {
@@ -99,12 +94,15 @@ extension NSItemProvider {
         return nil
     }
 
-    /// Loads a file URL from the provider for the given type identifier.
-    func loadFileURL(typeIdentifier: String) async -> URL? {
+    /// Loads a URL from the provider for the given type identifier. A file's URL can also come as a bookmark,
+    /// and only a file that can't be loaded gets logged.
+    func loadURL(typeIdentifier: String, forFile: Bool = false) async -> URL? {
         await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             self.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
                 if let error = error {
-                    print("❌ Error loading item for type \(typeIdentifier): \(error.localizedDescription)")
+                    if forFile {
+                        print("❌ Error loading item for type \(typeIdentifier): \(error.localizedDescription)")
+                    }
                     cont.resume(returning: nil)
                     return
                 }
@@ -114,64 +112,15 @@ extension NSItemProvider {
                     resolvedURL = url
                 } else if let data = item as? Data {
                     // Some providers hand out a UTF-8 file URL string, others a bookmark. Prefer parsing string first.
-                    if let string = String(data: data, encoding: .utf8) {
-                        if let url = URL(string: string) {
-                            resolvedURL = url
-                        } else if string.hasPrefix("/") {
-                            // Plain file system path
-                            resolvedURL = URL(fileURLWithPath: string)
-                        }
-                    }
-                    if resolvedURL == nil {
+                    resolvedURL = String(data: data, encoding: .utf8).flatMap(parsedURL)
+                    if resolvedURL == nil && forFile {
                         // Fallback: try treating the data as a bookmark
-                        let bookmark = Bookmark(data: data)
-                        resolvedURL = bookmark.resolveURL()
+                        resolvedURL = Bookmark(data: data).resolveURL()
                     }
                 } else if let string = item as? String {
-                    if let url = URL(string: string) {
-                        resolvedURL = url
-                    } else if string.hasPrefix("/") {
-                        resolvedURL = URL(fileURLWithPath: string)
-                    }
+                    resolvedURL = parsedURL(string)
                 }
                 cont.resume(returning: resolvedURL)
-            }
-        }
-    }
-
-    /// Loads a URL from the provider for the given type identifier.
-    func loadURL(typeIdentifier: String) async -> URL? {
-        await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
-            self.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
-                if error != nil {
-                    cont.resume(returning: nil)
-                    return
-                }
-
-                if let url = item as? URL {
-                    cont.resume(returning: url)
-                } else if let data = item as? Data {
-                    if let string = String(data: data, encoding: .utf8) {
-                        if let url = URL(string: string) {
-                            cont.resume(returning: url)
-                            return
-                        } else if string.hasPrefix("/") {
-                            cont.resume(returning: URL(fileURLWithPath: string))
-                            return
-                        }
-                    }
-                    cont.resume(returning: nil)
-                } else if let string = item as? String {
-                    if let url = URL(string: string) {
-                        cont.resume(returning: url)
-                    } else if string.hasPrefix("/") {
-                        cont.resume(returning: URL(fileURLWithPath: string))
-                    } else {
-                        cont.resume(returning: nil)
-                    }
-                } else {
-                    cont.resume(returning: nil)
-                }
             }
         }
     }
@@ -196,4 +145,9 @@ extension NSItemProvider {
             }
         }
     }
+}
+
+/// A URL, or else a plain file system path.
+private func parsedURL(_ string: String) -> URL? {
+    URL(string: string) ?? (string.hasPrefix("/") ? URL(fileURLWithPath: string) : nil)
 }

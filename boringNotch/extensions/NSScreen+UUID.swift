@@ -26,11 +26,6 @@ extension NSScreen {
     @MainActor static func screen(withUUID uuid: String) -> NSScreen? {
         return NSScreenUUIDCache.shared.screen(forUUID: uuid)
     }
-    
-    /// Get UUID to NSScreen mapping for all screens
-    @MainActor static var screensByUUID: [String: NSScreen] {
-        return NSScreenUUIDCache.shared.allScreens
-    }
 }
 
 /// Cache for UUID to NSScreen mappings to avoid repeated lookups
@@ -76,9 +71,5 @@ final class NSScreenUUIDCache {
     
     func screen(forUUID uuid: String) -> NSScreen? {
         return cache[uuid]
-    }
-    
-    var allScreens: [String: NSScreen] {
-        return cache
     }
 }

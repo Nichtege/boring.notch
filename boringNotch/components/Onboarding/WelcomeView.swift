@@ -32,22 +32,6 @@ struct WelcomeView: View {
                         .font(.title)
                         .foregroundStyle(.secondary)
                         .padding(.bottom, 30)
-                    if false {
-                        Text("PRO")
-                            .font(.system(size: 18, design: .rounded))
-                            .fontWeight(.bold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule()
-                                    .fill(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .strokeBorder(LinearGradient(stops: [.init(color: .white.opacity(0.7), location: 0.3), .init(color: .clear, location: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .blendMode(.overlay)
-                            )
-                            .padding(.bottom, 30)
-                    }
-
 
                     Button {
                         onGetStarted?()

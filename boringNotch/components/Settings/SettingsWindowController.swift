@@ -102,16 +102,9 @@ extension SettingsWindowController: NSWindowDelegate {
         relinquishFocus()
     }
     
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        return true
-    }
-    
     func windowDidBecomeKey(_ notification: Notification) {
         // Ensure app is in regular mode when window becomes key
         NSApp.setActivationPolicy(.regular)
-    }
-    
-    func windowDidResignKey(_ notification: Notification) {
     }
     
 }

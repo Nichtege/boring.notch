@@ -12,7 +12,6 @@ struct BoringHeader: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
-    @StateObject var tvm = ShelfStateViewModel.shared
     var body: some View {
         HStack(spacing: 0) {
             HStack {
@@ -39,39 +38,16 @@ struct BoringHeader: View {
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
                     } else {
                         if Defaults[.showMirror] {
-                            Button(action: {
+                            headerButton(systemImage: "web.camera") {
                                 vm.toggleCameraPreview()
-                            }) {
-                                Capsule()
-                                    .fill(.black)
-                                    .frame(width: 30, height: 30)
-                                    .overlay {
-                                        Image(systemName: "web.camera")
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
-                                    }
                             }
-                            .buttonStyle(PlainButtonStyle())
                         }
                         if Defaults[.settingsIconInNotch] {
-                            Button(action: {
+                            headerButton(systemImage: "gear") {
                                 DispatchQueue.main.async {
                                     SettingsWindowController.shared.showWindow()
                                 }
-                                
-                            }) {
-                                Capsule()
-                                    .fill(.black)
-                                    .frame(width: 30, height: 30)
-                                    .overlay {
-                                        Image(systemName: "gear")
-                                            .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
-                                    }
                             }
-                            .buttonStyle(PlainButtonStyle())
                         }
                         if Defaults[.showBatteryIndicator] {
                             BoringBatteryView(
@@ -96,6 +72,21 @@ struct BoringHeader: View {
         }
         .foregroundColor(.gray)
         .environmentObject(vm)
+    }
+
+    private func headerButton(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Capsule()
+                .fill(.black)
+                .frame(width: 30, height: 30)
+                .overlay {
+                    Image(systemName: systemImage)
+                        .foregroundColor(.white)
+                        .padding()
+                        .imageScale(.medium)
+                }
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     func isHUDType(_ type: SneakContentType) -> Bool {

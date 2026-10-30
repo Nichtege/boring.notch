@@ -117,7 +117,6 @@ struct MusicControlsView: View {
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
     @Default(.musicControlSlots) private var slotConfig
-    @Default(.musicControlSlotLimit) private var slotLimit
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -179,7 +178,7 @@ struct MusicControlsView: View {
     }
 
     private var musicSlider: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.1 : nil)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.5, paused: !musicManager.isPlaying)) { timeline in
             MusicSliderView(
                 sliderValue: $sliderValue,
                 duration: $musicManager.songDuration,
@@ -187,10 +186,7 @@ struct MusicControlsView: View {
                 color: musicManager.avgColor,
                 dragging: $dragging,
                 currentDate: timeline.date,
-                timestampDate: musicManager.timestampDate,
-                elapsedTime: musicManager.elapsedTime,
-                playbackRate: musicManager.playbackRate,
-                isPlaying: musicManager.isPlaying
+                timestampDate: musicManager.timestampDate
             ) { newValue in
                 MusicManager.shared.seek(to: newValue)
             }
@@ -218,12 +214,8 @@ struct MusicControlsView: View {
     }
 
     private var activeSlots: [MusicControlButton] {
-        let sanitizedLimit = min(
-            max(slotLimit, MusicControlButton.minSlotCount),
-            MusicControlButton.maxSlotCount
-        )
-        let padded = slotConfig.padded(to: sanitizedLimit, filler: .none)
-        let result = Array(padded.prefix(sanitizedLimit))
+        let padded = slotConfig.padded(to: MusicControlButton.slotCount, filler: .none)
+        let result = Array(padded.prefix(MusicControlButton.slotCount))
         // If calendar and camera are both visible alongside music, hide the edge slots
         let shouldHideEdges = Defaults[.showCalendar] && Defaults[.showMirror] && webcamManager.cameraAvailable && vm.isCameraExpanded
         if shouldHideEdges && result.count >= 5 {
@@ -501,9 +493,6 @@ struct VolumeControlView: View {
                 }
             }
         }
-        .onDisappear {
-            // volumeUpdateTask?.cancel() // No longer needed
-        }
     }
     
     
@@ -527,7 +516,6 @@ struct VolumeControlView: View {
 struct NotchHomeView: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var webcamManager = WebcamManager.shared
-    @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     let albumArtNamespace: Namespace.ID
 
@@ -580,9 +568,6 @@ struct MusicSliderView: View {
     @Binding var dragging: Bool
     let currentDate: Date
     let timestampDate: Date
-    let elapsedTime: Double
-    let playbackRate: Double
-    let isPlaying: Bool
     var onValueChange: (Double) -> Void
 
 
@@ -612,10 +597,15 @@ struct MusicSliderView: View {
             )
             .font(.caption)
         }
-        .onChange(of: currentDate) {
-           guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
-            sliderValue = MusicManager.shared.estimatedPlaybackPosition(at: currentDate)
-        }
+        .onAppear(perform: syncWithPlayback)
+        .onChange(of: currentDate, syncWithPlayback)
+        // The timeline stands still while paused, and a seek there has to show too
+        .onChange(of: timestampDate, syncWithPlayback)
+    }
+
+    private func syncWithPlayback() {
+        guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
+        sliderValue = MusicManager.shared.estimatedPlaybackPosition()
     }
 
     func timeString(from seconds: Double) -> String {

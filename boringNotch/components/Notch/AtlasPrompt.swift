@@ -80,7 +80,15 @@ final class AtlasChat: ObservableObject {
     @Published private(set) var questionHasScreen = false
     @Published private(set) var questionFileCount = 0
     @Published private(set) var question = ""
-    @Published private(set) var answer = ""
+    @Published private(set) var answer = "" {
+        didSet {
+            if answer != oldValue {
+                renderedAnswer = Self.rendered(answer)
+            }
+        }
+    }
+    /// Parsed once per answer: the line redraws on every keystroke.
+    private(set) var renderedAnswer = AttributedString()
     @Published private(set) var step = ""
     @Published private(set) var phase: Phase = .idle
 
@@ -392,6 +400,11 @@ final class AtlasChat: ObservableObject {
         String(localized: "Set up Starlane in the settings first.")
     }
 
+    private static func rendered(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+
     /// The token is in the page's data block; only the phone key opens the page.
     private func fetchToken() async throws -> String {
         guard let key = StarlaneKeychain.read("key"), let url = StarlaneManager.shared.url("/?k=\(key)") else {
@@ -516,25 +529,14 @@ final class AtlasPromptController {
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = true
-        panel.level = .mainMenu + 4
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
+        NotchPanelLayout.shared.configure(panel)
         panel.hasShadow = true
-        panel.isMovable = false
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
         panel.onCancel = { [weak self] in self?.hide() }
 
         let host = NSHostingView(rootView: AtlasPromptView { [weak self] height in
             self?.resize(to: height)
         })
-        host.sizingOptions = []
-        host.autoresizingMask = [.width, .height]
-        host.frame = panel.contentView?.bounds ?? .zero
-        panel.contentView?.addSubview(host)
+        NotchPanelLayout.shared.embed(host, in: panel)
 
         return panel
     }
@@ -711,7 +713,7 @@ struct AtlasPromptView: View {
 
             if !chat.answer.isEmpty {
                 ScrollView {
-                    Text(rendered(chat.answer))
+                    Text(chat.renderedAnswer)
                         .font(.system(size: 13))
                         .foregroundStyle(.white)
                         .textSelection(.enabled)
@@ -731,10 +733,5 @@ struct AtlasPromptView: View {
                     .lineLimit(1)
             }
         }
-    }
-
-    private func rendered(_ text: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }

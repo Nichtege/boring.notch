@@ -27,7 +27,6 @@ struct MarqueeText: View {
     let font: Font
     let nsFont: NSFont.TextStyle
     let textColor: Color
-    let backgroundColor: Color
     let minDuration: Double
     let frameWidth: CGFloat
     
@@ -35,12 +34,11 @@ struct MarqueeText: View {
     @State private var textSize: CGSize = .zero
     @State private var offset: CGFloat = 0
     
-    init(_ text: Binding<String>, font: Font = .body, nsFont: NSFont.TextStyle = .body, textColor: Color = .primary, backgroundColor: Color = .clear, minDuration: Double = 3.0, frameWidth: CGFloat = 200) {
+    init(_ text: Binding<String>, font: Font = .body, nsFont: NSFont.TextStyle = .body, textColor: Color = .primary, minDuration: Double = 3.0, frameWidth: CGFloat = 200) {
         _text = text
         self.font = font
         self.nsFont = nsFont
         self.textColor = textColor
-        self.backgroundColor = backgroundColor
         self.minDuration = minDuration
         self.frameWidth = frameWidth
     }
@@ -69,7 +67,6 @@ struct MarqueeText: View {
                         .repeatForever(autoreverses: false) : .none,
                     value: self.animate
                 )
-                .background(backgroundColor)
                 .modifier(MeasureSizeModifier())
                 .onPreferenceChange(SizePreferenceKey.self) { size in
                     self.textSize = CGSize(width: size.width / 2, height: NSFont.preferredFont(forTextStyle: nsFont).pointSize)

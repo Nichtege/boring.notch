@@ -140,15 +140,11 @@ class QuickShareService: ObservableObject {
     }
 
     private func stopSharingAccessingURLs() {
-        NSLog("Stopping sharing access to URLs")
         for url in sharingAccessingURLs {
             url.stopAccessingSecurityScopedResource()
         }
         sharingAccessingURLs.removeAll()
     }
-// MARK: - SharingServiceDelegate
-
-private class SharingServiceDelegate: NSObject {}
     
     func shareDroppedFiles(_ providers: [NSItemProvider], using shareProvider: QuickShareProvider, from view: NSView?) async {
         var itemsToShare: [Any] = []

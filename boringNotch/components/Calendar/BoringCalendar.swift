@@ -19,7 +19,6 @@ struct Config: Equatable {
 }
 
 struct WheelPicker: View {
-    @EnvironmentObject var vm: BoringViewModel
     @Binding var selectedDate: Date
     @State private var scrollPosition: Int?
     @State private var haptics: Bool = false
@@ -267,7 +266,6 @@ struct EventListView: View {
     @Environment(\.openURL) private var openURL
     @ObservedObject private var calendarManager = CalendarManager.shared
     let events: [EventModel]
-    @Default(.autoScrollToNextEvent) private var autoScrollToNextEvent
     @Default(.showFullEventTitles) private var showFullEventTitles
 
 
