@@ -13,14 +13,14 @@ import UniformTypeIdentifiers
 extension NSItemProvider {
     
     func extractItem() async -> URL? {
-        return await loadURL(typeIdentifier: UTType.item.identifier, acceptingBookmark: true)
+        return await loadURL(typeIdentifier: UTType.item.identifier, forFile: true)
     }
 
     
     /// Detects if this is a file dragged from the filesystem
     func extractFileURL() async -> URL? {
         if hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            return await loadURL(typeIdentifier: UTType.fileURL.identifier, acceptingBookmark: true)
+            return await loadURL(typeIdentifier: UTType.fileURL.identifier, forFile: true)
         }
         return nil
     }
@@ -94,12 +94,15 @@ extension NSItemProvider {
         return nil
     }
 
-    /// Loads a URL from the provider for the given type identifier. A file's URL can also come as a bookmark.
-    func loadURL(typeIdentifier: String, acceptingBookmark: Bool = false) async -> URL? {
+    /// Loads a URL from the provider for the given type identifier. A file's URL can also come as a bookmark,
+    /// and only a file that can't be loaded gets logged.
+    func loadURL(typeIdentifier: String, forFile: Bool = false) async -> URL? {
         await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             self.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
                 if let error = error {
-                    print("❌ Error loading item for type \(typeIdentifier): \(error.localizedDescription)")
+                    if forFile {
+                        print("❌ Error loading item for type \(typeIdentifier): \(error.localizedDescription)")
+                    }
                     cont.resume(returning: nil)
                     return
                 }
@@ -110,7 +113,7 @@ extension NSItemProvider {
                 } else if let data = item as? Data {
                     // Some providers hand out a UTF-8 file URL string, others a bookmark. Prefer parsing string first.
                     resolvedURL = String(data: data, encoding: .utf8).flatMap(parsedURL)
-                    if resolvedURL == nil && acceptingBookmark {
+                    if resolvedURL == nil && forFile {
                         // Fallback: try treating the data as a bookmark
                         resolvedURL = Bookmark(data: data).resolveURL()
                     }
