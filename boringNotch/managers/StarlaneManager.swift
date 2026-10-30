@@ -3,7 +3,7 @@
 //  boringNotch
 //
 //  Reads the status of the Starlane dashboard (GET /api/notch) over Tailscale.
-//  Read-only: the notch never starts, answers or changes anything on the server.
+//  This status is read-only; the one thing the notch sends is what you type into the Atlas line (AtlasPrompt.swift).
 //
 
 import AppKit
@@ -113,16 +113,19 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     private var enabledCancellable: AnyCancellable?
     private var knownNeeds: Set<String>?
 
-    private lazy var session: URLSession = {
+    private lazy var session = makeSession(requestTimeout: 10, resourceTimeout: 15)
+
+    /// No disk cache, no cookies, and (see below) no redirects: this session carries the key and the token.
+    func makeSession(requestTimeout: TimeInterval, resourceTimeout: TimeInterval) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 15
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = resourceTimeout
         configuration.waitsForConnectivity = false
         configuration.httpShouldSetCookies = false
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-    }()
+    }
 
     var hasCredentials: Bool {
         StarlaneKeychain.read("address") != nil && StarlaneKeychain.read("key") != nil
@@ -219,13 +222,12 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
         }
     }
 
-    private func endpoint(for host: String) -> URL? {
-        URL(string: "https://\(host)/api/notch")
+    func url(_ path: String) -> URL? {
+        StarlaneKeychain.read("address").flatMap { URL(string: "https://\($0)\(path)") }
     }
 
     private func fetch() async {
-        guard let host = StarlaneKeychain.read("address"), let key = StarlaneKeychain.read("key"),
-              let url = endpoint(for: host) else {
+        guard let key = StarlaneKeychain.read("key"), let url = url("/api/notch") else {
             clear()
             status = .notConfigured
             return

@@ -1,6 +1,106 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Ask Atlas…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frag Atlas …"
+          }
+        }
+      }
+    },
+    "Ask Atlas:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atlas fragen:"
+          }
+        }
+      }
+    },
+    "Atlas is working…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atlas arbeitet …"
+          }
+        }
+      }
+    },
+    "Starlane isn't reachable (is Tailscale on?)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starlane ist nicht erreichbar (Tailscale an?)"
+          }
+        }
+      }
+    },
+    "Lost the connection. The answer will still appear in Starlane." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbindung verloren. Die Antwort erscheint trotzdem in Starlane."
+          }
+        }
+      }
+    },
+    "Atlas couldn't finish this." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atlas konnte das nicht abschließen."
+          }
+        }
+      }
+    },
+    "Starlane refused this (%lld)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starlane hat das abgelehnt (%lld)."
+          }
+        }
+      }
+    },
+    "Set up Starlane in the settings first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richte Starlane zuerst in den Einstellungen ein."
+          }
+        }
+      }
+    },
+    "This Starlane version can't be talked to from here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit dieser Starlane-Version kann die Notch nicht sprechen."
+          }
+        }
+      }
+    },
+    "Opens a line under the notch. What you send goes to Atlas like a message from the dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet eine Zeile unter der Notch. Was du abschickst, geht an Atlas wie eine Nachricht aus dem Dashboard."
+          }
+        }
+      }
+    },
     "Needs you" : {
       "localizations" : {
         "de" : {

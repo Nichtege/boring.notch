@@ -1841,6 +1841,16 @@ struct Shortcuts: View {
             Section {
                 KeyboardShortcuts.Recorder("Toggle Notch Open:", name: .toggleNotchOpen)
             }
+            Section {
+                KeyboardShortcuts.Recorder("Ask Atlas:", name: .askAtlas)
+            } header: {
+                Text("Starlane")
+            } footer: {
+                Text("Opens a line under the notch. What you send goes to Atlas like a message from the dashboard.")
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Shortcuts")
