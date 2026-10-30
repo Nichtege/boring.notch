@@ -41,12 +41,6 @@ struct InlineHUD: View {
                             Image(systemName: value > 0.5 ? "light.max" : "light.min")
                                 .contentTransition(.interpolate)
                                 .frame(width: 20, height: 15, alignment: .center)
-                        case .mic:
-                            Image(systemName: "mic")
-                                .symbolRenderingMode(.hierarchical)
-                                .symbolVariant(value > 0 ? .none : .slash)
-                                .contentTransition(.interpolate)
-                                .frame(width: 20, height: 15, alignment: .center)
                         default:
                             EmptyView()
                     }
@@ -68,15 +62,6 @@ struct InlineHUD: View {
                 .frame(width: vm.closedNotchSize.width - 20)
             
             HStack {
-                if (type == .mic) {
-                    Text(value.isZero ? "muted" : "unmuted")
-                        .foregroundStyle(.gray)
-                        .lineLimit(1)
-                        .allowsTightening(true)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .contentTransition(.interpolate)
-                } else {
                         HStack {
                         DraggableProgressBar(value: $value, onChange: { v in
                             if type == .volume {
@@ -103,7 +88,6 @@ struct InlineHUD: View {
                                 .multilineTextAlignment(.trailing)
                         }
                     }
-                }
             }
             .padding(.trailing, 4)
             .frame(width: 100 - (hoverAnimation ? 0 : 12) + gestureProgress / 2, height: vm.closedNotchSize.height - (hoverAnimation ? 0 : 12), alignment: .center)
@@ -145,8 +129,6 @@ struct InlineHUD: View {
                 return "Brightness"
             case .backlight:
                 return "Backlight"
-            case .mic:
-                return "Mic"
             default:
                 return ""
         }

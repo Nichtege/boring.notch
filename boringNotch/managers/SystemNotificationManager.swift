@@ -19,8 +19,6 @@ struct SystemNotification: Identifiable, Equatable {
     var subtitle: String?
     var body: String?
     var receivedAt = Date()
-    /// Previews have no banner behind them.
-    var hasBanner = false
 }
 
 @MainActor
@@ -146,8 +144,7 @@ final class SystemNotificationManager {
             bundleID: nonEmpty(payload["bundleID"]),
             title: nonEmpty(payload["title"]),
             subtitle: nonEmpty(payload["subtitle"]),
-            body: nonEmpty(payload["body"]),
-            hasBanner: true
+            body: nonEmpty(payload["body"])
         )
 
         guard activeNotification == nil || !isCardHovered else {
@@ -158,13 +155,6 @@ final class SystemNotificationManager {
             }
             return
         }
-        present(notification)
-    }
-
-    /// Shows a card from given data, with no banner behind it. For trying out how the card looks.
-    func show(preview: SystemNotification) {
-        var notification = preview
-        notification.hasBanner = false
         present(notification)
     }
 
@@ -206,7 +196,7 @@ final class SystemNotificationManager {
     func openActive() {
         guard let notification = activeNotification else { return }
         Task {
-            let pressed = notification.hasBanner ? await XPCHelperClient.shared.pressNotification(notification.id) : false
+            let pressed = await XPCHelperClient.shared.pressNotification(notification.id)
             let opened = if pressed { true } else { await activateApp(of: notification) }
             if opened, activeNotification?.id == notification.id {
                 dismissActive()
@@ -238,9 +228,7 @@ final class SystemNotificationManager {
         if let previous {
             releaseBanner(of: previous)
         }
-        if notification.hasBanner {
-            Task { await parkBanner(of: notification) }
-        }
+        Task { await parkBanner(of: notification) }
     }
 
     private func parkBanner(of notification: SystemNotification) async {
@@ -256,9 +244,7 @@ final class SystemNotificationManager {
     }
 
     private func releaseBanner(of notification: SystemNotification) {
-        if notification.hasBanner {
-            XPCHelperClient.shared.restoreNotification(notification.id)
-        }
+        XPCHelperClient.shared.restoreNotification(notification.id)
     }
 
     private func scheduleDismiss() {

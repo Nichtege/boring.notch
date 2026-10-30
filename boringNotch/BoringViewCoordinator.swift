@@ -15,7 +15,6 @@ enum SneakContentType {
     case volume
     case backlight
     case music
-    case mic
     case battery
     case starlane
     case focus

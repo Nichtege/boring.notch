@@ -33,10 +33,6 @@ struct OpenNotchHUD: View {
                 case .backlight:
                     Image(systemName: value > 0.5 ? "light.max" : "light.min")
                         .contentTransition(.interpolate)
-                case .mic:
-                    Image(systemName: "mic")
-                        .symbolVariant(value > 0 ? .none : .slash)
-                        .contentTransition(.interpolate)
                 default:
                     EmptyView()
                 }
@@ -46,20 +42,13 @@ struct OpenNotchHUD: View {
             .frame(width: 20, alignment: .center)
             
             // Slider or Status Text
-            if type != .mic {
-                DraggableProgressBar(value: $value, onChange: { newVal in
-                     updateSystemValue(newVal)
-                })
-                .frame(width: showPercentage ? 65 : 108) // Fixed width for consistency
-            } else {
-                Text(value > 0 ? "Unmuted" : "Muted")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white)
-                    .fixedSize()
-            }
+            DraggableProgressBar(value: $value, onChange: { newVal in
+                 updateSystemValue(newVal)
+            })
+            .frame(width: showPercentage ? 65 : 108) // Fixed width for consistency
             
             // Percentage Text
-            if type != .mic && showPercentage {
+            if showPercentage {
                 Text("\(Int(value * 100))%")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.gray)

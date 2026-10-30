@@ -192,10 +192,8 @@ class BatteryActivityManager {
     
     /// Adds an observer to listen to battery changes
     /// - Parameter observer: The observer closure to be called on battery events
-    /// - Returns: The ID of the observer for later removal
-    func addObserver(_ observer: @escaping (BatteryEvent) -> Void) -> Int {
+    func addObserver(_ observer: @escaping (BatteryEvent) -> Void) {
         observers.append(observer)
-        return observers.count - 1
     }
 
     /// Notifies all observers of a battery event

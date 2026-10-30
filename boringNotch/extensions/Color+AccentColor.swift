@@ -17,14 +17,4 @@ extension Color {
         }
         return .accentColor
     }
-    
-    /// Returns a darker version of the accent color suitable for backgrounds
-    static var effectiveAccentBackground: Color {
-        if Defaults[.useCustomAccentColor],
-           let colorData = Defaults[.customAccentColorData],
-           let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: colorData) {
-            return Color(nsColor: nsColor.withSystemEffect(.disabled))
-        }
-        return Color.effectiveAccent.opacity(0.25)
-    }
 }

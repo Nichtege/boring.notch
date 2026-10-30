@@ -18,20 +18,6 @@ enum MusicPlayerImageSizes {
     static let cornerRadiusInset: (opened: CGFloat, closed: CGFloat) = (opened: 13.0, closed: 4.0)
 }
 
-@MainActor func getScreenFrame(_ screenUUID: String? = nil) -> CGRect? {
-    var selectedScreen = NSScreen.main
-
-    if let uuid = screenUUID {
-        selectedScreen = NSScreen.screen(withUUID: uuid)
-    }
-    
-    if let screen = selectedScreen {
-        return screen.frame
-    }
-    
-    return nil
-}
-
 @MainActor func getClosedNotchSize(screenUUID: String? = nil) -> CGSize {
     // Default notch size, to avoid using optionals
     var notchHeight: CGFloat = Defaults[.nonNotchHeight]

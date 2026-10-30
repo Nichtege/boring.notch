@@ -36,7 +36,7 @@ class BatteryStatusViewModel: ObservableObject {
 
     /// Sets up the monitor to observe battery events
     private func setupMonitor() {
-        _ = managerBattery.addObserver { [weak self] event in
+        managerBattery.addObserver { [weak self] event in
             guard let self = self else { return }
             self.handleBatteryEvent(event)
         }
