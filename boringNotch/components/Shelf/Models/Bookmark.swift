@@ -25,7 +25,6 @@ struct Bookmark: Sendable, Equatable, Codable {
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
-            NSLog("✅ Successfully created bookmark for \(url.path)")
             self.data = bookmark
         } catch {
             NSLog("❌ Failed to create bookmark for \(url.path): \(error.localizedDescription)")
@@ -44,7 +43,6 @@ struct Bookmark: Sendable, Equatable, Codable {
                 bookmarkDataIsStale: &isStale
             )
             if isStale, let newData = try? url.bookmarkData(options: [.withSecurityScope]) {
-                NSLog("⚠️ Bookmark was stale for \(url.path), refreshed")
                 return (url, newData)
             }
             return (url, nil)

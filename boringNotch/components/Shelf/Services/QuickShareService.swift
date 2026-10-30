@@ -140,7 +140,6 @@ class QuickShareService: ObservableObject {
     }
 
     private func stopSharingAccessingURLs() {
-        NSLog("Stopping sharing access to URLs")
         for url in sharingAccessingURLs {
             url.stopAccessingSecurityScopedResource()
         }
