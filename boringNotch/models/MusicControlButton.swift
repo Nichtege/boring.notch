@@ -22,7 +22,7 @@ enum MusicControlButton: String, CaseIterable, Identifiable, Codable, Defaults.S
     var id: String { rawValue }
 
     static let defaultLayout: [MusicControlButton] = [
-        .none,
+        .volume,
         .previous,
         .playPause,
         .next,
