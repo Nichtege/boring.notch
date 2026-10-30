@@ -32,16 +32,6 @@ final class MediaKeyInterceptor {
     
     private init() {}
     
-    // MARK: - Accessibility (via XPC)
-    
-    func requestAccessibilityAuthorization() {
-        XPCHelperClient.shared.requestAccessibilityAuthorization()
-    }
-    
-    func ensureAccessibilityAuthorization(promptIfNeeded: Bool = false) async -> Bool {
-        await XPCHelperClient.shared.ensureAccessibilityAuthorization(promptIfNeeded: promptIfNeeded)
-    }
-    
     // MARK: - Event Tap
     
     func start(promptIfNeeded: Bool = false) async {
@@ -57,7 +47,7 @@ final class MediaKeyInterceptor {
         let authorized = await XPCHelperClient.shared.isAccessibilityAuthorized()
         if !authorized {
             if promptIfNeeded {
-                let granted = await ensureAccessibilityAuthorization(promptIfNeeded: true)
+                let granted = await XPCHelperClient.shared.ensureAccessibilityAuthorization(promptIfNeeded: true)
                 guard granted else { return }
             } else {
                 return
@@ -160,22 +150,11 @@ final class MediaKeyInterceptor {
         guard audioPlayer == nil else { return }
 
         let defaultPath = "/System/Library/LoginPlugins/BezelServices.loginPlugin/Contents/Resources/volume.aiff"
-        if FileManager.default.fileExists(atPath: defaultPath) {
-            do {
-                audioPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: defaultPath))
-                print("🔊 [MediaKeyInterceptor] Loaded default Bezel audio from: \(defaultPath)")
-            } catch {
-                print("⚠️ [MediaKeyInterceptor] Failed to init AVAudioPlayer with default path \(defaultPath): \(error.localizedDescription)")
-            }
-        } else {
-            print("⚠️ [MediaKeyInterceptor] Default bezel audio not found at: \(defaultPath)")
-        }
-
-        if let player = audioPlayer {
-            player.volume = 1.0
-            player.numberOfLoops = 0
-            player.prepareToPlay()
-        }
+        guard let player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: defaultPath)) else { return }
+        player.volume = 1.0
+        player.numberOfLoops = 0
+        player.prepareToPlay()
+        audioPlayer = player
     }
 
     private func playFeedbackSound() {
@@ -183,15 +162,7 @@ final class MediaKeyInterceptor {
               feedback == 1 else { return }
 
         prepareAudioPlayerIfNeeded()
-        guard let player = audioPlayer else {
-            print("⚠️ [MediaKeyInterceptor] No audio player available to play feedback sound")
-            return
-        }
-        if let url = player.url {
-            print("🔊 [MediaKeyInterceptor] Playing feedback sound from: \(url.path)")
-        } else {
-            print("🔊 [MediaKeyInterceptor] Playing feedback sound (no url available for AVAudioPlayer)")
-        }
+        guard let player = audioPlayer else { return }
         if player.isPlaying {
             player.stop()
             player.currentTime = 0
