@@ -56,10 +56,6 @@ struct Bookmark: Sendable, Equatable, Codable {
         return resolve().url
     }
 
-    var refreshedData: Data? {
-        return resolve().refreshedData
-    }
-    
     func validate() async -> Bool {
         let (url, _) = resolve()
         guard let url = url else { return false }

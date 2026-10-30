@@ -136,9 +136,7 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
 
     func cleanupStoredData() {
         guard case let .file(bookmark) = kind,
-              let context = resolvedContext(for: bookmark) else { return }
-        
-        let url = context.url
+              let url = Bookmark(data: bookmark).resolveURL() else { return }
         
         // Handle temporary files
         if isTemporary {
@@ -184,7 +182,7 @@ extension ShelfItem {
     var identityKey: String {
         switch kind {
         case .file(let bookmark):
-            if let url = resolvedContext(for: bookmark)?.url {
+            if let url = Bookmark(data: bookmark).resolveURL() {
                 return "file://" + url.standardizedFileURL.path
             }
             return "file://missing/" + bookmark.base64EncodedString()
@@ -207,15 +205,5 @@ private extension ShelfItemKind {
         case .link:
             return "link"
         }
-    }
-}
-
-private extension ShelfItem {
-    func resolvedContext(for bookmarkData: Data) -> (url: URL, bookmark: Data)? {
-        let bookmark = Bookmark(data: bookmarkData)
-        if let url = bookmark.resolveURL() {
-            return (url, bookmark.refreshedData ?? bookmarkData)
-        }
-        return nil
     }
 }
