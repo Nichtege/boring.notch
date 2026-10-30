@@ -203,7 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
             Defaults[.didEnableLaunchAtLogin] = true
-            try? SMAppService.mainApp.register()
+            registerLoginItem()
         }
 
         NotificationCenter.default.addObserver(
@@ -492,6 +492,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Starts over if it's already on, as the item may still point at another copy of the app.
+private func registerLoginItem() {
+    if SMAppService.mainApp.status == .enabled {
+        try? SMAppService.mainApp.unregister()
+    }
+    try? SMAppService.mainApp.register()
+}
+
 /// Shows what macOS has made of it, since turning the login item on or off can fail.
 struct LaunchAtLoginToggle: View {
     @State private var isEnabled = SMAppService.mainApp.status == .enabled
@@ -500,10 +508,18 @@ struct LaunchAtLoginToggle: View {
         Toggle("Launch at login", isOn: Binding(
             get: { isEnabled },
             set: { enabled in
-                try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                if enabled {
+                    registerLoginItem()
+                } else {
+                    try? SMAppService.mainApp.unregister()
+                }
                 isEnabled = SMAppService.mainApp.status == .enabled
             }
         ))
+        // It can have changed in System Settings since this view was made
+        .onAppear {
+            isEnabled = SMAppService.mainApp.status == .enabled
+        }
     }
 }
 
