@@ -84,7 +84,7 @@ struct StarlaneView: View {
 
     private func terminalRow(_ row: StarlaneSummary.Terminal) -> some View {
         Button {
-            starlane.openDashboard()
+            starlane.openDashboard(terminal: row.id)
         } label: {
             HStack(spacing: 5) {
                 if row.state == "failed" || row.state == "limited" {
@@ -103,7 +103,7 @@ struct StarlaneView: View {
     }
 
     private func sidebar(_ summary: StarlaneSummary) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 10) {
                 Label("\(summary.busy)", systemImage: "play.circle")
                     .help(Text("Running"))
@@ -119,6 +119,14 @@ struct StarlaneView: View {
             }
             .font(.caption)
             .foregroundStyle(.gray)
+
+            if let limit = summary.limit, !limit.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(limit, id: \.window) { window in
+                        limitLabel(window)
+                    }
+                }
+            }
 
             if showDeadline, let deadline = summary.nextDeadline {
                 VStack(alignment: .leading, spacing: 1) {
@@ -152,7 +160,7 @@ struct StarlaneView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 3)
                     .background(Capsule().fill(.white.opacity(0.15)))
                     .contentShape(Capsule())
             }
@@ -168,7 +176,19 @@ struct StarlaneView: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func limitLabel(_ window: StarlaneSummary.LimitWindow) -> some View {
+        HStack(spacing: 3) {
+            Text(window.shortName)
+                .foregroundStyle(.gray)
+            Text("\(Int(window.usedPercent.rounded())) %")
+                .foregroundStyle(window.usedPercent >= 80 ? .orange : .white)
+        }
+        .font(.caption)
+        .monospacedDigit()
+        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(date: .omitted, time: .shortened))"))
     }
 
     private func relativeDay(_ date: String) -> String? {
