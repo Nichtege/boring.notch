@@ -408,6 +408,14 @@ final class NotificationWatcher {
                 }
                 seen.formUnion(readings.map { $0.identity })
 
+                // A banner that became a stack can keep its identifier and text, and so can a repeat
+                // next to the original. Neither is what the card stands in for any more.
+                let isStillMirrorable = readings.allSatisfy { NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) }
+                    && Set(readings.map { $0.identity }).count == readings.count
+                if !isStillMirrorable {
+                    restoreWindow(forKey: key(for: window))
+                }
+
                 let fresh = readings.filter { liveBanners[$0.identity] == nil }
                 for reading in readings where liveBanners[reading.identity] != nil {
                     liveBanners[reading.identity]?.element = reading.banner.element
@@ -556,6 +564,7 @@ final class NotificationWatcher {
             guard NotificationPanelDetection.isMirrorable(subrole: banner.subrole) else { return false }
             let other = self.identity(of: banner.element, showing: readText(in: banner.element))
             if other == identity {
+                guard !containsBanner else { return false }
                 containsBanner = true
             } else if liveBanners[other]?.hasCard != true {
                 return false
