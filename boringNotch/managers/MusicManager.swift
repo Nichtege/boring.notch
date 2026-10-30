@@ -40,8 +40,6 @@ class MusicManager: ObservableObject {
     @Published var volume: Double = 0.5
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
-    @Published var currentLyrics: String = ""
-    @Published var isFetchingLyrics: Bool = false
     @Published var isFavoriteTrack: Bool = false
 
     private var artworkData: Data? = nil
@@ -121,9 +119,6 @@ class MusicManager: ObservableObject {
             if !state.title.isEmpty && !state.artist.isEmpty && state.isPlaying {
                 self.updateSneakPeek()
             }
-
-            // Fetch lyrics on content change
-            self.fetchLyricsIfAvailable(bundleIdentifier: state.bundleIdentifier, title: state.title)
         }
 
         let timeChanged = state.currentTime != self.elapsedTime
@@ -189,61 +184,6 @@ class MusicManager: ObservableObject {
             await controller.setFavorite(favorite)
             try? await Task.sleep(for: .milliseconds(150))
             await controller.updatePlaybackInfo()
-        }
-    }
-
-    // MARK: - Lyrics
-    private func fetchLyricsIfAvailable(bundleIdentifier: String?, title: String) {
-        // Only the Music app itself provides lyrics
-        guard Defaults[.enableLyrics], !title.isEmpty,
-              let bundleIdentifier = bundleIdentifier, bundleIdentifier.contains("com.apple.Music") else {
-            DispatchQueue.main.async {
-                self.isFetchingLyrics = false
-                self.currentLyrics = ""
-            }
-            return
-        }
-
-        Task { @MainActor in
-            let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
-            guard !runningApps.isEmpty else {
-                self.isFetchingLyrics = false
-                self.currentLyrics = ""
-                return
-            }
-
-            self.isFetchingLyrics = true
-            self.currentLyrics = ""
-            defer { self.isFetchingLyrics = false }
-            do {
-                let script = """
-                tell application \"Music\"
-                    if it is running then
-                        if player state is playing or player state is paused then
-                            try
-                                set l to lyrics of current track
-                                if l is missing value then
-                                    return \"\"
-                                else
-                                    return l
-                                end if
-                            on error
-                                return \"\"
-                            end try
-                        else
-                            return \"\"
-                        end if
-                    else
-                        return \"\"
-                    end if
-                end tell
-                """
-                if let result = try await AppleScriptHelper.execute(script), let lyricsString = result.stringValue {
-                    self.currentLyrics = lyricsString.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            } catch {
-                // Without an answer from Music the track simply has no lyrics
-            }
         }
     }
 
