@@ -178,7 +178,7 @@ struct MusicControlsView: View {
     }
 
     private var musicSlider: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.1 : nil)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.5, paused: !musicManager.isPlaying)) { timeline in
             MusicSliderView(
                 sliderValue: $sliderValue,
                 duration: $musicManager.songDuration,
@@ -186,10 +186,7 @@ struct MusicControlsView: View {
                 color: musicManager.avgColor,
                 dragging: $dragging,
                 currentDate: timeline.date,
-                timestampDate: musicManager.timestampDate,
-                elapsedTime: musicManager.elapsedTime,
-                playbackRate: musicManager.playbackRate,
-                isPlaying: musicManager.isPlaying
+                timestampDate: musicManager.timestampDate
             ) { newValue in
                 MusicManager.shared.seek(to: newValue)
             }
@@ -574,9 +571,6 @@ struct MusicSliderView: View {
     @Binding var dragging: Bool
     let currentDate: Date
     let timestampDate: Date
-    let elapsedTime: Double
-    let playbackRate: Double
-    let isPlaying: Bool
     var onValueChange: (Double) -> Void
 
 
@@ -606,10 +600,15 @@ struct MusicSliderView: View {
             )
             .font(.caption)
         }
-        .onChange(of: currentDate) {
-           guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
-            sliderValue = MusicManager.shared.estimatedPlaybackPosition(at: currentDate)
-        }
+        .onAppear(perform: syncWithPlayback)
+        .onChange(of: currentDate, syncWithPlayback)
+        // The timeline stands still while paused, and a seek there has to show too
+        .onChange(of: timestampDate, syncWithPlayback)
+    }
+
+    private func syncWithPlayback() {
+        guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
+        sliderValue = MusicManager.shared.estimatedPlaybackPosition()
     }
 
     func timeString(from seconds: Double) -> String {
