@@ -141,7 +141,11 @@ struct StarlaneView: View {
 
             Button {
                 vm.close()
-                AtlasPromptController.shared.open()
+                // Closing takes the focus along, so the line opens once the notch is out of the way
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    AtlasPromptController.shared.open()
+                }
             } label: {
                 Label("Atlas", systemImage: "sparkles")
                     .font(.caption)
