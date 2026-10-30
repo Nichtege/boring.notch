@@ -744,6 +744,14 @@ struct Media: View {
                     "Show music live activity",
                     isOn: $coordinator.musicLiveActivityEnabled.animation()
                 )
+                Defaults.Toggle(key: .liveMusicVisualizer) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Bars follow the real sound")
+                        Text("Needs the Screen Recording permission (restart the app after allowing it). macOS shows its recording icon while music plays. The sound is only measured, never kept. Without sound, the bars animate.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Toggle("Show sneak peek on playback changes", isOn: $enableSneakPeek)
                 Picker("Sneak Peek Style", selection: $sneakPeekStyles) {
                     ForEach(SneakPeekStyle.allCases) { style in

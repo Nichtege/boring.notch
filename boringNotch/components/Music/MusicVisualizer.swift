@@ -6,6 +6,7 @@
 //
 import AppKit
 import Cocoa
+import Defaults
 import SwiftUI
 
 class AudioSpectrum: NSView {
@@ -13,6 +14,9 @@ class AudioSpectrum: NSView {
     private var barScales: [CGFloat] = []
     private var isPlaying: Bool = true
     private var animationTimer: Timer?
+    private var isListening = false
+    private var isLive = false
+    private let lowestLiveScale: CGFloat = 0.2
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -94,27 +98,73 @@ class AudioSpectrum: NSView {
         }
     }
     
-    func setPlaying(_ playing: Bool) {
+    func setPlaying(_ playing: Bool, live: Bool) {
         isPlaying = playing
-        if isPlaying {
-            startAnimating()
-        } else {
+        setListening(playing && live)
+        if !isPlaying {
             stopAnimating()
+        } else if !isLive {
+            startAnimating()
         }
+    }
+
+    private func setListening(_ listening: Bool) {
+        guard listening != isListening else { return }
+        isListening = listening
+        if listening {
+            MusicAudioMeter.shared.add(self, bundleID: MusicManager.shared.bundleIdentifier) { [weak self] levels in
+                self?.show(levels)
+            }
+        } else {
+            MusicAudioMeter.shared.remove(self)
+            show(nil)
+        }
+    }
+
+    /// The real levels of the song. Without any, the bars go back to animating.
+    private func show(_ levels: [CGFloat]?) {
+        guard let levels else {
+            guard isLive else { return }
+            isLive = false
+            resetBars()
+            if isPlaying {
+                startAnimating()
+            }
+            return
+        }
+
+        if !isLive {
+            isLive = true
+            animationTimer?.invalidate()
+            animationTimer = nil
+            barLayers.forEach { $0.removeAllAnimations() }
+        }
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.06)
+        for (bar, level) in zip(barLayers, levels) {
+            bar.transform = CATransform3DMakeScale(1, lowestLiveScale + (1 - lowestLiveScale) * level, 1)
+        }
+        CATransaction.commit()
     }
 }
 
 struct AudioSpectrumView: NSViewRepresentable {
     @Binding var isPlaying: Bool
+    @Default(.liveMusicVisualizer) private var live
     
     func makeNSView(context: Context) -> AudioSpectrum {
         let spectrum = AudioSpectrum()
-        spectrum.setPlaying(isPlaying)
+        spectrum.setPlaying(isPlaying, live: live)
         return spectrum
     }
     
     func updateNSView(_ nsView: AudioSpectrum, context: Context) {
-        nsView.setPlaying(isPlaying)
+        nsView.setPlaying(isPlaying, live: live)
+    }
+    
+    static func dismantleNSView(_ nsView: AudioSpectrum, coordinator: ()) {
+        nsView.setPlaying(false, live: false)
     }
 }
 
