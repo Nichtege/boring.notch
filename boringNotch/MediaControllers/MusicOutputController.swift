@@ -75,14 +75,6 @@ enum LocalAudioRoute {
         }
     }
 
-    static var systemOutputUID: String? {
-        var device = AudioObjectID(0)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        var address = propertyAddress(kAudioHardwarePropertyDefaultOutputDevice)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return nil }
-        return string(device, kAudioDevicePropertyDeviceUID)
-    }
-
     static var systemOutput: Route? {
         var device = AudioObjectID(0)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)

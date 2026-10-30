@@ -53,8 +53,8 @@ final class MusicAudioMeter {
             // Setting up the tap can take a moment, and the first start asks for the permission
             let tap = await Task.detached(priority: .userInitiated) { () -> MusicAudioTap? in
                 let processes = LocalAudioRoute.processes(for: bundleID)
-                guard !processes.isEmpty, let outputUID = LocalAudioRoute.systemOutputUID else { return nil }
-                return MusicAudioTap(processes: processes, outputUID: outputUID) { levels in
+                guard !processes.isEmpty else { return nil }
+                return MusicAudioTap(processes: processes) { levels in
                     DispatchQueue.main.async { self?.deliver(levels) }
                 }
             }.value
@@ -120,7 +120,7 @@ private final class MusicAudioTap {
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
 
-    init?(processes: [AudioObjectID], outputUID: String, onLevels: @escaping ([CGFloat]) -> Void) {
+    init?(processes: [AudioObjectID], onLevels: @escaping ([CGFloat]) -> Void) {
         description = CATapDescription(stereoMixdownOfProcesses: processes)
         description.uuid = UUID()
         description.name = "Boring Notch bars"
@@ -147,18 +147,15 @@ private final class MusicAudioTap {
         }
         analyzer = MusicAudioAnalyzer(sampleRate: format.mSampleRate, onLevels: onLevels)
 
+        // The tap alone, no output device: with AirPods in here they'd count this as an app playing on them
         let properties: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Boring Notch bars",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
-            kAudioAggregateDeviceTapListKey: [[
-                kAudioSubTapDriftCompensationKey: true,
-                kAudioSubTapUIDKey: description.uuid.uuidString,
-            ]],
+            kAudioAggregateDeviceSubDeviceListKey: [],
+            kAudioAggregateDeviceTapListKey: [[kAudioSubTapUIDKey: description.uuid.uuidString]],
         ]
         var aggregate = AudioObjectID(kAudioObjectUnknown)
         guard AudioHardwareCreateAggregateDevice(properties as CFDictionary, &aggregate) == noErr else {
