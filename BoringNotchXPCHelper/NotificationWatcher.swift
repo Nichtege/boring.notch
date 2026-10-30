@@ -159,7 +159,7 @@ final class NotificationWatcher {
     private var lastOrigin: CGPoint?
     private var restoreRetries = 0
     private var centerLastOpen: Date?
-    private var bundleIDCache: [String: String?] = [:]
+    private var bundleIDCache: [String: String] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
     /// an OS update) the observer goes silent, so the exit is watched and the watcher attaches to the
     /// relaunched instance.
@@ -781,12 +781,15 @@ final class NotificationWatcher {
             .compactMap { $0.bundleIdentifier }
             .first
 
+        // A miss isn't kept: the app may be installed or start by the next banner
         let resolved = resolveBundleID(
             forRunningBundleID: running,
             appName: name,
             target: target
         )
-        bundleIDCache[target] = resolved
+        if let resolved {
+            bundleIDCache[target] = resolved
+        }
         return resolved
     }
 

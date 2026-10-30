@@ -201,15 +201,14 @@ final class SystemNotificationManager {
         }
     }
 
-    /// Opens the right place through the banner if it's still there, the app itself otherwise.
+    /// Opens the right place through the banner if it's still there, the app itself otherwise. If
+    /// nothing opened the card stays, since it may be all that's left of the notification.
     func openActive() {
         guard let notification = activeNotification else { return }
         Task {
             let pressed = notification.hasBanner ? await XPCHelperClient.shared.pressNotification(notification.id) : false
-            if !pressed {
-                activateApp(of: notification)
-            }
-            if activeNotification?.id == notification.id {
+            let opened = if pressed { true } else { await activateApp(of: notification) }
+            if opened, activeNotification?.id == notification.id {
                 dismissActive()
             }
         }
@@ -273,17 +272,17 @@ final class SystemNotificationManager {
         }
     }
 
-    private func activateApp(of notification: SystemNotification) {
-        guard let bundleID = notification.bundleID else { return }
+    private func activateApp(of notification: SystemNotification) async -> Bool {
+        guard let bundleID = notification.bundleID else { return false }
         let workspace = NSWorkspace.shared
-        if let url = workspace.urlForApplication(withBundleIdentifier: bundleID) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            configuration.addsToRecentItems = false
-            workspace.openApplication(at: url, configuration: configuration)
-        } else {
-            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.activate()
+        guard let url = workspace.urlForApplication(withBundleIdentifier: bundleID) else {
+            return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.activate() ?? false
         }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.addsToRecentItems = false
+        return (try? await workspace.openApplication(at: url, configuration: configuration)) != nil
     }
 
     private func nonEmpty(_ value: String?) -> String? {
