@@ -22,7 +22,6 @@
 	<true/>
 	<key>com.apple.security.temporary-exception.apple-events</key>
 	<array>
-		<string>com.spotify.client</string>
 		<string>com.apple.Music</string>
 	</array>
 </dict>

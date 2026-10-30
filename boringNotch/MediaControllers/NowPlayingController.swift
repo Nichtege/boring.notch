@@ -25,7 +25,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
     var supportsVolumeControl: Bool {
         let bundleID = playbackState.bundleIdentifier
-        return bundleID == "com.apple.Music" || bundleID == "com.spotify.client"
+        return bundleID == "com.apple.Music"
     }
 
     var supportsFavorite: Bool {
@@ -172,12 +172,6 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
                 let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music")
                 if !runningApps.isEmpty {
                     let script = "tell application \"Music\" to set sound volume to \(volumePercentage)"
-                    try? await AppleScriptHelper.executeVoid(script)
-                }
-            } else if bundleID == "com.spotify.client" {
-                let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client")
-                if !runningApps.isEmpty {
-                    let script = "tell application \"Spotify\" to set sound volume to \(volumePercentage)"
                     try? await AppleScriptHelper.executeVoid(script)
                 }
             }

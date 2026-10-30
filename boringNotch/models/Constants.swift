@@ -46,10 +46,25 @@ extension Notification.Name {
 enum MediaControllerType: String, CaseIterable, Identifiable, Defaults.Serializable {
     case nowPlaying = "Now Playing"
     case appleMusic = "Apple Music"
-    case spotify = "Spotify"
-    case youtubeMusic = "YouTube Music"
     
     var id: String { self.rawValue }
+
+    // Older versions could store "Spotify" or "YouTube Music". Those read as Apple Music here;
+    // the stock bridge would hand back the key's default instead.
+    static var bridge: Bridge { Bridge() }
+
+    struct Bridge: Defaults.Bridge {
+        typealias Value = MediaControllerType
+        typealias Serializable = String
+
+        func serialize(_ value: MediaControllerType?) -> String? {
+            value?.rawValue
+        }
+
+        func deserialize(_ object: String?) -> MediaControllerType? {
+            object.map { MediaControllerType(rawValue: $0) ?? .appleMusic }
+        }
+    }
 }
 
 // Sneak peek styles for selection in settings
