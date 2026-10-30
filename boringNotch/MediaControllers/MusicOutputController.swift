@@ -10,8 +10,8 @@ import Combine
 import CoreAudio
 import Defaults
 
-/// Where sound on this Mac really goes. The Music app only knows "this Mac", and a per-app audio router
-/// such as FineTune moves its sound to another device without Music noticing.
+/// Where sound on this Mac really goes. The Music app only knows "this Mac", and with AirPods as the
+/// default output it says the same.
 enum LocalAudioRoute {
     struct Route: Equatable {
         let name: String
@@ -37,32 +37,11 @@ enum LocalAudioRoute {
         }
     }
 
-    private static let routerBundleIDs: Set<String> = ["com.finetuneapp.FineTune"]
-
     static func bluetoothIcon(for name: String) -> String {
         if name.localizedCaseInsensitiveContains("AirPods Pro") { return "airpodspro" }
         if name.localizedCaseInsensitiveContains("AirPods Max") { return "airpodsmax" }
         if name.localizedCaseInsensitiveContains("AirPods") { return "airpods" }
         return "headphones"
-    }
-
-    /// Where an app's sound comes out right now. nil while it isn't playing anything.
-    static func route(for bundleID: String) -> Route? {
-        var appDevice: AudioObjectID?
-        var routerDevice: AudioObjectID?
-        for process in objects(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList) {
-            guard number(process, kAudioProcessPropertyIsRunningOutput) != 0,
-                  let processBundleID = string(process, kAudioProcessPropertyBundleID) else { continue }
-            let device = objects(process, kAudioProcessPropertyDevices, scope: kAudioDevicePropertyScopeOutput).first
-            if processBundleID == bundleID {
-                appDevice = device
-            } else if routerBundleIDs.contains(processBundleID) {
-                routerDevice = device
-            }
-        }
-        // A router only counts while the app itself is playing, otherwise it may be busy with another app
-        guard let appDevice else { return nil }
-        return route(of: routerDevice ?? appDevice)
     }
 
     /// The audio objects of an app's processes.
@@ -85,12 +64,12 @@ enum LocalAudioRoute {
         return Route(name: name, transport: number(device, kAudioDevicePropertyTransportType))
     }
 
-    private static func propertyAddress(_ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    private static func propertyAddress(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
     }
 
-    private static func objects(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> [AudioObjectID] {
-        var address = propertyAddress(selector, scope: scope)
+    private static func objects(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> [AudioObjectID] {
+        var address = propertyAddress(selector)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(object, &address, 0, nil, &size) == noErr, size > 0 else { return [] }
         var result = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
@@ -158,8 +137,6 @@ final class MusicOutputController: ObservableObject {
     private let switchSettleTime: TimeInterval = 15
     private var ignoreSelectionUntil: Date = .distantPast
     private var notificationTask: Task<Void, Never>?
-    // A paused app has no sound to follow, so the last place it went still counts
-    private var lastLocalRoute: LocalAudioRoute.Route?
 
     var selectedDevices: [MusicOutputDevice] {
         devices.filter(\.isSelected)
@@ -192,12 +169,8 @@ final class MusicOutputController: ObservableObject {
     /// Music says "this Mac", so what the Mac does with the sound decides where it really goes.
     private func showingLocalRoute(in devices: [MusicOutputDevice]) -> [MusicOutputDevice] {
         let selected = devices.filter(\.isSelected)
-        guard selected.count == 1, selected[0].kind == "computer" else { return devices }
-
-        if let route = LocalAudioRoute.route(for: "com.apple.Music") {
-            lastLocalRoute = route
-        }
-        guard let route = lastLocalRoute ?? LocalAudioRoute.systemOutput, !route.isBuiltIn else { return devices }
+        guard selected.count == 1, selected[0].kind == "computer",
+              let route = LocalAudioRoute.systemOutput, !route.isBuiltIn else { return devices }
 
         // Music may list that device too. Then that entry is the one to mark
         if devices.contains(where: { $0.kind != "computer" && $0.name == route.name }) {
