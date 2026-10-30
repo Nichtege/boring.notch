@@ -462,24 +462,9 @@ class MusicManager: ObservableObject {
         }
     }
     func openMusicApp() {
-        guard let bundleID = bundleIdentifier else {
-            print("Error: appBundleIdentifier is nil")
-            return
-        }
-
-        let workspace = NSWorkspace.shared
-        if let appURL = workspace.urlForApplication(withBundleIdentifier: bundleID) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            workspace.openApplication(at: appURL, configuration: configuration) { (app, error) in
-                if let error = error {
-                    print("Failed to launch app with bundle ID: \(bundleID), error: \(error)")
-                } else {
-                    print("Launched app with bundle ID: \(bundleID)")
-                }
-            }
-        } else {
-            print("Failed to find app with bundle ID: \(bundleID)")
-        }
+        guard let bundleID = bundleIdentifier,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }
 
     func forceUpdate() {
@@ -493,28 +478,20 @@ class MusicManager: ObservableObject {
     
     
     func syncVolumeFromActiveApp() async {
-        // Check if bundle identifier is valid and if the app is actually running
-        guard let bundleID = bundleIdentifier, !bundleID.isEmpty,
-              NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == bundleID }) else { return }
+        guard bundleIdentifier == "com.apple.Music",
+              !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty else { return }
         
-        var script: String?
-        if bundleID == "com.apple.Music" {
-            script = """
-            tell application "Music"
-                if it is running then
-                    get sound volume
-                else
-                    return 50
-                end if
-            end tell
-            """
-        } else {
-            // For unsupported apps, don't sync volume
-            return
-        }
+        let script = """
+        tell application "Music"
+            if it is running then
+                get sound volume
+            else
+                return 50
+            end if
+        end tell
+        """
         
-        if let volumeScript = script,
-           let result = try? await AppleScriptHelper.execute(volumeScript) {
+        if let result = try? await AppleScriptHelper.execute(script) {
             let volumeValue = result.int32Value
             let currentVolume = Double(volumeValue) / 100.0
             
