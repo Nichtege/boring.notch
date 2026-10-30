@@ -9,6 +9,7 @@ import Defaults
 import SwiftUI
 
 struct StarlaneView: View {
+    @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var starlane = StarlaneManager.shared
     @Default(.starlaneShowDeadline) private var showDeadline
 
@@ -137,6 +138,21 @@ struct StarlaneView: View {
             }
 
             Spacer(minLength: 0)
+
+            Button {
+                vm.close()
+                AtlasPromptController.shared.open()
+            } label: {
+                Label("Atlas", systemImage: "sparkles")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(.white.opacity(0.15)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(PlainButtonStyle())
 
             Button {
                 starlane.openDashboard()

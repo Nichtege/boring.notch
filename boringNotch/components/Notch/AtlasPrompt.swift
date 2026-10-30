@@ -360,6 +360,10 @@ final class AtlasPromptController {
 
     private init() {}
 
+    func open() {
+        show(focus: true)
+    }
+
     func toggle() {
         if let panel, panel.isVisible, panel.isKeyWindow {
             hide()
