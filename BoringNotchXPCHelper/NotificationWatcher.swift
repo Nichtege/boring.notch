@@ -673,19 +673,12 @@ final class NotificationWatcher {
         timer.resume()
     }
 
-    /// The permission was taken back with a window off screen. Accessibility can't move it any more,
-    /// and it could keep later banners out of sight. Notification Center comes back from launchd with
-    /// new windows and its notifications intact, so restarting it is what's left.
+    /// The permission was taken back with a window off screen. Accessibility can't move it any more, so
+    /// what's parked stays there until it expires on its own. The system's own process is left alone.
     private func accessibilityLost() {
-        let center = processIdentifier
-        let hadParkedWindows = !parkedWindows.isEmpty
         parkedWindows.removeAll()
         stop()
         onStopped?()
-        if hadParkedWindows, let center {
-            NSLog("[boringNotch] Accessibility was revoked with a banner parked, restarting Notification Center")
-            kill(center, SIGTERM)
-        }
     }
 
     // MARK: - Reading
