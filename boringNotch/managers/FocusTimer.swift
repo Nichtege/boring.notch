@@ -36,9 +36,10 @@ final class FocusTimer: ObservableObject {
 
         task?.cancel()
         task = Task { [weak self] in
-            // A date, not a countdown, so a sleeping Mac doesn't stretch the session
+            // A date, not a countdown, so a sleeping Mac doesn't stretch the session. Short sleeps with
+            // a tolerance, as a long one can wake many seconds late.
             while !Task.isCancelled, Date() < end {
-                try? await Task.sleep(for: .seconds(end.timeIntervalSinceNow))
+                try? await Task.sleep(for: .seconds(min(end.timeIntervalSinceNow, 60)), tolerance: .seconds(1))
             }
             guard !Task.isCancelled else { return }
             self?.finish()
