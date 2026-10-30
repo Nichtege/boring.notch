@@ -92,6 +92,11 @@ private extension AXUIElement {
     }
 }
 
+/// What AX callbacks get as their refcon, without a retain. `AXObserverRunLoop` keeps it alive.
+private final class ObserverContext: @unchecked Sendable {
+    weak var watcher: NotificationWatcher?
+}
+
 struct CapturedNotification {
     let token: String
     let appName: String?
@@ -102,10 +107,6 @@ struct CapturedNotification {
 }
 
 final class NotificationWatcher {
-    private final class ObserverContext: @unchecked Sendable {
-        weak var watcher: NotificationWatcher?
-    }
-
     private struct Banner {
         let element: AXUIElement
         let subrole: String?
@@ -229,6 +230,8 @@ final class NotificationWatcher {
     }
 
     private func detach() {
+        // First of all, so nothing further down can get in the way of it
+        restoreAllWindows()
         settleWorkItem?.cancel()
         settleWorkItem = nil
         permissionTimer?.cancel()
@@ -247,7 +250,6 @@ final class NotificationWatcher {
         observerRunLoop = nil
         observerContext = nil
         scanScheduled = false
-        restoreAllWindows()
         liveBanners.removeAll()
         appElement = nil
         processIdentifier = nil
@@ -336,12 +338,8 @@ final class NotificationWatcher {
             return false
         }
 
-        let runLoop = AXObserverRunLoop(observer: observer)
-        guard runLoop.start() else {
-            axObserver = nil
-            observerContext = nil
-            return false
-        }
+        let runLoop = AXObserverRunLoop(observer: observer, context: context)
+        runLoop.start()
         observerRunLoop = runLoop
         return true
     }
@@ -868,17 +866,19 @@ final class NotificationWatcher {
 
 private final class AXObserverRunLoop {
     private let observer: AXObserver
+    /// A callback can still be running after `stop()`, which only asks the thread to end. The thread
+    /// holds on to this object until it has exited, and so to the context the callback points at.
+    private let context: ObserverContext
     private let ready = DispatchSemaphore(value: 0)
-    private var thread: Thread?
     private var runLoop: CFRunLoop?
 
-    init(observer: AXObserver) {
+    init(observer: AXObserver, context: ObserverContext) {
         self.observer = observer
+        self.context = context
     }
 
-    func start() -> Bool {
-        let thread = Thread { [weak self] in
-            guard let self else { return }
+    func start() {
+        let thread = Thread { [self] in
             let runLoop = CFRunLoopGetCurrent()
             self.runLoop = runLoop
             CFRunLoopAddSource(
@@ -894,16 +894,17 @@ private final class AXObserverRunLoop {
                 .defaultMode
             )
         }
-        self.thread = thread
         thread.start()
-        return ready.wait(timeout: .now() + 1) == .success
+        ready.wait()
     }
 
     func stop() {
         guard let runLoop else { return }
-        CFRunLoopStop(runLoop)
+        // CFRunLoopStop alone would be lost on a loop that's only about to run. A block waits for it.
+        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.defaultMode.rawValue) {
+            CFRunLoopStop(CFRunLoopGetCurrent())
+        }
         CFRunLoopWakeUp(runLoop)
-        thread = nil
         self.runLoop = nil
     }
 }
