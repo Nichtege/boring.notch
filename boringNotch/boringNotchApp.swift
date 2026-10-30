@@ -405,8 +405,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func playWelcomeSound() {
-        let audioPlayer = AudioPlayer()
-        audioPlayer.play(fileName: "boring", fileExtension: "m4a")
+        if let url = Bundle.main.url(forResource: "boring", withExtension: "m4a") {
+            NSSound(contentsOf: url, byReference: false)?.play()
+        }
     }
 
     @objc func screenConfigurationDidChange() {
