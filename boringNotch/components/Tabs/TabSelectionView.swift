@@ -18,7 +18,8 @@ struct TabModel: Identifiable {
 let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
     TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
-    TabModel(label: "Starlane", icon: "sparkles", view: .starlane)
+    TabModel(label: "Starlane", icon: "sparkles", view: .starlane),
+    TabModel(label: "Focus", icon: "timer", view: .focus)
 ]
 
 struct TabSelectionView: View {
@@ -32,7 +33,7 @@ struct TabSelectionView: View {
             switch tab.view {
             case .shelf: return Defaults[.boringShelf] && (!shelf.isEmpty || coordinator.alwaysShowTabs)
             case .starlane: return starlane.summary != nil
-            case .home: return true
+            case .home, .focus: return true
             }
         }
     }

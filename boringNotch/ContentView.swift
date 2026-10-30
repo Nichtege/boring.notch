@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @ObservedObject var starlane = StarlaneManager.shared
+    @ObservedObject var focusTimer = FocusTimer.shared
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
     @State private var gestureProgress: CGFloat = .zero
@@ -61,10 +62,22 @@ struct ContentView: View {
 
     private let starlaneBannerSideWidth: CGFloat = 190
 
-    private var showsStarlaneLiveActivity: Bool {
+    private var isBareClosedNotch: Bool {
         let musicTakesNotch = (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
-        return !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch
-            && (starlane.summary?.needs ?? 0) > 0 && !vm.hideOnClosed
+        return !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch && !vm.hideOnClosed
+    }
+
+    private var showsFocusLiveActivity: Bool {
+        isBareClosedNotch && focusTimer.isRunning
+    }
+
+    private var showsStarlaneLiveActivity: Bool {
+        isBareClosedNotch && (starlane.summary?.needs ?? 0) > 0
+    }
+
+    private var isShowingWideBanner: Bool {
+        (coordinator.expandingView.type == .starlane || coordinator.expandingView.type == .focus)
+            && coordinator.expandingView.show && vm.notchState == .closed && !vm.hideOnClosed
     }
 
     private var computedChinWidth: CGFloat {
@@ -74,16 +87,14 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
-        } else if coordinator.expandingView.type == .starlane && coordinator.expandingView.show
-            && vm.notchState == .closed && !vm.hideOnClosed
-        {
+        } else if isShowingWideBanner {
             chinWidth += 2 * starlaneBannerSideWidth + 10
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
             && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
-        } else if showsStarlaneLiveActivity {
+        } else if showsFocusLiveActivity || showsStarlaneLiveActivity {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
@@ -300,12 +311,10 @@ struct ContentView: View {
                             .frame(width: 76, alignment: .trailing)
                         }
                         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
-                    } else if coordinator.expandingView.type == .starlane && coordinator.expandingView.show
-                        && vm.notchState == .closed && !vm.hideOnClosed
-                    {
+                    } else if isShowingWideBanner {
                         HStack(spacing: 0) {
                             HStack {
-                                Text("\(starlane.newlyNeedingName) needs you")
+                                Text(coordinator.expandingView.type == .focus ? "Focus session over" : "\(starlane.newlyNeedingName) needs you")
                                     .font(.subheadline)
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
@@ -317,7 +326,7 @@ struct ContentView: View {
                                 .frame(width: vm.closedNotchSize.width + 10)
 
                             HStack {
-                                Image(systemName: "exclamationmark.bubble.fill")
+                                Image(systemName: coordinator.expandingView.type == .focus ? "timer" : "exclamationmark.bubble.fill")
                                     .foregroundStyle(.orange)
                             }
                             .frame(width: starlaneBannerSideWidth, alignment: .leading)
@@ -329,6 +338,8 @@ struct ContentView: View {
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
+                      } else if showsFocusLiveActivity {
+                          FocusLiveActivity()
                       } else if showsStarlaneLiveActivity {
                           StarlaneLiveActivity(needs: starlane.summary?.needs ?? 0)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
@@ -392,6 +403,8 @@ struct ContentView: View {
                         ShelfView()
                     case .starlane:
                         StarlaneView()
+                    case .focus:
+                        FocusView()
                     }
                 }
                 .transition(
@@ -500,7 +513,9 @@ struct ContentView: View {
                 )
 
             HStack {
-                if useMusicVisualizer {
+                if focusTimer.isRunning {
+                    FocusShortTime()
+                } else if useMusicVisualizer {
                     Rectangle()
                         .fill(
                             Defaults[.coloredSpectrogram]

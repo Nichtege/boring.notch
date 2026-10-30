@@ -14,8 +14,27 @@ import SwiftUI
 
 struct StarlaneSummary: Decodable, Equatable {
     struct Terminal: Decodable, Equatable {
+        let id: String?
         let name: String
         let state: String
+    }
+
+    struct LimitWindow: Decodable, Equatable {
+        let window: String
+        let usedPercent: Double
+        let resetsAt: Double
+
+        enum CodingKeys: String, CodingKey {
+            case window
+            case usedPercent = "used_percent"
+            case resetsAt = "resets_at"
+        }
+
+        var shortName: String {
+            if window.contains("five") { return "5 h" }
+            if window.contains("seven") { return "7 d" }
+            return window
+        }
     }
 
     struct Deadline: Decodable, Equatable {
@@ -31,9 +50,10 @@ struct StarlaneSummary: Decodable, Equatable {
     let limited: Int
     let terminals: [Terminal]
     let nextDeadline: Deadline?
+    let limit: [LimitWindow]?
 
     enum CodingKeys: String, CodingKey {
-        case live, busy, needs, done, paused, limited, terminals
+        case live, busy, needs, done, paused, limited, terminals, limit
         case nextDeadline = "next_deadline"
     }
 
@@ -179,10 +199,14 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
         restart()
     }
 
-    func openDashboard() {
+    /// With a terminal's id, the dashboard opens right at that terminal.
+    func openDashboard(terminal: String? = nil) {
         guard let host = StarlaneKeychain.read("address"), let key = StarlaneKeychain.read("key"),
               var components = URLComponents(string: "https://\(host)/") else { return }
         components.queryItems = [URLQueryItem(name: "k", value: key)]
+        if let terminal, terminal.range(of: #"^[a-f0-9]{8}\z"#, options: .regularExpression) != nil {
+            components.fragment = "terminals:\(terminal)"
+        }
         if let url = components.url {
             NSWorkspace.shared.open(url)
         }
@@ -264,7 +288,7 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
         let needs = Set(newSummary.needsNames)
         if let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
             newlyNeedingName = name
-            if Defaults[.starlaneBanner] {
+            if Defaults[.starlaneBanner] && !FocusTimer.shared.holdsBanners {
                 BoringViewCoordinator.shared.toggleExpandingView(status: true, type: .starlane)
             }
         }
