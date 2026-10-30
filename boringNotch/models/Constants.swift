@@ -140,6 +140,11 @@ extension Defaults.Keys {
     )
     static let lastMusicOutputDevices = Key<[String]>("lastMusicOutputDevices", default: [])
 
+    // MARK: Starlane
+    static let starlaneEnabled = Key<Bool>("starlaneEnabled", default: true)
+    static let starlaneBanner = Key<Bool>("starlaneBanner", default: true)
+    static let starlaneShowDeadline = Key<Bool>("starlaneShowDeadline", default: true)
+
     // MARK: Battery
     static let showPowerStatusNotifications = Key<Bool>("showPowerStatusNotifications", default: true)
     static let showBatteryIndicator = Key<Bool>("showBatteryIndicator", default: true)
