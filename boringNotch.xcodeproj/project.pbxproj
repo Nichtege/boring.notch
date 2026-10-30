@@ -38,6 +38,7 @@
 		1153BD982D9881F900979FB0 /* AppleScriptHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BD972D9881F900979FB0 /* AppleScriptHelper.swift */; };
 		1153BD9A2D98824300979FB0 /* SpotifyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BD992D98824300979FB0 /* SpotifyController.swift */; };
 		A1EE0001A1EE0001A1EE0001 /* MusicOutputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0002A1EE0002A1EE0002 /* MusicOutputController.swift */; };
+		A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */; };
 		A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */; };
 		1153BD9C2D98853B00979FB0 /* NowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BD9B2D98853B00979FB0 /* NowPlayingController.swift */; };
 		1153BDA72D99B22200979FB0 /* YouTubeMusicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BDA62D99B22200979FB0 /* YouTubeMusicController.swift */; };
@@ -210,6 +211,7 @@
 		1153BD972D9881F900979FB0 /* AppleScriptHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptHelper.swift; sourceTree = "<group>"; };
 		1153BD992D98824300979FB0 /* SpotifyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyController.swift; sourceTree = "<group>"; };
 		A1EE0002A1EE0002A1EE0002 /* MusicOutputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicOutputController.swift; sourceTree = "<group>"; };
+		A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneView.swift; sourceTree = "<group>"; };
 		A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneManager.swift; sourceTree = "<group>"; };
 		1153BD9B2D98853B00979FB0 /* NowPlayingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingController.swift; sourceTree = "<group>"; };
 		1153BDA62D99B22200979FB0 /* YouTubeMusicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeMusicController.swift; sourceTree = "<group>"; };
@@ -713,6 +715,7 @@
 				1194E8862EA6DDA7009C82D6 /* BoringNotchSkyLightWindow.swift */,
 				1160F8D72DD98230006FBB94 /* NotchShape.swift */,
 				9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */,
+				A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */,
 				14D570C52C5F38210011E668 /* BoringHeader.swift */,
 				14D570D12C5F6C6A0011E668 /* BoringExtrasMenu.swift */,
 				1471A8582C6281BD0058408D /* BoringNotchWindow.swift */,
@@ -942,6 +945,7 @@
 				1163988F2DF5CC870052E6AF /* CalendarModel.swift in Sources */,
 				1153BD9A2D98824300979FB0 /* SpotifyController.swift in Sources */,
 				A1EE0001A1EE0001A1EE0001 /* MusicOutputController.swift in Sources */,
+				A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */,
 				A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */,
 				118EBE292E946B3F00D54B5A /* ShareServiceFinder.swift in Sources */,
 				B19424092CD0FF01003E5DC2 /* LottieAnimationView.swift in Sources */,

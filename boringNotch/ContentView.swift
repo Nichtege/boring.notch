@@ -25,6 +25,7 @@ struct ContentView: View {
     @ObservedObject var volumeManager = VolumeManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
+    @ObservedObject var starlane = StarlaneManager.shared
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
     @State private var gestureProgress: CGFloat = .zero
@@ -58,6 +59,14 @@ struct ContentView: View {
         )
     }
 
+    private let starlaneBannerSideWidth: CGFloat = 190
+
+    private var showsStarlaneLiveActivity: Bool {
+        let musicTakesNotch = (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
+        return !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch
+            && (starlane.summary?.needs ?? 0) > 0 && !vm.hideOnClosed
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
@@ -65,10 +74,16 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
+        } else if coordinator.expandingView.type == .starlane && coordinator.expandingView.show
+            && vm.notchState == .closed && !vm.hideOnClosed
+        {
+            chinWidth += 2 * starlaneBannerSideWidth + 10
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
             && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
         {
+            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
+        } else if showsStarlaneLiveActivity {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
             && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
@@ -284,12 +299,37 @@ struct ContentView: View {
                             .frame(width: 76, alignment: .trailing)
                         }
                         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
+                    } else if coordinator.expandingView.type == .starlane && coordinator.expandingView.show
+                        && vm.notchState == .closed && !vm.hideOnClosed
+                    {
+                        HStack(spacing: 0) {
+                            HStack {
+                                Text("\(starlane.newlyNeedingName) needs you")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: starlaneBannerSideWidth, alignment: .trailing)
+
+                            Rectangle()
+                                .fill(.black)
+                                .frame(width: vm.closedNotchSize.width + 10)
+
+                            HStack {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .foregroundStyle(.orange)
+                            }
+                            .frame(width: starlaneBannerSideWidth, alignment: .leading)
+                        }
+                        .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
+                      } else if showsStarlaneLiveActivity {
+                          StarlaneLiveActivity(needs: starlane.summary?.needs ?? 0)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
@@ -349,6 +389,8 @@ struct ContentView: View {
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
                     case .shelf:
                         ShelfView()
+                    case .starlane:
+                        StarlaneView()
                     }
                 }
                 .transition(
@@ -396,6 +438,14 @@ struct ContentView: View {
                         cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed)
                 )
                 .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
+                .overlay(alignment: .topTrailing) {
+                    if (starlane.summary?.needs ?? 0) > 0 {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 2, y: -2)
+                    }
+                }
                 .frame(
                     width: max(0, vm.effectiveClosedNotchHeight - 12),
                     height: max(0, vm.effectiveClosedNotchHeight - 12)

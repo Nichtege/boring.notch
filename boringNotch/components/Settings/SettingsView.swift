@@ -51,6 +51,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Starlane") {
+                    Label("Starlane", systemImage: "sparkles")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -85,6 +88,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Starlane":
+                    StarlaneSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
@@ -345,6 +350,101 @@ struct GeneralSettings: View {
         } header: {
             Text("Notch behavior")
         }
+    }
+}
+
+struct StarlaneSettings: View {
+    @ObservedObject var starlane = StarlaneManager.shared
+    @State private var address: String = StarlaneManager.shared.savedAddress
+    @State private var key: String = ""
+    @State private var inputInvalid = false
+
+    private var statusText: LocalizedStringKey {
+        switch starlane.status {
+        case .notConfigured: return "Not set up"
+        case .paused: return "Paused"
+        case .connecting: return "Connecting…"
+        case .connected: return "Connected"
+        case .unreachable: return "Not reachable (is Tailscale on?)"
+        case .rejected: return "Refused: check the key and your Tailscale login"
+        case .serverOutdated: return "This Starlane version has no notch endpoint yet"
+        }
+    }
+
+    private var statusColor: Color {
+        switch starlane.status {
+        case .connected: return .green
+        case .rejected, .serverOutdated: return .red
+        case .unreachable: return .orange
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Defaults.Toggle(key: .starlaneEnabled) {
+                    Text("Show Starlane in the notch")
+                }
+                Defaults.Toggle(key: .starlaneBanner) {
+                    Text("Announce terminals that newly need you")
+                }
+                Defaults.Toggle(key: .starlaneShowDeadline) {
+                    Text("Show the next deadline")
+                }
+            } header: {
+                Text("General")
+            }
+            Section {
+                TextField("Server address", text: $address, prompt: Text("name.tailnet.ts.net"))
+                SecureField("Phone key", text: $key, prompt: Text(starlane.hasCredentials ? "Saved" : "From the phone link"))
+                HStack {
+                    Button("Save") {
+                        save()
+                    }
+                    .disabled(address.isEmpty)
+                    if starlane.hasCredentials {
+                        Button("Remove", role: .destructive) {
+                            starlane.removeCredentials()
+                            address = ""
+                            key = ""
+                            inputInvalid = false
+                        }
+                    }
+                    Spacer()
+                    Text(statusText)
+                        .foregroundStyle(statusColor)
+                        .font(.caption)
+                }
+                if inputInvalid {
+                    Text("That doesn't look like a Tailscale address (…ts.net) and phone key.")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            } header: {
+                Text("Connection")
+            } footer: {
+                Text("You can paste the whole phone link into the address field. Address and key stay in your keychain. Asked at most every 30 seconds; without Tailscale the notch just shows nothing.")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+        }
+        .accentColor(.effectiveAccent)
+        .navigationTitle("Starlane")
+    }
+
+    private func save() {
+        // A key in the link or the field wins; the saved key only ever stays with the address it was saved for
+        let isSavedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == starlane.savedAddress
+        let keyToUse = key.isEmpty && isSavedAddress ? (StarlaneKeychain.read("key") ?? "") : key
+        guard let parsed = StarlaneManager.parse(address: address, key: keyToUse),
+              starlane.save(host: parsed.host, key: parsed.key) else {
+            inputInvalid = true
+            return
+        }
+        inputInvalid = false
+        address = parsed.host
+        key = ""
     }
 }
 
