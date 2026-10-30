@@ -25,6 +25,8 @@ import Foundation
     func restoreNotification(_ token: String)
     func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void)
     func restoreStrandedNotifications()
+    // The microphone (set by the helper, which isn't sandboxed)
+    func keepMicOnMacBook()
 }
 
 /// Calls from the helper back to the app.

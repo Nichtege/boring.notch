@@ -8,6 +8,7 @@
 import Foundation
 import ApplicationServices
 import IOKit
+import CoreAudio
 import CoreGraphics
 import XPC
 
@@ -112,6 +113,35 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
             xpc_transaction_end()
             holdsWatchingTransaction = false
         }
+    }
+
+    // MARK: - Microphone
+
+    /// Puts the default input back on the MacBook's own microphone if it's somewhere else. A Mac without one has nothing to keep.
+    @objc func keepMicOnMacBook() {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var uid = "BuiltInMicrophoneDevice" as CFString
+        var builtIn = kAudioObjectUnknown
+        var current = kAudioObjectUnknown
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var translate = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var defaultInput = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let translated = withUnsafePointer(to: &uid) {
+            AudioObjectGetPropertyData(system, &translate, UInt32(MemoryLayout<CFString>.size), $0, &size, &builtIn)
+        }
+        guard translated == noErr, builtIn != kAudioObjectUnknown,
+              AudioObjectGetPropertyData(system, &defaultInput, 0, nil, &size, &current) == noErr,
+              current != builtIn
+        else { return }
+        AudioObjectSetPropertyData(system, &defaultInput, 0, nil, size, &builtIn)
     }
 
     // MARK: - Keyboard Brightness

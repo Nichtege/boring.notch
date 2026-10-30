@@ -131,6 +131,9 @@ struct GeneralSettings: View {
                 }
                 .tint(.effectiveAccent)
                 LaunchAtLoginToggle()
+                Defaults.Toggle(key: .micStaysOnMacBook) {
+                    Text("Always use the MacBook's microphone")
+                }
                 Defaults.Toggle(key: .showOnAllDisplays) {
                     Text("Show on all displays")
                 }

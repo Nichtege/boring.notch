@@ -123,6 +123,9 @@ extension Defaults.Keys {
     // MARK: Fullscreen Media Detection
     static let hideNotchOption = Key<HideNotchOption>("hideNotchOption", default: .videoOnly)
     
+    // MARK: Microphone
+    static let micStaysOnMacBook = Key<Bool>("micStaysOnMacBook", default: true)
+    
     // MARK: Advanced Settings
     static let useCustomAccentColor = Key<Bool>("useCustomAccentColor", default: false)
     static let customAccentColorData = Key<Data?>("customAccentColorData", default: nil)

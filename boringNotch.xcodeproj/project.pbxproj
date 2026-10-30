@@ -88,6 +88,7 @@
 		A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */; };
 		A1EE0013A1EE0013A1EE0013 /* NotificationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */; };
 		A1EE0015A1EE0015A1EE0015 /* SystemNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */; };
+		A1EE0017A1EE0017A1EE0017 /* MicLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0018A1EE0018A1EE0018 /* MicLock.swift */; };
 		B10348D92C74E56000475897 /* ConditionalModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10348D82C74E56000475897 /* ConditionalModifier.swift */; };
 		B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */; };
 		B17266DF2C64DFA00031BA0D /* BundleInfos.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17266DE2C64DFA00031BA0D /* BundleInfos.swift */; };
@@ -214,6 +215,7 @@
 		A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPanels.swift; sourceTree = "<group>"; };
 		A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCard.swift; sourceTree = "<group>"; };
 		A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotificationManager.swift; sourceTree = "<group>"; };
+		A1EE0018A1EE0018A1EE0018 /* MicLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicLock.swift; sourceTree = "<group>"; };
 		B10348D82C74E56000475897 /* ConditionalModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConditionalModifier.swift; sourceTree = "<group>"; };
 		B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleView.swift; sourceTree = "<group>"; };
 		B17266DE2C64DFA00031BA0D /* BundleInfos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleInfos.swift; sourceTree = "<group>"; };
@@ -382,6 +384,7 @@
 				147163992C5D35FF0068B555 /* MusicManager.swift */,
 				A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */,
 				A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */,
+				A1EE0018A1EE0018A1EE0018 /* MicLock.swift */,
 				A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */,
 				B1F0A0012E60000100000001 /* BrightnessManager.swift */,
 				59D8C23B2E589FAA00147B33 /* VolumeManager.swift */,
@@ -743,6 +746,7 @@
 				A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */,
 				A1EE0013A1EE0013A1EE0013 /* NotificationCard.swift in Sources */,
 				A1EE0015A1EE0015A1EE0015 /* SystemNotificationManager.swift in Sources */,
+				A1EE0017A1EE0017A1EE0017 /* MicLock.swift in Sources */,
 				A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */,
 				A1EE000BA1EE000BA1EE000B /* FocusTimer.swift in Sources */,
 				118EBE292E946B3F00D54B5A /* ShareServiceFinder.swift in Sources */,

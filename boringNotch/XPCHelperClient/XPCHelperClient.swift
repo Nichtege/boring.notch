@@ -200,6 +200,10 @@ extension XPCHelperClient {
     nonisolated func restoreStrandedNotifications() {
         send { $0.restoreStrandedNotifications() }
     }
+    
+    nonisolated func keepMicOnMacBook() {
+        send { $0.keepMicOnMacBook() }
+    }
 }
 
 extension Notification.Name {
