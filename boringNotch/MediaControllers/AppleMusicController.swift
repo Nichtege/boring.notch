@@ -29,14 +29,13 @@ class AppleMusicController: MediaControllerProtocol {
     }
 
     private var notificationTask: Task<Void, Never>?
+    private var artworkTrackID: String?
     
     // MARK: - Initialization
     init() {
         setupPlaybackStateChangeObserver()
         Task {
-            if isActive() {
-                await updatePlaybackInfo()
-            }
+            await updatePlaybackInfo()
         }
     }
     
@@ -58,7 +57,8 @@ class AppleMusicController: MediaControllerProtocol {
     
     // MARK: - Protocol Implementation
     func togglePlay() async {
-        await executeCommand("playpause")
+        // The one command that may start Music: someone pressed play
+        try? await AppleScriptHelper.executeVoid("tell application \"Music\" to playpause")
     }
     
     func nextTrack() async {
@@ -103,26 +103,28 @@ class AppleMusicController: MediaControllerProtocol {
     }
     
     func isActive() -> Bool {
-        let runningApps = NSWorkspace.shared.runningApplications
-        return runningApps.contains { $0.bundleIdentifier == "com.apple.Music" }
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
     }
 
     func setFavorite(_ favorite: Bool) async {
-        let script = """
-        tell application \"Music\"
-            try
-                set favorited of current track to " + (favorite ? "true" : "false") + "
-            end try
-        end tell
-        """
-        try? await AppleScriptHelper.executeVoid(script)
+        await executeCommand("set favorited of current track to \(favorite)")
         try? await Task.sleep(for: .milliseconds(150))
         await updatePlaybackInfo()
     }
     
     func updatePlaybackInfo() async {
-        guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
+        guard isActive(), let descriptor = try? await fetchPlaybackInfoAsync() else { return }
         guard descriptor.numberOfItems >= 11 else { return }
+
+        // Artwork is the heavy part, so only a new track asks for it. Streamed artwork can come
+        // late, so a track keeps asking until it has some.
+        let trackID = descriptor.atIndex(10)?.stringValue
+        var artwork = self.playbackState.artwork
+        if trackID == nil || trackID != artworkTrackID {
+            artwork = await fetchArtwork()
+            artworkTrackID = artwork?.isEmpty == false ? trackID : nil
+        }
+
         var updatedState = self.playbackState
         
         updatedState.isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
@@ -136,7 +138,7 @@ class AppleMusicController: MediaControllerProtocol {
         updatedState.repeatMode = RepeatMode(rawValue: Int(repeatModeValue)) ?? .off
         let volumePercentage = descriptor.atIndex(9)?.int32Value ?? 50
         updatedState.volume = Double(volumePercentage) / 100.0
-        updatedState.artwork = descriptor.atIndex(10)?.data as Data?
+        updatedState.artwork = artwork
         let lovedState = descriptor.atIndex(11)?.booleanValue ?? false
         updatedState.isFavorite = lovedState
         updatedState.lastUpdated = Date()
@@ -146,6 +148,7 @@ class AppleMusicController: MediaControllerProtocol {
     // MARK: - Private Methods
     
     private func executeCommand(_ command: String) async {
+        guard isActive() else { return }
         let script = "tell application \"Music\" to \(command)"
         try? await AppleScriptHelper.executeVoid(script)
     }
@@ -153,7 +156,7 @@ class AppleMusicController: MediaControllerProtocol {
     private func fetchPlaybackInfoAsync() async throws -> NSAppleEventDescriptor? {
         let script = """
         tell application "Music"
-            set isRunning to true
+            if it is not running then return {}
             try
                 set playerState to player state is playing
                 set currentTrackName to name of current track
@@ -171,15 +174,14 @@ class AppleMusicController: MediaControllerProtocol {
                     set repeatValue to 3
                 end if
 
+                set trackID to ""
                 try
-                    set artData to data of artwork 1 of current track
-                on error
-                    set artData to ""
+                    set trackID to persistent ID of current track
                 end try
                 
                 set currentVolume to sound volume
                 set favoriteState to favorited of current track
-                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatValue, currentVolume, artData, favoriteState}
+                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatValue, currentVolume, trackID, favoriteState}
             on error
                 return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, "", false}
             end try
@@ -187,6 +189,21 @@ class AppleMusicController: MediaControllerProtocol {
         """
         
         return try await AppleScriptHelper.execute(script)
+    }
+    
+    private func fetchArtwork() async -> Data? {
+        let script = """
+        tell application "Music"
+            if it is not running then return ""
+            try
+                return data of artwork 1 of current track
+            on error
+                return ""
+            end try
+        end tell
+        """
+        
+        return try? await AppleScriptHelper.execute(script)?.data
     }
     
 }
