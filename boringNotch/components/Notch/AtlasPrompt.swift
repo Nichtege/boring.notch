@@ -6,7 +6,8 @@
 //  It talks to Starlane the way the dashboard page does: the phone key loads the page, the page holds the
 //  token of this server start, and the token authorizes the message. Messages carry no X-AOS-Key, so Atlas
 //  can answer from here but can't open terminals. The token stays in memory.
-//  A screenshot only goes along when asked for, one message at a time. Atlas sees it but can't control this Mac.
+//  A screenshot, the clipboard or a file only go along when asked for, one message at a time. Atlas sees them but
+//  can't control this Mac.
 //
 
 import AppKit
@@ -55,6 +56,12 @@ enum ScreenSnapshot {
     }
 }
 
+struct AtlasAttachment: Identifiable {
+    let id = UUID()
+    let name: String
+    let data: Data
+}
+
 @MainActor
 final class AtlasChat: ObservableObject {
     static let shared = AtlasChat()
@@ -68,7 +75,10 @@ final class AtlasChat: ObservableObject {
 
     @Published var input = ""
     @Published var includeScreen = false
+    @Published private(set) var attachments: [AtlasAttachment] = []
+    @Published private(set) var attachmentProblem = ""
     @Published private(set) var questionHasScreen = false
+    @Published private(set) var questionFileCount = 0
     @Published private(set) var question = ""
     @Published private(set) var answer = ""
     @Published private(set) var step = ""
@@ -83,6 +93,9 @@ final class AtlasChat: ObservableObject {
         !question.isEmpty
     }
 
+    // The server's own limits; it checks them again, along with the kinds of files it takes
+    private let maxAttachments = 10
+    private let maxAttachmentSize = 20 * 1024 * 1024
     private let pollInterval: Duration = .milliseconds(1500)
     // About half a minute without an answer from the server
     private let failuresBeforeGivingUp = 20
@@ -136,21 +149,75 @@ final class AtlasChat: ObservableObject {
         focusRequest += 1
     }
 
-    func send() {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isBusy else { return }
+    func attachClipboard() {
+        let board = NSPasteboard.general
+        let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if !files.isEmpty {
+            files.forEach(attach(file:))
+        } else if let text = board.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            attach(name: "clipboard.txt", data: Data(text.utf8))
+        } else if let image = NSImage(pasteboard: board), let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            attach(name: "clipboard.png", data: png)
+        } else {
+            attachmentProblem = String(localized: "The clipboard has nothing to send.")
+        }
+    }
 
-        // Asked for one message at a time: it never stays on
+    func attach(file url: URL) {
+        let isScoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if isScoped {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            attachmentProblem = String(localized: "\(url.lastPathComponent) can't be read.")
+            return
+        }
+        attach(name: url.lastPathComponent, data: data)
+    }
+
+    func remove(_ attachment: AtlasAttachment) {
+        attachments.removeAll { $0.id == attachment.id }
+        attachmentProblem = ""
+    }
+
+    private func attach(name: String, data: Data) {
+        guard attachments.count < maxAttachments else {
+            attachmentProblem = String(localized: "At most \(maxAttachments) files per message.")
+            return
+        }
+        guard data.count <= maxAttachmentSize else {
+            attachmentProblem = String(localized: "\(name) is too large.")
+            return
+        }
+        attachmentProblem = ""
+        attachments.append(AtlasAttachment(name: name, data: data))
+    }
+
+    func send() {
+        var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isBusy, !text.isEmpty || !attachments.isEmpty || includeScreen else { return }
+        if text.isEmpty {
+            text = String(localized: "Look at what I attached.")
+        }
+
+        // Asked for one message at a time: nothing stays attached
         let withScreen = includeScreen
+        let files = attachments
         includeScreen = false
+        attachments = []
+        attachmentProblem = ""
         questionHasScreen = withScreen
+        questionFileCount = files.count
 
         input = ""
         question = text
         answer = ""
         step = ""
         phase = .sending
-        task = Task { await deliver(text, withScreen: withScreen) }
+        task = Task { await deliver(text, withScreen: withScreen, files: files) }
     }
 
     /// Forgets the conversation here. Atlas keeps it, so it stays readable in Starlane.
@@ -159,7 +226,10 @@ final class AtlasChat: ObservableObject {
         task = nil
         input = ""
         includeScreen = false
+        attachments = []
+        attachmentProblem = ""
         questionHasScreen = false
+        questionFileCount = 0
         question = ""
         answer = ""
         step = ""
@@ -168,39 +238,52 @@ final class AtlasChat: ObservableObject {
     }
 
     // MARK: - Talking to Starlane
-    private func deliver(_ text: String, withScreen: Bool) async {
+    private func deliver(_ text: String, withScreen: Bool, files: [AtlasAttachment]) async {
+        func failed(_ message: String) {
+            fail(message, restoring: text, withScreen: withScreen, files: files)
+        }
+
         do {
-            let files = withScreen ? [try await uploadScreen()] : []
-            let job = try await post(text, files: files)
+            var ids = withScreen ? [try await uploadScreen()] : []
+            for file in files {
+                ids.append(try await upload(file.data, name: file.name))
+            }
+            let job = try await post(text, files: ids)
             thread = job.thread ?? job.id
             phase = .running
             await follow(job.id)
         } catch is CancellationError {
             return
         } catch ChatError.refused(let message) {
-            fail(message, restoring: text, withScreen: withScreen)
+            failed(message)
         } catch ScreenSnapshot.Failure.notAllowed {
-            fail(String(localized: "Allow Screen Recording for Boring Notch in System Settings, then restart the app."), restoring: text, withScreen: withScreen)
+            failed(String(localized: "Allow Screen Recording for Boring Notch in System Settings, then restart the app."))
         } catch is ScreenSnapshot.Failure {
-            fail(String(localized: "The screenshot couldn't be taken."), restoring: text, withScreen: withScreen)
+            failed(String(localized: "The screenshot couldn't be taken."))
         } catch {
-            fail(String(localized: "Starlane isn't reachable (is Tailscale on?)"), restoring: text, withScreen: withScreen)
+            failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"))
         }
     }
 
-    private func fail(_ message: String, restoring text: String, withScreen: Bool) {
+    private func fail(_ message: String, restoring text: String, withScreen: Bool, files: [AtlasAttachment]) {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
             includeScreen = withScreen
+            attachments = files
         }
         phase = .failed(message)
     }
 
     private func uploadScreen() async throws -> String {
         step = String(localized: "Taking a screenshot…")
-        let jpeg = try await ScreenSnapshot.jpeg()
-        let reply = try await requestRetrying("/api/uploads?name=screen.jpg", method: "POST", body: jpeg, contentType: "image/jpeg")
+        return try await upload(try await ScreenSnapshot.jpeg(), name: "screen.jpg")
+    }
+
+    private func upload(_ data: Data, name: String) async throws -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._"))
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: allowed) ?? "file"
+        let reply = try await requestRetrying("/api/uploads?name=\(encoded)", method: "POST", body: data, contentType: "application/octet-stream")
         return try JSONDecoder().decode(Upload.self, from: reply).file.id
     }
 
@@ -357,7 +440,6 @@ final class AtlasPromptController {
     private let gapBelowNotch: CGFloat = 6
     private let moveDuration: TimeInterval = 0.3
     private var panel: AtlasPromptPanel?
-    private var resignObserver: Any?
     private var screensWithOpenNotch: Set<String> = []
 
     private init() {}
@@ -440,16 +522,6 @@ final class AtlasPromptController {
         host.frame = panel.contentView?.bounds ?? .zero
         panel.contentView?.addSubview(host)
 
-        // Clicking elsewhere closes an empty line; an answer stays until it's dismissed
-        resignObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                if !AtlasChat.shared.hasConversation {
-                    self?.hide()
-                }
-            }
-        }
         return panel
     }
 
@@ -484,6 +556,7 @@ final class AtlasPromptController {
 struct AtlasPromptView: View {
     @ObservedObject var chat = AtlasChat.shared
     @FocusState private var fieldFocused: Bool
+    @State private var isDropTarget = false
     let onHeightChange: (CGFloat) -> Void
 
     private let maxAnswerHeight: CGFloat = 320
@@ -497,8 +570,17 @@ struct AtlasPromptView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12))
+                        .strokeBorder(isDropTarget ? Color.orange : Color.white.opacity(0.12), lineWidth: isDropTarget ? 2 : 1)
                 )
+                .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+                    for provider in providers {
+                        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                            guard let url else { return }
+                            Task { @MainActor in chat.attach(file: url) }
+                        }
+                    }
+                    return true
+                }
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHeightChange($0) }
             Spacer(minLength: 0)
@@ -506,6 +588,7 @@ struct AtlasPromptView: View {
         .onAppear { fieldFocused = true }
         .onChange(of: chat.focusRequest) { fieldFocused = true }
         .onChange(of: chat.includeScreen) { fieldFocused = true }
+        .onChange(of: chat.attachments.count) { fieldFocused = true }
     }
 
     private var content: some View {
@@ -527,6 +610,15 @@ struct AtlasPromptView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .help(Text("Send this screen with the next message"))
+                Button {
+                    chat.attachClipboard()
+                    fieldFocused = true
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                        .foregroundStyle(.gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(Text("Send the clipboard with the next message"))
                 if chat.isBusy {
                     ProgressView()
                         .controlSize(.small)
@@ -540,19 +632,35 @@ struct AtlasPromptView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .help(Text("Open Starlane"))
-                    Button {
-                        AtlasPromptController.shared.hide()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.gray)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .help(Text("Close"))
                 }
+                Button {
+                    AtlasPromptController.shared.hide()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(Text("Close"))
             }
 
             if chat.includeScreen {
                 Text("A screenshot of this screen goes with your next message.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            if !chat.attachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(chat.attachments) { attachment in
+                            attachmentChip(attachment)
+                        }
+                    }
+                }
+            }
+
+            if !chat.attachmentProblem.isEmpty {
+                Text(chat.attachmentProblem)
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -565,11 +673,33 @@ struct AtlasPromptView: View {
         .padding(.vertical, 14)
     }
 
+    private func attachmentChip(_ attachment: AtlasAttachment) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "paperclip")
+            Text(attachment.name)
+                .lineLimit(1)
+            Button {
+                chat.remove(attachment)
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .font(.caption)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(.white.opacity(0.15)))
+    }
+
     private var conversation: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 if chat.questionHasScreen {
                     Image(systemName: "camera.viewfinder")
+                }
+                if chat.questionFileCount > 0 {
+                    Image(systemName: "paperclip")
                 }
                 Text(chat.question)
                     .lineLimit(2)
