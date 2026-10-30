@@ -25,6 +25,8 @@ private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
 /// be moved until then (about half a second). Moving it back at once would show the end of that slide.
 private let restoreDelay: TimeInterval = 0.35
+/// A closing center has given up focus, but its old notifications are still there for a moment.
+private let centerClosingDelay: TimeInterval = 1
 private let restoreAttempts = 3
 private let reattachAttempts = 30
 
@@ -147,6 +149,7 @@ final class NotificationWatcher {
     private var liveBanners: [Int: LiveBanner] = [:]
     private var parkedWindows: [Int: ParkedWindow] = [:]
     private var lastOrigin: CGPoint?
+    private var centerLastOpen: Date?
     private var bundleIDCache: [String: String?] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
     /// an OS update) the observer goes silent, so the exit is watched and the watcher attaches to the
@@ -388,9 +391,11 @@ final class NotificationWatcher {
             // On macOS 27 the open center lays itself out in the window banners use. Nothing it
             // shows may stay off screen, and none of it is news.
             guard !centerMayBeOpen(appElement) else {
+                centerLastOpen = Date()
                 restoreAllWindows()
                 return
             }
+            let centerIsClosing = centerLastOpen.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
 
             var seen = Set<Int>()
             for window in windows {
@@ -424,7 +429,7 @@ final class NotificationWatcher {
                 restoreWindow(forKey: key(for: window))
 
                 // Several new ones at once are a stack in all but name
-                guard fresh.count == 1, let reading = fresh.first,
+                guard !centerIsClosing, fresh.count == 1, let reading = fresh.first,
                       NotificationPanelDetection.isMirrorable(subrole: reading.banner.subrole),
                       !reading.text.isEmpty,
                       let token = liveBanners[reading.identity]?.token
