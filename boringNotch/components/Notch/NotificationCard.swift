@@ -131,26 +131,15 @@ final class NotificationCardController {
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = true
+        NotchPanelLayout.shared.configure(panel)
         panel.becomesKeyOnlyIfNeeded = true
-        panel.level = .mainMenu + 4
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.isMovable = false
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
 
         let host = FirstClickHostingView(rootView: NotificationCardView(model: model) { [weak self] height in
             self?.resize(to: height)
         })
-        host.sizingOptions = []
-        host.autoresizingMask = [.width, .height]
-        host.frame = panel.contentView?.bounds ?? .zero
-        panel.contentView?.addSubview(host)
+        NotchPanelLayout.shared.embed(host, in: panel)
 
         return panel
     }

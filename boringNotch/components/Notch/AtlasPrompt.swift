@@ -516,25 +516,14 @@ final class AtlasPromptController {
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = true
-        panel.level = .mainMenu + 4
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
+        NotchPanelLayout.shared.configure(panel)
         panel.hasShadow = true
-        panel.isMovable = false
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
         panel.onCancel = { [weak self] in self?.hide() }
 
         let host = NSHostingView(rootView: AtlasPromptView { [weak self] height in
             self?.resize(to: height)
         })
-        host.sizingOptions = []
-        host.autoresizingMask = [.width, .height]
-        host.frame = panel.contentView?.bounds ?? .zero
-        panel.contentView?.addSubview(host)
+        NotchPanelLayout.shared.embed(host, in: panel)
 
         return panel
     }

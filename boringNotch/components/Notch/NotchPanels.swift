@@ -45,6 +45,27 @@ final class NotchPanelLayout {
         return screen.frame.maxY - (isOpen ? openNotchSize.height : closedHeight)
     }
 
+    /// Floats above everything, on every space and over full screen, always in dark.
+    func configure(_ panel: NSPanel) {
+        panel.isFloatingPanel = true
+        panel.level = .mainMenu + 4
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.isMovable = false
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
+    }
+
+    /// The panel decides its own size; the view inside only reports what it needs.
+    func embed<Content: View>(_ host: NSHostingView<Content>, in panel: NSPanel) {
+        host.sizingOptions = []
+        host.autoresizingMask = [.width, .height]
+        host.frame = panel.contentView?.bounds ?? .zero
+        panel.contentView?.addSubview(host)
+    }
+
     func move(_ panel: NSPanel, to frame: NSRect, animated: Bool) {
         if animated {
             NSAnimationContext.runAnimationGroup { context in
