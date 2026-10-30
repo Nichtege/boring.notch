@@ -56,12 +56,13 @@ final class FullscreenMediaDetector: ObservableObject {
     private func updateStatus(with spaces: [MacroVisionKit.FullScreenMonitor.SpaceInfo]) {
         var newStatus: [String: Bool] = [:]
         let option = Defaults[.hideNotchOption]
+        let videoIsPlaying = option == .videoOnly && !spaces.isEmpty && isVideoPlaying()
 
         for space in spaces {
             if let uuid = space.screenUUID {
                 let shouldDetect: Bool
                 if option == .videoOnly {
-                    shouldDetect = isVideoPlaying()
+                    shouldDetect = videoIsPlaying
                 } else if option == .nowPlayingOnly, let musicSourceBundle = MusicManager.shared.bundleIdentifier  {
                     shouldDetect = space.runningApps.contains(musicSourceBundle)
                 } else {
@@ -71,7 +72,10 @@ final class FullscreenMediaDetector: ObservableObject {
             }
         }
 
-        self.fullscreenStatus = newStatus
+        // The video check comes by every 2 s, and most of the time nothing has changed
+        if newStatus != fullscreenStatus {
+            fullscreenStatus = newStatus
+        }
     }
 
     /// A video can start or stop without a space change, so look again while something is in full screen.

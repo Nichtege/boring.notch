@@ -724,7 +724,7 @@ final class NotificationWatcher {
     private func watchHealth() {
         healthTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
+        timer.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval, leeway: .seconds(1))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             if !AXIsProcessTrusted() {
