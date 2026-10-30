@@ -11,7 +11,6 @@ import EventKit
 import KeyboardShortcuts
 import LaunchAtLogin
 import SwiftUI
-import SwiftUIIntrospect
 
 struct SettingsView: View {
     @State private var selectedTab = "General"

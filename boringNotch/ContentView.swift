@@ -11,7 +11,6 @@ import Combine
 import Defaults
 import KeyboardShortcuts
 import SwiftUI
-import SwiftUIIntrospect
 
 @MainActor
 struct ContentView: View {
