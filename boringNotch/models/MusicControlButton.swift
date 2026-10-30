@@ -29,8 +29,7 @@ enum MusicControlButton: String, CaseIterable, Identifiable, Codable, Defaults.S
         .none
     ]
 
-    static let minSlotCount: Int = 3
-    static let maxSlotCount: Int = 5
+    static let slotCount: Int = 5
 
     static let pickerOptions: [MusicControlButton] = [
         .shuffle,

@@ -125,10 +125,6 @@ extension Defaults.Keys {
         "musicControlSlots",
         default: MusicControlButton.defaultLayout
     )
-    static let musicControlSlotLimit = Key<Int>(
-        "musicControlSlotLimit",
-        default: MusicControlButton.defaultLayout.count
-    )
     static let lastMusicOutputDevices = Key<[String]>("lastMusicOutputDevices", default: [])
 
     // MARK: Starlane
