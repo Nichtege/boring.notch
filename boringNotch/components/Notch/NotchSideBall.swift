@@ -52,21 +52,17 @@ struct NotchSideBall: View {
         switch activity {
         case .focus:
             TimelineView(.periodic(from: .now, by: 1)) { context in
+                // As on the iPhone, the ring alone tells the time; the exact number is one hover or click away
                 ZStack {
                     Circle()
-                        .stroke(.orange.opacity(0.25), lineWidth: 2)
+                        .stroke(.orange.opacity(0.28), lineWidth: 3)
                     Circle()
                         .trim(from: 0, to: max(0, 1 - timer.progress(at: context.date)))
-                        .stroke(.orange, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .stroke(.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    Text(timer.shortText(at: context.date))
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.orange)
-                        .minimumScaleFactor(0.7)
-                        .lineLimit(1)
                 }
-                .padding(2)
+                .padding(diameter * 0.2)
+                .help(Text(timer.clockText(at: context.date)))
             }
         case .starlane:
             HStack(spacing: 1) {
