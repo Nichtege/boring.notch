@@ -739,9 +739,8 @@ final class NotificationWatcher {
     }
 
     /// The permission reads as gone. If it is, windows can't be moved any more: what's parked stays off
-    /// screen, its banner expires on its own, and the window comes back with the next start that has the
-    /// permission. A later banner could land off screen until then. The system's own process is left
-    /// alone. If the reading was false, stopping has just put everything back.
+    /// screen until its banner expires on its own, and the next banner comes in a new window, on screen.
+    /// The system's own process is left alone. If the reading was false, stopping has just put everything back.
     private func accessibilityLost() {
         stop()
         onStopped?()
