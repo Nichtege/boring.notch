@@ -38,6 +38,7 @@ final class NotificationCardController {
     private var panel: NotificationCardPanel?
     private var cardHeight: CGFloat = 72
     private var motionTask: Task<Void, Never>?
+    private var screenObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -51,6 +52,7 @@ final class NotificationCardController {
         model.notification = notification
         place(panel, animated: panel.isVisible)
         panel.orderFrontRegardless()
+        observeScreens()
 
         let isComingIn = !model.isPresented
         if isComingIn {
@@ -82,6 +84,7 @@ final class NotificationCardController {
             guard let self, !Task.isCancelled else { return }
             panel.orderOut(nil)
             self.model.notification = nil
+            self.stopObservingScreens()
         }
     }
 
@@ -102,6 +105,23 @@ final class NotificationCardController {
     func reposition() {
         guard let panel, panel.isVisible else { return }
         place(panel, animated: true)
+    }
+
+    /// Only while the card is up, which is the only time it has to follow.
+    private func observeScreens() {
+        guard screenObserver == nil else { return }
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.reposition() }
+        }
+    }
+
+    private func stopObservingScreens() {
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+        }
+        screenObserver = nil
     }
 
     private func makePanel() -> NotificationCardPanel {
@@ -151,7 +171,8 @@ final class NotificationCardController {
         let lineScreen = line.flatMap { frame in NSScreen.screens.first { $0.frame.intersects(frame) } }
         guard let screen = lineScreen ?? layout.screen(for: panel) else { return }
 
-        let top = line?.minY ?? layout.notchBottom(on: screen)
+        // A line whose screen just went away is no place to line up with
+        let top = (lineScreen == nil ? nil : line?.minY) ?? layout.notchBottom(on: screen)
         let height = cardHeight + layout.gapBelowNotch
         let frame = NSRect(x: screen.frame.midX - width / 2, y: top - height, width: width, height: height)
         layout.move(panel, to: frame, animated: animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
