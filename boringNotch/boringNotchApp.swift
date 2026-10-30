@@ -46,7 +46,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
-    private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
 
@@ -63,42 +62,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func onScreenLocked(_ notification: Notification) {
-        isScreenLocked = true
         SystemNotificationManager.shared.dismissAll()
-        if !Defaults[.showOnLockScreen] {
-            cleanupWindows()
-        } else {
-            enableSkyLightOnAllWindows()
-        }
+        cleanupWindows()
     }
 
     @MainActor
     func onScreenUnlocked(_ notification: Notification) {
-        isScreenLocked = false
-        if !Defaults[.showOnLockScreen] {
-            adjustWindowPosition()
-        } else {
-            disableSkyLightOnAllWindows()
-        }
-    }
-    
-    private var skyLightWindows: [BoringNotchSkyLightWindow] {
-        let all = Defaults[.showOnAllDisplays] ? Array(windows.values) : [window].compactMap { $0 }
-        return all.compactMap { $0 as? BoringNotchSkyLightWindow }
-    }
-
-    @MainActor
-    private func enableSkyLightOnAllWindows() {
-        skyLightWindows.forEach { $0.enableSkyLight() }
-    }
-    
-    @MainActor
-    private func disableSkyLightOnAllWindows() {
-        // Delay disabling SkyLight to avoid flicker during unlock transition
-        Task {
-            try? await Task.sleep(for: .milliseconds(150))
-            self.skyLightWindows.forEach { $0.disableSkyLight() }
-        }
+        adjustWindowPosition()
     }
 
     private func cleanupWindows(shouldInvert: Bool = false) {
@@ -192,14 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let rect = NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         
-        let window = BoringNotchSkyLightWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
-        
-        // Enable SkyLight only when screen is locked
-        if isScreenLocked {
-            window.enableSkyLight()
-        } else {
-            window.disableSkyLight()
-        }
+        let window = BoringNotchWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
 
         window.contentView = NSHostingView(
             rootView: ContentView()
