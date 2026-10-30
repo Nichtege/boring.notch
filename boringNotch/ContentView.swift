@@ -155,7 +155,9 @@ struct ContentView: View {
                         vm.notchState == .open
                         ? Defaults[.cornerRadiusScaling]
                         ? (cornerRadiusInsets.opened.top) : (cornerRadiusInsets.opened.bottom)
-                        : cornerRadiusInsets.closed.bottom
+                        // With an activity the art is as far from the side as from the bottom
+                        : computedChinWidth > vm.closedNotchSize.width
+                        ? cornerRadiusInsets.closed.bottom - 2 : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
                     .background(.black)
