@@ -7,13 +7,6 @@ class BatteryActivityManager {
 
     static let shared = BatteryActivityManager()
 
-    var onBatteryLevelChange: ((Float) -> Void)?
-    var onMaxCapacityChange: ((Float) -> Void)?
-    var onPowerModeChange: ((Bool) -> Void)?
-    var onPowerSourceChange: ((Bool) -> Void)?
-    var onChargingChange: ((Bool) -> Void)?
-    var onTimeToFullChargeChange: ((Int) -> Void)?
-
     private var batterySource: CFRunLoopSource?
     private var observers: [(BatteryEvent) -> Void] = []
     private var previousBatteryInfo: BatteryInfo?
@@ -27,13 +20,6 @@ class BatteryActivityManager {
         case isChargingChanged(isCharging: Bool)
         case timeToFullChargeChanged(time: Int)
         case maxCapacityChanged(capacity: Float)
-        case error(description: String)
-    }
-
-    enum BatteryError: Error {
-        case powerSourceUnavailable
-        case batteryInfoUnavailable(String)
-        case batteryParameterMissing(String)
     }
 
     private let defaultBatteryInfo = BatteryInfo(
@@ -76,14 +62,6 @@ class BatteryActivityManager {
         }
         batterySource = powerSource
         CFRunLoopAddSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
-    }
-
-    /// Stops monitoring battery changes
-    private func stopMonitoring() {
-        if let powerSource = batterySource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
-            batterySource = nil
-        }
     }
 
     /// Checks for changes in a property and notifies observers
@@ -152,17 +130,6 @@ class BatteryActivityManager {
 
         // Update previous battery info
         previousBatteryInfo = batteryInfo
-
-        // Trigger optional callbacks
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.onBatteryLevelChange?(batteryInfo.currentCapacity)
-            self.onPowerSourceChange?(batteryInfo.isPluggedIn)
-            self.onChargingChange?(batteryInfo.isCharging)
-            self.onPowerModeChange?(batteryInfo.isInLowPowerMode)
-            self.onTimeToFullChargeChange?(batteryInfo.timeToFullCharge)
-            self.onMaxCapacityChange?(batteryInfo.maxCapacity)
-        }
     }
 
     /// Enqueues a notification to be processed
@@ -195,87 +162,32 @@ class BatteryActivityManager {
     /// Initializes the battery information when the manager starts
     /// - Returns: Current battery information
     func initializeBatteryInfo() -> BatteryInfo {
-        previousBatteryInfo = getBatteryInfo()
-        guard let batteryInfo = previousBatteryInfo else {
-            return BatteryInfo(
-                isPluggedIn: false,
-                isCharging: false,
-                currentCapacity: 0,
-                maxCapacity: 0,
-                isInLowPowerMode: false,
-                timeToFullCharge: 0
-            )
-        }
+        let batteryInfo = getBatteryInfo()
+        previousBatteryInfo = batteryInfo
         return batteryInfo
     }
 
     /// Get the current battery information
     /// - Returns: The current battery information
     private func getBatteryInfo() -> BatteryInfo {
-        do {
-            // Get power source information
-            guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
-                throw BatteryError.powerSourceUnavailable
-            }
-            
-            guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef],
-                !sources.isEmpty else {
-                throw BatteryError.batteryInfoUnavailable("No power sources available")
-            }
-            
-            let source = sources.first!
-            
-            guard let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
-                throw BatteryError.batteryInfoUnavailable("Could not get power source description")
-            }
-            
-            // Extract required battery parameters with error handling
-            guard let currentCapacity = description[kIOPSCurrentCapacityKey] as? Float else {
-                throw BatteryError.batteryParameterMissing("Current capacity")
-            }
-            
-            guard let maxCapacity = description[kIOPSMaxCapacityKey] as? Float else {
-                throw BatteryError.batteryParameterMissing("Max capacity")
-            }
-            
-            guard let isCharging = description["Is Charging"] as? Bool else {
-                throw BatteryError.batteryParameterMissing("Charging state")
-            }
-            
-            guard let powerSource = description[kIOPSPowerSourceStateKey] as? String else {
-                throw BatteryError.batteryParameterMissing("Power source state")
-            }
-            
-            // Create battery info with the extracted parameters
-            var batteryInfo = BatteryInfo(
-                isPluggedIn: powerSource == kIOPSACPowerValue,
-                isCharging: isCharging,
-                currentCapacity: currentCapacity,
-                maxCapacity: maxCapacity,
-                isInLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
-                timeToFullCharge: 0
-            )
-            
-            // Optional parameters
-            if let timeToFullCharge = description[kIOPSTimeToFullChargeKey] as? Int {
-                batteryInfo.timeToFullCharge = timeToFullCharge
-            }
-            
-            return batteryInfo
-            
-        } catch BatteryError.powerSourceUnavailable {
-            print("⚠️ Error: Power source information unavailable")
-            return defaultBatteryInfo
-        } catch BatteryError.batteryInfoUnavailable(let reason) {
-            print("⚠️ Error: Battery information unavailable - \(reason)")
-            return defaultBatteryInfo
-        } catch BatteryError.batteryParameterMissing(let parameter) {
-            print("⚠️ Error: Battery parameter missing - \(parameter)")
-            return defaultBatteryInfo
-        } catch {
-            print("⚠️ Error: Unexpected error getting battery info - \(error.localizedDescription)")
-            return defaultBatteryInfo
-        }
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef],
+              let source = sources.first,
+              let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any],
+              let currentCapacity = description[kIOPSCurrentCapacityKey] as? Float,
+              let maxCapacity = description[kIOPSMaxCapacityKey] as? Float,
+              let isCharging = description["Is Charging"] as? Bool,
+              let powerSource = description[kIOPSPowerSourceStateKey] as? String
+        else { return defaultBatteryInfo }
+
+        return BatteryInfo(
+            isPluggedIn: powerSource == kIOPSACPowerValue,
+            isCharging: isCharging,
+            currentCapacity: currentCapacity,
+            maxCapacity: maxCapacity,
+            isInLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            timeToFullCharge: description[kIOPSTimeToFullChargeKey] as? Int ?? 0
+        )
     }
     
     /// Adds an observer to listen to battery changes
@@ -286,13 +198,6 @@ class BatteryActivityManager {
         return observers.count - 1
     }
 
-    /// Removes an observer by its ID
-    /// - Parameter id: The ID of the observer to be removed
-    func removeObserver(byId id: Int) {
-        guard id >= 0 && id < observers.count else { return }
-        observers.remove(at: id)
-    }
-    
     /// Notifies all observers of a battery event
     /// - Parameter event: The battery event to notify
     private func notifyObservers(event: BatteryEvent) {
@@ -303,12 +208,6 @@ class BatteryActivityManager {
             }
         }
     }
-    
-    deinit {
-        stopMonitoring()
-        NotificationCenter.default.removeObserver(self)
-    }
-    
 }
 
 /// Struct to hold battery information
