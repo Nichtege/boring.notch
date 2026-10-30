@@ -40,9 +40,6 @@ struct ContentView: View {
     // Shared interactive spring for movement/resizing to avoid conflicting animations
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
 
-    private let extendedHoverPadding: CGFloat = 30
-    private let zeroHeightHoverPadding: CGFloat = 10
-
     private var topCornerRadius: CGFloat {
        ((vm.notchState == .open) && Defaults[.cornerRadiusScaling])
                 ? cornerRadiusInsets.opened.top
@@ -247,11 +244,6 @@ struct ContentView: View {
                             }
                         }
                         .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
-                        //                    Button("Edit") { // Doesnt work....
-                        //                        let dn = DynamicNotch(content: EditPanelView())
-                        //                        dn.toggle()
-                        //                    }
-                        //                    .keyboardShortcut("E", modifiers: .command)
                     }
                 if vm.chinHeight > 0 {
                     Rectangle()
@@ -700,26 +692,6 @@ struct ContentView: View {
             }
         }
     }
-}
-
-struct FullScreenDropDelegate: DropDelegate {
-    @Binding var isTargeted: Bool
-    let onDrop: () -> Void
-
-    func dropEntered(info _: DropInfo) {
-        isTargeted = true
-    }
-
-    func dropExited(info _: DropInfo) {
-        isTargeted = false
-    }
-
-    func performDrop(info _: DropInfo) -> Bool {
-        isTargeted = false
-        onDrop()
-        return true
-    }
-
 }
 
 struct GeneralDropTargetDelegate: DropDelegate {

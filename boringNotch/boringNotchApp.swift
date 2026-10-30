@@ -39,14 +39,12 @@ struct DynamicNotchApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: BoringViewModel] = [:] // UUID -> BoringViewModel
     var window: NSWindow?
     let vm: BoringViewModel = .init()
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     var quickShareService = QuickShareService.shared
-    var timer: Timer?
     var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
@@ -446,17 +444,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioPlayer.play(fileName: "boring", fileExtension: "m4a")
     }
 
-    func deviceHasNotch() -> Bool {
-        if #available(macOS 12.0, *) {
-            for screen in NSScreen.screens {
-                if screen.safeAreaInsets.top > 0 {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
     @objc func screenConfigurationDidChange() {
         let currentScreens = NSScreen.screens
 
@@ -545,22 +532,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func togglePopover(_ sender: Any?) {
-        if window?.isVisible == true {
-            window?.orderOut(nil)
-        } else {
-            window?.orderFrontRegardless()
-        }
-    }
-
-    @objc func showMenu() {
-        statusItem?.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
-    @objc func quitAction() {
-        NSApplication.shared.terminate(self)
-    }
-
     private func showOnboardingWindow(step: OnboardingStep = .welcome) {
         if onboardingWindowController == nil {
             let window = NSWindow(
@@ -578,7 +549,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     step: step,
                     onFinish: {
                         window.orderOut(nil)
-//                        NSApp.setActivationPolicy(.accessory)
                         window.close()
                         NSApp.deactivate()
                     },
@@ -593,7 +563,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             onboardingWindowController = NSWindowController(window: window)
         }
 
-//        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         onboardingWindowController?.window?.makeKeyAndOrderFront(nil)
         onboardingWindowController?.window?.orderFrontRegardless()
