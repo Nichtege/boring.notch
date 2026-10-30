@@ -25,11 +25,6 @@ public enum NotchViews {
     case focus
 }
 
-enum MirrorShapeEnum: String, Defaults.Serializable {
-    case rectangle = "Rectangular"
-    case circle = "Circular"
-}
-
 enum WindowHeightMode: String, Defaults.Serializable {
     case matchMenuBar = "Match menubar height"
     case matchRealNotchSize = "Match real notch height"
