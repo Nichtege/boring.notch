@@ -96,7 +96,7 @@ private struct SmokedGlass<S: InsettableShape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), !reduceTransparency, contrast != .increased {
+        if !reduceTransparency, contrast != .increased {
             content
                 .background(.black.opacity(0.6), in: shape)
                 .glassEffect(.regular, in: shape)

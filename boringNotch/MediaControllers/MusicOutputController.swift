@@ -48,8 +48,6 @@ enum LocalAudioRoute {
 
     /// Where an app's sound comes out right now. nil while it isn't playing anything.
     static func route(for bundleID: String) -> Route? {
-        guard #available(macOS 14.2, *) else { return nil }
-
         var appDevice: AudioObjectID?
         var routerDevice: AudioObjectID?
         for process in objects(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList) {
@@ -69,8 +67,7 @@ enum LocalAudioRoute {
 
     /// The audio objects of an app's processes.
     static func processes(for bundleID: String) -> [AudioObjectID] {
-        guard #available(macOS 14.2, *) else { return [] }
-        return objects(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList).filter {
+        objects(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList).filter {
             string($0, kAudioProcessPropertyBundleID) == bundleID
         }
     }

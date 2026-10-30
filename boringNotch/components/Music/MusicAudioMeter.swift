@@ -22,7 +22,7 @@ final class MusicAudioMeter {
 
     private var listeners: [ObjectIdentifier: Listener] = [:]
     private var bundleID: String?
-    private var tap: AnyObject?
+    private var tap: MusicAudioTap?
     private var startTask: Task<Void, Never>?
     private var silenceTimer: Timer?
     private var lastLevels: Date = .distantPast
@@ -47,7 +47,7 @@ final class MusicAudioMeter {
 
     // MARK: - Capture
     private func start() {
-        guard #available(macOS 14.2, *), let bundleID else { return }
+        guard let bundleID else { return }
 
         startTask = Task { [weak self] in
             // Setting up the tap can take a moment, and the first start asks for the permission
@@ -62,7 +62,6 @@ final class MusicAudioMeter {
         }
     }
 
-    @available(macOS 14.2, *)
     private func started(_ newTap: MusicAudioTap?) {
         startTask = nil
         guard !listeners.isEmpty else {
@@ -83,7 +82,7 @@ final class MusicAudioMeter {
         silenceTimer?.invalidate()
         silenceTimer = nil
         isShowingLevels = false
-        if #available(macOS 14.2, *), let running = tap as? MusicAudioTap {
+        if let running = tap {
             Task.detached { running.stop() }
         }
         tap = nil
@@ -112,7 +111,6 @@ final class MusicAudioMeter {
 
 /// Taps the sound of one app. Not ScreenCaptureKit: macOS takes any of its streams for sharing the screen and
 /// silences every notification for as long as it runs.
-@available(macOS 14.2, *)
 private final class MusicAudioTap {
     private let description: CATapDescription
     private let analyzer: MusicAudioAnalyzer

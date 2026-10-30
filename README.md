@@ -45,7 +45,7 @@ Say hello to **Boring Notch**, the coolest way to make your MacBook’s notch th
 ## Installation
 
 **System Requirements:**
-- macOS **14 Sonoma** or later
+- macOS **26 Tahoe** or later
 - Apple Silicon or Intel Mac
 
 ---
