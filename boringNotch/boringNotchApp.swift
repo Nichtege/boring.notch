@@ -7,7 +7,7 @@
 
 import Defaults
 import KeyboardShortcuts
-import LaunchAtLogin
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -239,7 +239,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
             Defaults[.didEnableLaunchAtLogin] = true
-            LaunchAtLogin.isEnabled = true
+            try? SMAppService.mainApp.register()
         }
 
         NotificationCenter.default.addObserver(
@@ -532,6 +532,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         onboardingWindowController?.window?.makeKeyAndOrderFront(nil)
         onboardingWindowController?.window?.orderFrontRegardless()
+    }
+}
+
+/// Shows what macOS has made of it, since turning the login item on or off can fail.
+struct LaunchAtLoginToggle: View {
+    @State private var isEnabled = SMAppService.mainApp.status == .enabled
+
+    var body: some View {
+        Toggle("Launch at login", isOn: Binding(
+            get: { isEnabled },
+            set: { enabled in
+                try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                isEnabled = SMAppService.mainApp.status == .enabled
+            }
+        ))
     }
 }
 
