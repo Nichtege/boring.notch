@@ -6,189 +6,196 @@
 //
 
 import Defaults
+import KeyboardShortcuts
 import SwiftUI
 
 struct StarlaneView: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var starlane = StarlaneManager.shared
     @Default(.starlaneShowDeadline) private var showDeadline
+    @State private var isHoveringAtlasBar = false
 
-    private let maxRows = 4
+    private let maxRows = 3
+    private let infoWidth: CGFloat = 176
 
     var body: some View {
         if let summary = starlane.summary {
-            HStack(alignment: .top, spacing: 20) {
-                let attention = summary.terminals.filter { ["needs", "failed", "limited"].contains($0.state) }
-                column(
-                    title: "Needs you",
-                    icon: "exclamationmark.bubble.fill",
-                    color: .orange,
-                    count: attention.count,
-                    rows: attention,
-                    emptyText: "Nothing is waiting"
-                )
-                column(
-                    title: "Done",
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    count: summary.done,
-                    rows: summary.terminals.filter { $0.state == "done" },
-                    emptyText: "Nothing new"
-                )
-                sidebar(summary)
-                    .frame(width: 170, alignment: .leading)
+            let attention = summary.terminals.filter { ["needs", "failed", "limited"].contains($0.state) }
+            let done = summary.terminals.filter { $0.state == "done" }
+            let deadline = showDeadline ? summary.nextDeadline : nil
+            let limit = summary.limit ?? []
+
+            VStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 14) {
+                    section(title: "Needs you", accent: .orange, count: attention.count, rows: attention, emptyText: "Nothing is waiting")
+                    section(title: "Done", accent: .green, count: done.count, rows: done, emptyText: "Nothing new")
+                    if deadline != nil || !limit.isEmpty {
+                        infoCard(deadline: deadline, limit: limit)
+                            .frame(width: infoWidth)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                HStack(spacing: 10) {
+                    atlasBar
+                    counts(summary)
+                    openButton
+                }
             }
             .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
-    private func column(
+    // MARK: - Terminals
+    private func section(
         title: LocalizedStringKey,
-        icon: String,
-        color: Color,
+        accent: Color,
         count: Int,
         rows: [StarlaneSummary.Terminal],
         emptyText: LocalizedStringKey
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundStyle(color)
                 Text(title)
+                    .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                Text("\(count)")
                     .foregroundStyle(.gray)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .monospacedDigit()
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 5)
+                        .background(Capsule().fill(accent))
+                }
             }
-            .font(.subheadline)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 2)
 
             if rows.isEmpty {
                 Text(emptyText)
                     .font(.caption)
-                    .foregroundStyle(.gray)
+                    .foregroundStyle(.gray.opacity(0.7))
+                    .padding(.horizontal, 6)
             } else {
                 ForEach(Array(rows.prefix(maxRows).enumerated()), id: \.offset) { _, row in
-                    terminalRow(row)
-                }
-                if rows.count > maxRows {
-                    Text("+\(rows.count - maxRows)")
-                        .font(.caption)
-                        .foregroundStyle(.gray)
+                    StarlaneTerminalRow(terminal: row) {
+                        starlane.openDashboard(terminal: row.id)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func terminalRow(_ row: StarlaneSummary.Terminal) -> some View {
-        Button {
-            starlane.openDashboard(terminal: row.id)
-        } label: {
-            HStack(spacing: 5) {
-                if row.state == "failed" || row.state == "limited" {
-                    Image(systemName: row.state == "failed" ? "xmark.octagon.fill" : "hourglass")
-                        .foregroundStyle(row.state == "failed" ? .red : .yellow)
-                }
-                Text(row.name)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .font(.caption)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    private func sidebar(_ summary: StarlaneSummary) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 10) {
-                Label("\(summary.busy)", systemImage: "play.circle")
-                    .help(Text("Running"))
-                if summary.paused > 0 {
-                    Label("\(summary.paused)", systemImage: "pause.circle")
-                        .help(Text("Paused"))
-                }
-                if summary.limited > 0 {
-                    Label("\(summary.limited)", systemImage: "hourglass")
-                        .foregroundStyle(.yellow)
-                        .help(Text("At usage limit"))
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.gray)
-
-            if let limit = summary.limit, !limit.isEmpty {
-                HStack(spacing: 10) {
-                    ForEach(limit, id: \.window) { window in
-                        limitLabel(window)
-                    }
-                }
-            }
-
-            if showDeadline, let deadline = summary.nextDeadline {
+    // MARK: - Deadline and limit
+    private func infoCard(deadline: StarlaneSummary.Deadline?, limit: [StarlaneSummary.LimitWindow]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let deadline {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Next deadline")
-                        .font(.caption2)
-                        .foregroundStyle(.gray)
+                    HStack(spacing: 4) {
+                        Text("Next deadline")
+                            .foregroundStyle(.gray)
+                        Spacer(minLength: 0)
+                        if let relative = relativeDay(deadline.date) {
+                            Text(relative)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .font(.caption2)
+                    .lineLimit(1)
                     Text(deadline.title)
                         .font(.caption)
+                        .fontWeight(.medium)
                         .foregroundStyle(.white)
-                        .lineLimit(2)
-                    if let relative = relativeDay(deadline.date) {
-                        Text(relative)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
+            }
+            if !limit.isEmpty {
+                VStack(spacing: 4) {
+                    ForEach(limit, id: \.window) { window in
+                        StarlaneLimitBar(window: window)
                     }
                 }
             }
-
-            Spacer(minLength: 0)
-
-            Button {
-                vm.close()
-                // Closing takes the focus along, so the line opens once the notch is out of the way
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(250))
-                    AtlasPromptController.shared.open()
-                }
-            } label: {
-                Label("Atlas", systemImage: "sparkles")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(.white.opacity(0.15)))
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            Button {
-                starlane.openDashboard()
-            } label: {
-                Label("Open Starlane", systemImage: "arrow.up.forward.app")
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
         }
-        .padding(.bottom, 2)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(.white.opacity(0.07)))
     }
 
-    private func limitLabel(_ window: StarlaneSummary.LimitWindow) -> some View {
-        HStack(spacing: 3) {
-            Text(window.shortName)
-                .foregroundStyle(.gray)
-            Text("\(Int(window.usedPercent.rounded())) %")
-                .foregroundStyle(window.usedPercent >= 80 ? .orange : .white)
+    // MARK: - Bottom row
+    private var atlasBar: some View {
+        Button {
+            vm.close()
+            // Closing takes the focus along, so the line opens once the notch is out of the way
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                AtlasPromptController.shared.open()
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.white)
+                Text("Ask Atlas…")
+                    .foregroundStyle(.gray)
+                Spacer(minLength: 8)
+                if let shortcut = KeyboardShortcuts.getShortcut(for: .askAtlas) {
+                    Text(shortcut.description)
+                        .font(.caption2)
+                        .foregroundStyle(.gray.opacity(0.8))
+                }
+            }
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(.white.opacity(isHoveringAtlasBar ? 0.16 : 0.09))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHoveringAtlasBar = $0 }
+    }
+
+    private func counts(_ summary: StarlaneSummary) -> some View {
+        HStack(spacing: 9) {
+            Label("\(summary.busy)", systemImage: "play.circle")
+                .help(Text("Running"))
+            if summary.paused > 0 {
+                Label("\(summary.paused)", systemImage: "pause.circle")
+                    .help(Text("Paused"))
+            }
+            if summary.limited > 0 {
+                Label("\(summary.limited)", systemImage: "hourglass")
+                    .foregroundStyle(.yellow)
+                    .help(Text("At usage limit"))
+            }
+        }
+        .labelStyle(.titleAndIcon)
         .font(.caption)
         .monospacedDigit()
-        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(date: .omitted, time: .shortened))"))
+        .foregroundStyle(.gray)
+        .fixedSize()
+    }
+
+    private var openButton: some View {
+        Button {
+            starlane.openDashboard()
+        } label: {
+            Image(systemName: "arrow.up.forward.app")
+                .font(.body)
+                .foregroundStyle(.gray)
+                .frame(width: 24, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help(Text("Open Starlane"))
     }
 
     private func relativeDay(_ date: String) -> String? {
@@ -204,6 +211,94 @@ struct StarlaneView: View {
         relative.dateTimeStyle = .named
         relative.unitsStyle = .full
         return relative.localizedString(from: DateComponents(day: days))
+    }
+}
+
+private struct StarlaneTerminalRow: View {
+    let terminal: StarlaneSummary.Terminal
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                stateIcon
+                    .frame(width: 12)
+                Text(terminal.name)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 2)
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.gray)
+                    .opacity(isHovering ? 1 : 0)
+            }
+            .font(.caption)
+            .padding(.horizontal, 6)
+            .frame(height: 19)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(.white.opacity(isHovering ? 0.1 : 0))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHovering = $0 }
+    }
+
+    @ViewBuilder
+    private var stateIcon: some View {
+        switch terminal.state {
+        case "failed":
+            Image(systemName: "xmark.octagon.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
+        case "limited":
+            Image(systemName: "hourglass")
+                .font(.caption2)
+                .foregroundStyle(.yellow)
+        case "done":
+            Image(systemName: "checkmark")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.green)
+        default:
+            Circle()
+                .fill(.orange)
+                .frame(width: 6, height: 6)
+        }
+    }
+}
+
+private struct StarlaneLimitBar: View {
+    let window: StarlaneSummary.LimitWindow
+
+    private var color: Color {
+        window.usedPercent >= 95 ? .red : window.usedPercent >= 80 ? .orange : .white
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(window.shortName)
+                .foregroundStyle(.gray)
+                .frame(width: 22, alignment: .leading)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.14))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geometry.size.width * min(1, max(0, window.usedPercent / 100)))
+                }
+            }
+            .frame(height: 4)
+            Text("\(Int(window.usedPercent.rounded())) %")
+                .foregroundStyle(color == .white ? .gray : color)
+                .frame(width: 32, alignment: .trailing)
+        }
+        .font(.caption2)
+        .monospacedDigit()
+        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(date: .omitted, time: .shortened))"))
     }
 }
 
