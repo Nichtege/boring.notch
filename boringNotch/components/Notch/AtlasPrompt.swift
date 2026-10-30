@@ -6,12 +6,54 @@
 //  It talks to Starlane the way the dashboard page does: the phone key loads the page, the page holds the
 //  token of this server start, and the token authorizes the message. Messages carry no X-AOS-Key, so Atlas
 //  can answer from here but can't open terminals. The token stays in memory.
+//  A screenshot only goes along when asked for, one message at a time. Atlas sees it but can't control this Mac.
 //
 
 import AppKit
 import Combine
 import Defaults
+import ScreenCaptureKit
 import SwiftUI
+
+/// A picture of the screen under the mouse, without this app's own windows.
+enum ScreenSnapshot {
+    enum Failure: Error {
+        case notAllowed
+        case failed
+    }
+
+    // Claude shrinks anything bigger, and the dashboard sends no more than this either
+    private static let longestSide: CGFloat = 2000
+
+    @MainActor
+    static func jpeg() async throws -> Data {
+        guard CGPreflightScreenCaptureAccess() else {
+            CGRequestScreenCaptureAccess()
+            throw Failure.notAllowed
+        }
+
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        let screenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        guard let display = content.displays.first(where: { $0.displayID == screenID }) ?? content.displays.first else {
+            throw Failure.failed
+        }
+
+        let ownApp = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        let filter = SCContentFilter(display: display, excludingApplications: ownApp, exceptingWindows: [])
+        let scale = min(CGFloat(filter.pointPixelScale), longestSide / CGFloat(max(display.width, display.height)))
+        let configuration = SCStreamConfiguration()
+        configuration.width = Int(CGFloat(display.width) * scale)
+        configuration.height = Int(CGFloat(display.height) * scale)
+
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        guard let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+            throw Failure.failed
+        }
+        return data
+    }
+}
 
 @MainActor
 final class AtlasChat: ObservableObject {
@@ -25,6 +67,8 @@ final class AtlasChat: ObservableObject {
     }
 
     @Published var input = ""
+    @Published var includeScreen = false
+    @Published private(set) var questionHasScreen = false
     @Published private(set) var question = ""
     @Published private(set) var answer = ""
     @Published private(set) var step = ""
@@ -67,6 +111,13 @@ final class AtlasChat: ObservableObject {
         let error: String?
     }
 
+    private struct Upload: Decodable {
+        struct File: Decodable {
+            let id: String
+        }
+        let file: File
+    }
+
     private struct Live: Decodable {
         let text: String?
         let steps: [String]?
@@ -89,12 +140,17 @@ final class AtlasChat: ObservableObject {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isBusy else { return }
 
+        // Asked for one message at a time: it never stays on
+        let withScreen = includeScreen
+        includeScreen = false
+        questionHasScreen = withScreen
+
         input = ""
         question = text
         answer = ""
         step = ""
         phase = .sending
-        task = Task { await deliver(text) }
+        task = Task { await deliver(text, withScreen: withScreen) }
     }
 
     /// Forgets the conversation here. Atlas keeps it, so it stays readable in Starlane.
@@ -102,6 +158,8 @@ final class AtlasChat: ObservableObject {
         task?.cancel()
         task = nil
         input = ""
+        includeScreen = false
+        questionHasScreen = false
         question = ""
         answer = ""
         step = ""
@@ -110,43 +168,53 @@ final class AtlasChat: ObservableObject {
     }
 
     // MARK: - Talking to Starlane
-    private func deliver(_ text: String) async {
+    private func deliver(_ text: String, withScreen: Bool) async {
         do {
-            let job = try await post(text)
+            let files = withScreen ? [try await uploadScreen()] : []
+            let job = try await post(text, files: files)
             thread = job.thread ?? job.id
             phase = .running
             await follow(job.id)
         } catch is CancellationError {
             return
         } catch ChatError.refused(let message) {
-            fail(message, restoring: text)
+            fail(message, restoring: text, withScreen: withScreen)
+        } catch ScreenSnapshot.Failure.notAllowed {
+            fail(String(localized: "Allow Screen Recording for Boring Notch in System Settings, then restart the app."), restoring: text, withScreen: withScreen)
+        } catch is ScreenSnapshot.Failure {
+            fail(String(localized: "The screenshot couldn't be taken."), restoring: text, withScreen: withScreen)
         } catch {
-            fail(String(localized: "Starlane isn't reachable (is Tailscale on?)"), restoring: text)
+            fail(String(localized: "Starlane isn't reachable (is Tailscale on?)"), restoring: text, withScreen: withScreen)
         }
     }
 
-    private func fail(_ message: String, restoring text: String) {
+    private func fail(_ message: String, restoring text: String, withScreen: Bool) {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
+            includeScreen = withScreen
         }
         phase = .failed(message)
     }
 
-    private func post(_ text: String) async throws -> Job {
-        var body: [String: String] = ["instruction": text]
+    private func uploadScreen() async throws -> String {
+        step = String(localized: "Taking a screenshot…")
+        let jpeg = try await ScreenSnapshot.jpeg()
+        let reply = try await requestRetrying("/api/uploads?name=screen.jpg", method: "POST", body: jpeg, contentType: "image/jpeg")
+        return try JSONDecoder().decode(Upload.self, from: reply).file.id
+    }
+
+    private func post(_ text: String, files: [String]) async throws -> Job {
+        var body: [String: Any] = ["instruction": text]
         if let thread {
             body["thread"] = thread
         }
+        if !files.isEmpty {
+            body["files"] = files
+        }
         let data = try JSONSerialization.data(withJSONObject: body)
 
-        let reply: Data
-        do {
-            reply = try await request("/api/atlas", method: "POST", body: data)
-        } catch ChatError.expiredToken {
-            // The token changes with every server start
-            reply = try await request("/api/atlas", method: "POST", body: data)
-        }
+        let reply = try await requestRetrying("/api/atlas", method: "POST", body: data)
         guard let job = try JSONDecoder().decode(Reply.self, from: reply).job else {
             throw ChatError.unreachable
         }
@@ -201,15 +269,16 @@ final class AtlasChat: ObservableObject {
         AtlasPromptController.shared.showAnswer()
     }
 
-    private func requestRetrying(_ path: String) async throws -> Data {
+    /// The token changes with every server start, so one refusal for it is worth one more try.
+    private func requestRetrying(_ path: String, method: String = "GET", body: Data? = nil, contentType: String = "application/json") async throws -> Data {
         do {
-            return try await request(path)
+            return try await request(path, method: method, body: body, contentType: contentType)
         } catch ChatError.expiredToken {
-            return try await request(path)
+            return try await request(path, method: method, body: body, contentType: contentType)
         }
     }
 
-    private func request(_ path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
+    private func request(_ path: String, method: String, body: Data?, contentType: String) async throws -> Data {
         let currentToken: String
         if let token {
             currentToken = token
@@ -224,13 +293,13 @@ final class AtlasChat: ObservableObject {
         request.setValue(currentToken, forHTTPHeaderField: "X-AOS-Token")
         if let body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
 
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch status {
-        case 200, 202:
+        case 200, 201, 202:
             return data
         case 401:
             token = nil
@@ -406,6 +475,7 @@ struct AtlasPromptView: View {
         }
         .onAppear { fieldFocused = true }
         .onChange(of: chat.focusRequest) { fieldFocused = true }
+        .onChange(of: chat.includeScreen) { fieldFocused = true }
     }
 
     private var content: some View {
@@ -419,6 +489,14 @@ struct AtlasPromptView: View {
                     .foregroundStyle(.white)
                     .focused($fieldFocused)
                     .onSubmit { chat.send() }
+                Button {
+                    chat.includeScreen.toggle()
+                } label: {
+                    Image(systemName: "camera.viewfinder")
+                        .foregroundStyle(chat.includeScreen ? .orange : .gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help(Text("Send this screen with the next message"))
                 if chat.isBusy {
                     ProgressView()
                         .controlSize(.small)
@@ -443,6 +521,12 @@ struct AtlasPromptView: View {
                 }
             }
 
+            if chat.includeScreen {
+                Text("A screenshot of this screen goes with your next message.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if chat.hasConversation {
                 conversation
             }
@@ -453,10 +537,15 @@ struct AtlasPromptView: View {
 
     private var conversation: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(chat.question)
-                .font(.caption)
-                .foregroundStyle(.gray)
-                .lineLimit(2)
+            HStack(spacing: 5) {
+                if chat.questionHasScreen {
+                    Image(systemName: "camera.viewfinder")
+                }
+                Text(chat.question)
+                    .lineLimit(2)
+            }
+            .font(.caption)
+            .foregroundStyle(.gray)
 
             if !chat.answer.isEmpty {
                 ScrollView {

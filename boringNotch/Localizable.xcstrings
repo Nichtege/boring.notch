@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Send this screen with the next message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesen Bildschirm mit der nächsten Nachricht schicken"
+          }
+        }
+      }
+    },
+    "A screenshot of this screen goes with your next message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Screenshot dieses Bildschirms geht mit deiner nächsten Nachricht mit."
+          }
+        }
+      }
+    },
+    "Allow Screen Recording for Boring Notch in System Settings, then restart the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube Boring Notch die Bildschirmaufnahme in den Systemeinstellungen und starte die App danach neu."
+          }
+        }
+      }
+    },
+    "The screenshot couldn't be taken." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Screenshot konnte nicht aufgenommen werden."
+          }
+        }
+      }
+    },
+    "Taking a screenshot…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot wird aufgenommen …"
+          }
+        }
+      }
+    },
     "Ask Atlas…" : {
       "localizations" : {
         "de" : {
