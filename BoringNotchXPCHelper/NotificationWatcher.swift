@@ -12,7 +12,7 @@ import AppKit
 import ApplicationServices
 import Foundation
 
-private let notificationCenterBundleID = "com.apple.notificationcenterui"
+private let notificationCenterPath = "/System/Library/CoreServices/NotificationCenter.app/Contents/MacOS/NotificationCenter"
 private let orderedChildrenAttribute = "AXOrderedChildren"
 private let stackingIdentifierAttribute = "AXStackingIdentifier"
 private let maxAccessibilityNodes = 1_024
@@ -25,7 +25,7 @@ private let settleDelay: TimeInterval = 0.15
 /// Children of windows that aren't watched for banners report events too, and a scan isn't cheap. The
 /// first scan after a quiet moment still runs at once.
 private let minScanInterval: TimeInterval = 0.25
-private let permissionCheckInterval: TimeInterval = 5
+private let healthCheckInterval: TimeInterval = 5
 private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
 /// be moved until then (about half a second). Moving it back at once would show the end of that slide.
@@ -38,6 +38,26 @@ private let reattachAttempts = 30
 
 private func isParked(_ position: CGPoint) -> Bool {
     abs(position.x - parkingPosition.x) < 1 && abs(position.y - parkingPosition.y) < 1
+}
+
+private func executablePath(of processIdentifier: pid_t) -> String? {
+    var path = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+    guard proc_pidpath(processIdentifier, &path, UInt32(path.count)) > 0 else { return nil }
+    return String(cString: path)
+}
+
+/// Asks the kernel. `NSRunningApplication` only updates on a turn of the main run loop, and this service
+/// doesn't turn one: its Info.plist sets no RunLoopType, so the main thread sits in dispatch_main. A
+/// Notification Center that has exited could look alive there for good, and its successor never appear.
+private func notificationCenterProcess() -> pid_t? {
+    let size = MemoryLayout<pid_t>.size
+    let needed = proc_listpids(UInt32(PROC_UID_ONLY), getuid(), nil, 0)
+    guard needed > 0 else { return nil }
+
+    var processes = [pid_t](repeating: 0, count: Int(needed) / size + 16)
+    let listed = proc_listpids(UInt32(PROC_UID_ONLY), getuid(), &processes, Int32(processes.count * size))
+    guard listed > 0 else { return nil }
+    return processes.prefix(Int(listed) / size).first { $0 > 0 && executablePath(of: $0) == notificationCenterPath }
 }
 
 private extension AXUIElement {
@@ -165,7 +185,7 @@ final class NotificationWatcher {
     /// relaunched instance.
     private var exitSource: DispatchSourceProcess?
     private var reattachWorkItem: DispatchWorkItem?
-    private var permissionTimer: DispatchSourceTimer?
+    private var healthTimer: DispatchSourceTimer?
 
     var isRunning: Bool { appElement != nil }
 
@@ -176,14 +196,10 @@ final class NotificationWatcher {
 
     @discardableResult
     func start() -> Bool {
-        guard AXIsProcessTrusted(), !isRunning,
-              let application = NSRunningApplication.runningApplications(
-                withBundleIdentifier: notificationCenterBundleID
-              ).first(where: { !$0.isTerminated }) else {
+        guard AXIsProcessTrusted(), !isRunning, let processIdentifier = notificationCenterProcess() else {
             return false
         }
 
-        let processIdentifier = application.processIdentifier
         appElement = AXUIElementCreateApplication(processIdentifier)
         guard installObserver(for: processIdentifier) else {
             appElement = nil
@@ -192,7 +208,7 @@ final class NotificationWatcher {
 
         self.processIdentifier = processIdentifier
         watchForExit(of: processIdentifier)
-        watchPermission()
+        watchHealth()
         scan()
         return true
     }
@@ -211,14 +227,17 @@ final class NotificationWatcher {
             identifier: processIdentifier, eventMask: .exit, queue: .main
         )
         source.setEventHandler { [weak self] in
-            guard let self else { return }
-            self.exitSource?.cancel()
-            self.exitSource = nil
-            self.detach()
-            self.reattach(remainingAttempts: reattachAttempts)
+            self?.notificationCenterExited()
         }
         exitSource = source
         source.resume()
+    }
+
+    private func notificationCenterExited() {
+        exitSource?.cancel()
+        exitSource = nil
+        detach()
+        reattach(remainingAttempts: reattachAttempts)
     }
 
     /// launchd relaunches Notification Center within a moment; retry once a second until the new
@@ -243,8 +262,8 @@ final class NotificationWatcher {
         restoreAllWindows()
         settleWorkItem?.cancel()
         settleWorkItem = nil
-        permissionTimer?.cancel()
-        permissionTimer = nil
+        healthTimer?.cancel()
+        healthTimer = nil
         if let observer = axObserver {
             if let appElement {
                 removeObserverNotifications(from: appElement, observer: observer)
@@ -610,10 +629,8 @@ final class NotificationWatcher {
         guard AXIsProcessTrusted() else { return }
         if let windows = appElement?.windows() {
             restoreStrandedWindows(windows)
-        } else if !isRunning {
-            for application in NSRunningApplication.runningApplications(withBundleIdentifier: notificationCenterBundleID) {
-                restoreStrandedWindows(AXUIElementCreateApplication(application.processIdentifier).windows() ?? [])
-            }
+        } else if !isRunning, let processIdentifier = notificationCenterProcess() {
+            restoreStrandedWindows(AXUIElementCreateApplication(processIdentifier).windows() ?? [])
         }
     }
 
@@ -687,17 +704,22 @@ final class NotificationWatcher {
     }
 
     /// An observer may not survive the permission going away and coming back, and only a new start
-    /// makes a new one. So it's checked here, and the app hears about it when the watcher stops.
-    private func watchPermission() {
-        permissionTimer?.cancel()
+    /// makes a new one. So it's checked here, and the app hears about it when the watcher stops. The exit
+    /// of a process that was already gone when it was first watched may never be reported, so that too.
+    private func watchHealth() {
+        healthTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + permissionCheckInterval, repeating: permissionCheckInterval)
+        timer.schedule(deadline: .now() + healthCheckInterval, repeating: healthCheckInterval)
         timer.setEventHandler { [weak self] in
+            guard let self else { return }
             if !AXIsProcessTrusted() {
-                self?.accessibilityLost()
+                self.accessibilityLost()
+            } else if let processIdentifier = self.processIdentifier,
+                      executablePath(of: processIdentifier) != notificationCenterPath {
+                self.notificationCenterExited()
             }
         }
-        permissionTimer = timer
+        healthTimer = timer
         timer.resume()
     }
 
@@ -772,6 +794,7 @@ final class NotificationWatcher {
         guard !target.isEmpty else { return nil }
         if let cached = bundleIDCache[target] { return cached }
 
+        // May be out of date in this service, see notificationCenterProcess. The search below covers for it.
         let running = NSWorkspace.shared.runningApplications
             .filter {
                 guard let localizedName = $0.localizedName else { return false }
