@@ -63,16 +63,8 @@ struct FileShareView: View {
                         ))
                         .frame(width: 55, height: 55)
                     Image(systemName: "square.and.arrow.up")
-                    Group {
-                        if let imgData = selectedProvider.imageData, let nsImg = NSImage(data: imgData) {
-                            Image(nsImage: nsImg)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                        } else {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                    }
-                    .frame(width: 34, height: 34)
+                    selectedProvider.icon
+                        .frame(width: 34, height: 34)
                         .foregroundStyle(
                             vm.dropZoneTargeting ? Color.accentColor : Color.gray
                         )
@@ -113,6 +105,20 @@ struct FileShareView: View {
     
     private func handleClick() async {
         await quickShare.showFilePicker(for: selectedProvider, from: hostView)
+    }
+}
+
+extension QuickShareProvider {
+    /// The service's own icon, or the general one for sharing.
+    @ViewBuilder
+    var icon: some View {
+        if let imgData = imageData, let nsImg = NSImage(data: imgData) {
+            Image(nsImage: nsImg)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else {
+            Image(systemName: "square.and.arrow.up")
+        }
     }
 }
 
