@@ -173,7 +173,14 @@ final class MusicOutputController: ObservableObject {
     @MainActor
     func refresh() async {
         guard Date() >= ignoreSelectionUntil else { return }
-        devices = showingLocalRoute(in: await fetchDevices() ?? [])
+        // No answer from Music isn't an empty list, and the button would go away with it
+        guard let fetched = await fetchDevices() else {
+            if !isMusicRunning {
+                devices = []
+            }
+            return
+        }
+        devices = showingLocalRoute(in: fetched)
     }
 
     @MainActor

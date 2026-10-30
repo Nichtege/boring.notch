@@ -95,8 +95,7 @@ class AppleMusicController {
         let clampedLevel = max(0.0, min(1.0, level))
         let volumePercentage = Int(clampedLevel * 100)
         await executeCommand("set sound volume to \(volumePercentage)")
-        try? await Task.sleep(for: .milliseconds(150))
-        await updatePlaybackInfo()
+        playbackState.volume = clampedLevel
     }
     
     private func isActive() -> Bool {
@@ -116,7 +115,7 @@ class AppleMusicController {
             publishNotPlaying()
             return
         }
-        guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
+        guard let descriptor = await askedTwice({ try? await self.fetchPlaybackInfoAsync() }) else { return }
         guard descriptor.numberOfItems >= 11 else {
             // Only a script that found Music gone has nothing to say
             publishNotPlaying()
@@ -130,7 +129,7 @@ class AppleMusicController {
         let key = trackID.isEmpty ? nil : "\(trackID) \(descriptor.atIndex(2)?.stringValue ?? "")"
         var artwork = self.playbackState.artwork
         if key == nil || key != artworkKey {
-            artwork = await fetchArtwork()
+            artwork = await askedTwice { await self.fetchArtwork() }
             artworkKey = artwork?.isEmpty == false ? key : nil
         }
 
@@ -164,6 +163,13 @@ class AppleMusicController {
         }
     }
     
+    /// Music sometimes doesn't answer one script and does answer the next, and a track's first
+    /// update may be the only one it gets.
+    private func askedTwice<T>(_ ask: () async -> T?) async -> T? {
+        if let answer = await ask() { return answer }
+        return await ask()
+    }
+
     private func executeCommand(_ command: String) async {
         guard isActive() else { return }
         let script = "tell application \"Music\" to \(command)"
@@ -199,7 +205,9 @@ class AppleMusicController {
                 set currentVolume to sound volume
                 set favoriteState to favorited of current track
                 return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatValue, currentVolume, trackID, favoriteState}
-            on error
+            on error errorText number errorNumber
+                -- No answer says nothing about what's playing
+                if errorNumber is -1712 then error errorText number errorNumber
                 return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, "", false}
             end try
         end tell
