@@ -87,10 +87,6 @@ class MusicManager: ObservableObject {
         }
     }
 
-    deinit {
-        destroy()
-    }
-    
     public func destroy() {
         debounceIdleTask?.cancel()
         cancellables.removeAll()

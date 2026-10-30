@@ -67,19 +67,6 @@ class WebcamManager: NSObject, ObservableObject {
         checkCameraAvailability()
     }
     
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        
-        if let session = captureSession {
-            if session.isRunning {
-                session.stopRunning()
-            }
-        }
-        captureSession = nil
-            
-        previewLayer = nil
-    }
-
     // MARK: - Camera Management
     
     /// Checks current authorization status and requests access if needed

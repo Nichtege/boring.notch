@@ -11,11 +11,6 @@ final class XPCHelperClient: NSObject {
     private var monitoringTask: Task<Void, Never>?
     private let notificationDelegate = NotificationXPCDelegate()
     
-    deinit {
-        connection?.invalidate()
-        stopMonitoringAccessibilityAuthorization()
-    }
-    
     // MARK: - Connection Management (Main Actor Isolated)
     
     @MainActor

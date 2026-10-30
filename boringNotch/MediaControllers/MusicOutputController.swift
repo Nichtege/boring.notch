@@ -185,10 +185,6 @@ final class MusicOutputController: ObservableObject {
         }
     }
 
-    deinit {
-        notificationTask?.cancel()
-    }
-
     // MARK: - Public Methods
     @MainActor
     func refresh() async {

@@ -36,12 +36,6 @@ class CalendarManager: ObservableObject {
         }
     }
 
-    deinit {
-        if let observer = eventStoreChangedObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-
     private func setupEventStoreChangedObserver() {
         eventStoreChangedObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,

@@ -34,11 +34,6 @@ final class FullscreenMediaDetector: ObservableObject {
         startMonitoring()
     }
 
-    deinit {
-        monitorTask?.cancel()
-        videoCheckTask?.cancel()
-    }
-
     private func startMonitoring() {
         optionCancellable = Defaults.publisher(.hideNotchOption, options: [])
             .receive(on: RunLoop.main)
