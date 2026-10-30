@@ -17,6 +17,12 @@ final class FullscreenMediaDetector: ObservableObject {
 
     @Published var fullscreenStatus: [String: Bool] = [:]
 
+    /// The closed notch is hidden on a screen because of what's in full screen there. With the option
+    /// set to never, the status is still true for anything in full screen but nothing gets hidden.
+    var hidesClosedNotch: Bool {
+        Defaults[.hideNotchOption] != .never && fullscreenStatus.values.contains(true)
+    }
+
     private var monitorTask: Task<Void, Never>?
     private var videoCheckTask: Task<Void, Never>?
     private var optionCancellable: AnyCancellable?

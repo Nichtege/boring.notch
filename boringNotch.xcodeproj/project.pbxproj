@@ -116,6 +116,8 @@
 		A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000EA1EE000EA1EE000E /* FocusView.swift */; };
 		A1EE000FA1EE000FA1EE000F /* NotchSideBall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */; };
 		A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */; };
+		A1EE0013A1EE0013A1EE0013 /* NotificationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */; };
+		A1EE0015A1EE0015A1EE0015 /* SystemNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */; };
 		B10348D92C74E56000475897 /* ConditionalModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10348D82C74E56000475897 /* ConditionalModifier.swift */; };
 		B10F84A32C6C9596009F3026 /* TestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10F84A22C6C9596009F3026 /* TestView.swift */; };
 		B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */; };
@@ -283,6 +285,8 @@
 		A1EE000EA1EE000EA1EE000E /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
 		A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchSideBall.swift; sourceTree = "<group>"; };
 		A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPanels.swift; sourceTree = "<group>"; };
+		A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCard.swift; sourceTree = "<group>"; };
+		A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotificationManager.swift; sourceTree = "<group>"; };
 		B10348D82C74E56000475897 /* ConditionalModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConditionalModifier.swift; sourceTree = "<group>"; };
 		B10F84A22C6C9596009F3026 /* TestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestView.swift; sourceTree = "<group>"; };
 		B141C2402CA5F53E00AC8CC8 /* SparkleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleView.swift; sourceTree = "<group>"; };
@@ -491,6 +495,7 @@
 				112FB7342CCF16F70015238C /* NotchSpaceManager.swift */,
 				147163992C5D35FF0068B555 /* MusicManager.swift */,
 				A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */,
+				A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */,
 				A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */,
 				149E0B962C737D00006418B1 /* WebcamManager.swift */,
 				14C08BB52C8DE42D000F8AA0 /* CalendarManager.swift */,
@@ -690,6 +695,7 @@
 				A1EE000EA1EE000EA1EE000E /* FocusView.swift */,
 				A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */,
 				A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */,
+				A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */,
 				14D570C52C5F38210011E668 /* BoringHeader.swift */,
 				14D570D12C5F6C6A0011E668 /* BoringExtrasMenu.swift */,
 				1471A8582C6281BD0058408D /* BoringNotchWindow.swift */,
@@ -909,6 +915,8 @@
 				A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */,
 				A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */,
 				A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */,
+				A1EE0013A1EE0013A1EE0013 /* NotificationCard.swift in Sources */,
+				A1EE0015A1EE0015A1EE0015 /* SystemNotificationManager.swift in Sources */,
 				A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */,
 				A1EE000BA1EE000BA1EE000B /* FocusTimer.swift in Sources */,
 				118EBE292E946B3F00D54B5A /* ShareServiceFinder.swift in Sources */,

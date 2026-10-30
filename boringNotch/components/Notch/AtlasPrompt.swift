@@ -433,8 +433,14 @@ final class AtlasPromptController {
 
     private let width: CGFloat = 560
     private var panel: AtlasPromptPanel?
+    private var placedFrame: NSRect = .zero
 
     private init() {}
+
+    /// Where the line is, while it's up. The notification card sits below it.
+    var lineFrame: NSRect? {
+        panel?.isVisible == true ? placedFrame : nil
+    }
 
     func open() {
         show(focus: true)
@@ -462,6 +468,7 @@ final class AtlasPromptController {
 
     func hide() {
         panel?.orderOut(nil)
+        NotificationCardController.shared.reposition()
         if !AtlasChat.shared.isBusy {
             AtlasChat.shared.reset()
         }
@@ -478,6 +485,7 @@ final class AtlasPromptController {
         } else {
             panel.orderFrontRegardless()
         }
+        NotificationCardController.shared.reposition()
     }
 
     /// SwiftUI still takes the field for focused after the line was hidden, so this asks AppKit directly.
@@ -542,7 +550,9 @@ final class AtlasPromptController {
 
         let top = layout.notchBottom(on: screen) - layout.gapBelowNotch
         let frame = NSRect(x: screen.frame.midX - width / 2, y: top - height, width: width, height: height)
+        placedFrame = frame
         layout.move(panel, to: frame, animated: animated)
+        NotificationCardController.shared.reposition()
     }
 }
 

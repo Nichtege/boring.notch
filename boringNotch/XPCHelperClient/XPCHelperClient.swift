@@ -11,6 +11,7 @@ final class XPCHelperClient: NSObject {
     private var connection: NSXPCConnection?
     private var lastKnownAuthorization: Bool?
     private var monitoringTask: Task<Void, Never>?
+    private let notificationDelegate = NotificationXPCDelegate()
     
     deinit {
         connection?.invalidate()
@@ -26,6 +27,9 @@ final class XPCHelperClient: NSObject {
         }
         
         let conn = NSXPCConnection(serviceName: serviceName)
+        
+        conn.exportedInterface = NSXPCInterface(with: (any BoringNotchXPCAppDelegate).self)
+        conn.exportedObject = notificationDelegate
         
         // Late handlers of an old connection must not touch a newer one, and the helper's state is
         // only lost once per connection.
@@ -250,6 +254,15 @@ final class XPCHelperClient: NSObject {
 }
 
 // MARK: - Notification Center banners
+
+/// The app's exported XPC object: banners the helper read come in here.
+final class NotificationXPCDelegate: NSObject, BoringNotchXPCAppDelegate {
+    func notificationDidAppear(_ payload: [String: String]) {
+        Task { @MainActor in
+            SystemNotificationManager.shared.bannerDidAppear(payload)
+        }
+    }
+}
 
 extension XPCHelperClient {
     nonisolated func startNotificationWatching() async -> Bool {

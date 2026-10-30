@@ -79,6 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func onScreenLocked(_ notification: Notification) {
         isScreenLocked = true
+        SystemNotificationManager.shared.dismissAll()
         if !Defaults[.showOnLockScreen] {
             cleanupWindows()
         } else {
@@ -269,6 +270,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = StarlaneManager.shared
+        SystemNotificationManager.shared.start()
 
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {

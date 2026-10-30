@@ -29,6 +29,7 @@ final class NotchPanelLayout {
             screensWithOpenNotch.remove(uuid)
         }
         AtlasPromptController.shared.notchMoved()
+        NotificationCardController.shared.reposition()
     }
 
     /// A panel stays where it is, and a new one goes where the mouse is.
