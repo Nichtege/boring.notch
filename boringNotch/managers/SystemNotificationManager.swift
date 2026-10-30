@@ -136,7 +136,12 @@ final class SystemNotificationManager {
 
     // MARK: - Cards
     func bannerDidAppear(_ payload: [String: String]) {
-        guard let token = payload["token"], !token.isEmpty, canShowCards else { return }
+        guard let token = payload["token"], !token.isEmpty else { return }
+        // The helper has already taken the banner away, and without a card it has to come back
+        guard canShowCards else {
+            XPCHelperClient.shared.restoreNotification(token)
+            return
+        }
 
         let notification = SystemNotification(
             id: token,
@@ -148,7 +153,8 @@ final class SystemNotificationManager {
         )
 
         guard activeNotification == nil || !isCardHovered else {
-            // Its banner stays up until its card comes, so nothing is lost if this one gets dropped
+            // Its banner comes back until its card comes, so nothing is lost if this one gets dropped
+            XPCHelperClient.shared.restoreNotification(token)
             queuedNotifications.append(notification)
             if queuedNotifications.count > queueLimit {
                 queuedNotifications.removeFirst()

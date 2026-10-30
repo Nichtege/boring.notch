@@ -23,14 +23,17 @@ private let structuralIdentifiers: Set<String> = [
     "widgets-overlay-view"
 ]
 private let settleDelay: TimeInterval = 0.15
-/// Children of windows that aren't watched for banners report events too, and a scan isn't cheap. The
-/// first scan after a quiet moment still runs at once.
-private let minScanInterval: TimeInterval = 0.25
+/// Children of windows that aren't watched for banners report events too, and a scan isn't cheap. But a
+/// new banner is on screen until a scan finds it, so this can't be long. The first scan after a quiet
+/// moment runs at once.
+private let minScanInterval: TimeInterval = 0.05
 private let healthCheckInterval: TimeInterval = 5
 private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
 /// be moved until then (about half a second). Moving it back at once would show the end of that slide.
 private let restoreDelay: TimeInterval = 0.35
+/// How long a banner stays out of sight without the app saying that its card is up.
+private let cardConfirmationTime: TimeInterval = 1.5
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 private let restoreAttempts = 3
@@ -473,17 +476,23 @@ final class NotificationWatcher {
                     )
                 }
 
-                // Nothing new has a card yet, so it has to be in sight, also in a window that's
-                // parked for an earlier banner. The app parks it again once the new card is up.
-                restoreWindow(forKey: key(for: window))
-
-                // Several new ones at once are a stack in all but name
+                // Several new ones at once are a stack in all but name, with no card coming
                 guard !centerIsClosing, fresh.count == 1, let reading = fresh.first,
                       NotificationPanelDetection.isMirrorable(subrole: reading.banner.subrole),
-                      !reading.text.isEmpty,
                       let token = liveBanners[reading.identity]?.token
-                else { continue }
-                onBanner?(capture(reading.banner.element, text: reading.text, token: token))
+                else {
+                    restoreWindow(forKey: key(for: window))
+                    continue
+                }
+
+                // Out of sight before anything else, or the banner shows next to the card on its way
+                if !parkBeforeCard(window, banners: banners, identity: reading.identity, token: token) {
+                    restoreWindow(forKey: key(for: window))
+                }
+                // Its text may only come a moment later, as a banner of its own to the next scan
+                if !reading.text.isEmpty {
+                    onBanner?(capture(reading.banner.element, text: reading.text, token: token))
+                }
             }
 
             for identity in Array(liveBanners.keys) where !seen.contains(identity) {
@@ -564,20 +573,42 @@ final class NotificationWatcher {
 
     // MARK: - Parking
 
+    /// A new banner leaves as soon as it's found. Nothing depends on the app for that: unless the app
+    /// says in time that the card is up, the banner comes back by itself.
+    private func parkBeforeCard(_ window: AXUIElement, banners: [Banner], identity: Int, token: String) -> Bool {
+        guard canPark(banners, for: identity), moveAway(window, token: token) else { return false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + cardConfirmationTime) { [weak self] in
+            guard let self, self.liveBanners.values.first(where: { $0.token == token })?.hasCard != true else { return }
+            self.restore(token: token)
+        }
+        return true
+    }
+
     /// Called by the app once the card for this banner is really on screen. Everything is looked at
-    /// again here, since the banner was read a moment ago: anything unclear leaves it where it is.
+    /// again here, since the banner was read a moment ago: anything unclear brings it back.
     func park(token: String) -> Bool {
         guard AXIsProcessTrusted(), let appElement,
               !centerMayBeOpen(appElement),
               let identity = liveBanners.first(where: { $0.value.token == token })?.key
-        else { return false }
+        else {
+            restore(token: token)
+            return false
+        }
         liveBanners[identity]?.hasCard = true
 
         guard let window = liveBanners[identity]?.window,
               case .banners(let banners) = inspect(window),
               canPark(banners, for: identity),
-              let position = window.position()
-        else { return false }
+              moveAway(window, token: token)
+        else {
+            restore(token: token)
+            return false
+        }
+        return true
+    }
+
+    private func moveAway(_ window: AXUIElement, token: String) -> Bool {
+        guard let position = window.position() else { return false }
 
         let windowKey = key(for: window)
         let origin = isParked(position)
