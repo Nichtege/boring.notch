@@ -413,7 +413,14 @@ final class NotificationWatcher {
     private func scan() {
         defer { lastScan = Date() }
         autoreleasepool {
-            guard let appElement, let windows = appElement.windows() else { return }
+            guard let appElement else { return }
+            guard let windows = appElement.windows() else {
+                // A failed restore mostly means a busy Notification Center, which this may well be
+                if restoreRetries > 0 {
+                    retryRestoreLater()
+                }
+                return
+            }
             refreshObservedWindows(windows)
             restoreStrandedWindows(windows)
 
@@ -635,7 +642,11 @@ final class NotificationWatcher {
     }
 
     private func restoreStrandedWindows(_ windows: [AXUIElement]) {
-        for window in windows where parkedWindows[key(for: window)] == nil && window.position().map(isParked) == true {
+        let stranded = windows.filter { parkedWindows[key(for: $0)] == nil && $0.position().map(isParked) == true }
+        if stranded.isEmpty {
+            restoreRetries = 0
+        }
+        for window in stranded {
             moveOffParking(window, to: lastOrigin ?? restingOrigin(of: window))
         }
     }
@@ -683,16 +694,19 @@ final class NotificationWatcher {
             }
         }
 
-        if restoreRetries < maxRestoreRetries {
-            restoreRetries += 1
-            if restoreRetries == maxRestoreRetries {
-                NSLog("[boringNotch] a notification window could not be moved back")
-            }
-            if isRunning {
-                scheduleSettleScan()
-            }
-        }
+        retryRestoreLater()
         return false
+    }
+
+    private func retryRestoreLater() {
+        guard restoreRetries < maxRestoreRetries else { return }
+        restoreRetries += 1
+        if restoreRetries == maxRestoreRetries {
+            NSLog("[boringNotch] a notification window could not be moved back")
+        }
+        if isRunning {
+            scheduleSettleScan()
+        }
     }
 
     private func tryMovingOffParking(_ window: AXUIElement, to origin: CGPoint) -> Bool {
