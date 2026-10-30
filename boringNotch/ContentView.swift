@@ -62,9 +62,26 @@ struct ContentView: View {
 
     private let starlaneBannerSideWidth: CGFloat = 190
 
+    private var musicTakesNotch: Bool {
+        (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
+    }
+
     private var isBareClosedNotch: Bool {
-        let musicTakesNotch = (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
-        return !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch && !vm.hideOnClosed
+        !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch && !vm.hideOnClosed
+    }
+
+    /// One thing keeps the notch; the next one goes into the ball beside it.
+    private var sideBallActivity: NotchSideActivity? {
+        guard !coordinator.expandingView.show, vm.notchState == .closed, !vm.hideOnClosed else { return nil }
+        let hasWaitingTerminals = (starlane.summary?.needs ?? 0) > 0
+        if musicTakesNotch {
+            return focusTimer.isRunning ? .focus : hasWaitingTerminals ? .starlane : nil
+        }
+        return focusTimer.isRunning && hasWaitingTerminals ? .starlane : nil
+    }
+
+    private var sideBallDiameter: CGFloat {
+        max(0, vm.effectiveClosedNotchHeight - 6)
     }
 
     private var showsFocusLiveActivity: Bool {
@@ -115,6 +132,22 @@ struct ContentView: View {
         }()
         
         ZStack(alignment: .top) {
+            // Before the notch, so a ball comes out from behind it
+            if let activity = sideBallActivity, sideBallDiameter > 16 {
+                NotchSideBall(activity: activity, diameter: sideBallDiameter) {
+                    coordinator.currentView = activity == .focus ? .focus : .starlane
+                    doOpen()
+                }
+                .transition(.modifier(
+                    active: NotchSideBallEmergence(progress: 0, diameter: sideBallDiameter),
+                    identity: NotchSideBallEmergence(progress: 1, diameter: sideBallDiameter)
+                ))
+                .offset(
+                    x: computedChinWidth / 2 + NotchSideBall.gapToNotch + sideBallDiameter / 2,
+                    y: (vm.effectiveClosedNotchHeight - sideBallDiameter) / 2
+                )
+            }
+
             VStack(spacing: 0) {
                 let mainLayout = NotchLayout()
                     .frame(alignment: .top)
@@ -229,6 +262,7 @@ struct ContentView: View {
                 }
             }
         }
+        .animation(NotchSideBall.animation, value: sideBallActivity == nil)
         .padding(.bottom, 8)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .compositingGroup()
@@ -453,7 +487,7 @@ struct ContentView: View {
                 )
                 .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
                 .overlay(alignment: .topTrailing) {
-                    if (starlane.summary?.needs ?? 0) > 0 {
+                    if (starlane.summary?.needs ?? 0) > 0 && sideBallActivity != .starlane {
                         Circle()
                             .fill(.orange)
                             .frame(width: 7, height: 7)
@@ -513,9 +547,7 @@ struct ContentView: View {
                 )
 
             HStack {
-                if focusTimer.isRunning {
-                    FocusShortTime()
-                } else if useMusicVisualizer {
+                if useMusicVisualizer {
                     Rectangle()
                         .fill(
                             Defaults[.coloredSpectrogram]

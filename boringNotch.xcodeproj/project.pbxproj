@@ -39,6 +39,7 @@
 		1153BD9A2D98824300979FB0 /* SpotifyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1153BD992D98824300979FB0 /* SpotifyController.swift */; };
 		A1EE0001A1EE0001A1EE0001 /* MusicOutputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0002A1EE0002A1EE0002 /* MusicOutputController.swift */; };
 		A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */; };
+		A1EE000FA1EE000FA1EE000F /* NotchSideBall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */; };
 		A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000EA1EE000EA1EE000E /* FocusView.swift */; };
 		A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */; };
 		A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */; };
@@ -216,6 +217,7 @@
 		1153BD992D98824300979FB0 /* SpotifyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyController.swift; sourceTree = "<group>"; };
 		A1EE0002A1EE0002A1EE0002 /* MusicOutputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicOutputController.swift; sourceTree = "<group>"; };
 		A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneView.swift; sourceTree = "<group>"; };
+		A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchSideBall.swift; sourceTree = "<group>"; };
 		A1EE000EA1EE000EA1EE000E /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
 		A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasPrompt.swift; sourceTree = "<group>"; };
 		A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneManager.swift; sourceTree = "<group>"; };
@@ -726,6 +728,7 @@
 				1160F8D72DD98230006FBB94 /* NotchShape.swift */,
 				9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */,
 				A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */,
+				A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */,
 				A1EE000EA1EE000EA1EE000E /* FocusView.swift */,
 				A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */,
 				14D570C52C5F38210011E668 /* BoringHeader.swift */,
@@ -959,6 +962,7 @@
 				1153BD9A2D98824300979FB0 /* SpotifyController.swift in Sources */,
 				A1EE0001A1EE0001A1EE0001 /* MusicOutputController.swift in Sources */,
 				A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */,
+				A1EE000FA1EE000FA1EE000F /* NotchSideBall.swift in Sources */,
 				A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */,
 				A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */,
 				A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */,
