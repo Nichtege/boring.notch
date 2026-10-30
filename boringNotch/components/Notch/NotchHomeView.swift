@@ -493,9 +493,6 @@ struct VolumeControlView: View {
                 }
             }
         }
-        .onDisappear {
-            // volumeUpdateTask?.cancel() // No longer needed
-        }
     }
     
     

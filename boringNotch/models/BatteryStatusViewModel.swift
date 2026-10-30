@@ -18,7 +18,6 @@ class BatteryStatusViewModel: ObservableObject {
     @Published private(set) var statusText: String = ""
 
     private let managerBattery = BatteryActivityManager.shared
-    private var managerBatteryId: Int?
 
     static let shared = BatteryStatusViewModel()
 
@@ -37,7 +36,7 @@ class BatteryStatusViewModel: ObservableObject {
 
     /// Sets up the monitor to observe battery events
     private func setupMonitor() {
-        managerBatteryId = managerBattery.addObserver { [weak self] event in
+        _ = managerBattery.addObserver { [weak self] event in
             guard let self = self else { return }
             self.handleBatteryEvent(event)
         }
@@ -111,12 +110,4 @@ class BatteryStatusViewModel: ObservableObject {
             self.coordinator.toggleExpandingView(status: true, type: .battery)
         }
     }
-
-    deinit {
-        print("🔌 Cleaning up battery monitoring...")
-        if let managerBatteryId: Int = managerBatteryId {
-            managerBattery.removeObserver(byId: managerBatteryId)
-        }
-    }
-
 }
