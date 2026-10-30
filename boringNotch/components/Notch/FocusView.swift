@@ -73,7 +73,6 @@ struct FocusView: View {
 /// Beside the closed notch while a session runs and no music takes the space.
 struct FocusLiveActivity: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject var timer = FocusTimer.shared
 
     var body: some View {
         HStack(spacing: 0) {

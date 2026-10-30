@@ -10,7 +10,6 @@ import Defaults
 import SwiftUI
 
 struct CameraPreviewView: View {
-    @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var webcamManager: WebcamManager
     
     // Track if authorization request is in progress to avoid multiple requests

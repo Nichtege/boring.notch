@@ -95,7 +95,6 @@ struct SystemEventIndicatorModifier: View {
 }
 
 struct DraggableProgressBar: View {
-    @EnvironmentObject var vm: BoringViewModel
     @Binding var value: CGFloat
     var onChange: ((CGFloat) -> Void)? = nil
     
