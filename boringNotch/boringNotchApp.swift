@@ -9,6 +9,7 @@ import AVFoundation
 import Combine
 import Defaults
 import KeyboardShortcuts
+import LaunchAtLogin
 import Sparkle
 import SwiftUI
 
@@ -281,6 +282,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = StarlaneManager.shared
+
+        // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
+        if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
+            Defaults[.didEnableLaunchAtLogin] = true
+            LaunchAtLogin.isEnabled = true
+        }
 
         NotificationCenter.default.addObserver(
             self,

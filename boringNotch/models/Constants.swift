@@ -142,6 +142,7 @@ extension Defaults.Keys {
 
     // MARK: Starlane
     static let starlaneEnabled = Key<Bool>("starlaneEnabled", default: true)
+    static let didEnableLaunchAtLogin = Key<Bool>("didEnableLaunchAtLogin", default: false)
     static let starlaneBanner = Key<Bool>("starlaneBanner", default: true)
     static let starlaneShowDeadline = Key<Bool>("starlaneShowDeadline", default: true)
 
