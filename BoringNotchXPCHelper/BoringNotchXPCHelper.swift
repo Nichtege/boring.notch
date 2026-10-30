@@ -67,7 +67,10 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
                     "body": notification.body ?? ""
                 ])
             }
-            watcher.onStopped = { Self.stopWatching() }
+            watcher.onStopped = {
+                Self.stopWatching()
+                delegate?.notificationWatchingDidStop()
+            }
             let started = watcher.isRunning || watcher.start()
             if started && !Self.holdsWatchingTransaction {
                 xpc_transaction_begin()

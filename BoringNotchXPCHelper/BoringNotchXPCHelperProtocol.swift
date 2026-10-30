@@ -32,6 +32,7 @@ import Foundation
 /// Calls from the helper back to the app.
 @objc protocol BoringNotchXPCAppDelegate {
     func notificationDidAppear(_ payload: [String: String])
+    func notificationWatchingDidStop()
 }
 
 /*

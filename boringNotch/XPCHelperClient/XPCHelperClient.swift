@@ -262,6 +262,12 @@ final class NotificationXPCDelegate: NSObject, BoringNotchXPCAppDelegate {
             SystemNotificationManager.shared.bannerDidAppear(payload)
         }
     }
+
+    func notificationWatchingDidStop() {
+        Task { @MainActor in
+            SystemNotificationManager.shared.checkWatchingNow()
+        }
+    }
 }
 
 extension XPCHelperClient {

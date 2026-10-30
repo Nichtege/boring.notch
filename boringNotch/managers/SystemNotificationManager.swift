@@ -29,7 +29,11 @@ final class SystemNotificationManager {
 
     private let queueLimit = 5
     private let displayDuration: Duration = .seconds(8)
-    private let permissionCheckInterval: Duration = .seconds(3)
+    // A check is two trips to the helper. While it's watching it looks after the permission itself and
+    // says when it stops, so this is only a safety net.
+    private let watchingCheckInterval: Duration = .seconds(30)
+    // Waiting for the permission to be given
+    private let waitingCheckInterval: Duration = .seconds(3)
     private var activeNotification: SystemNotification?
     private var queuedNotifications: [SystemNotification] = []
     private var isCardHovered = false
@@ -73,36 +77,45 @@ final class SystemNotificationManager {
 
     // MARK: - Watching
     private func setEnabled(_ enabled: Bool) {
-        permissionTask?.cancel()
-        permissionTask = nil
         guard enabled else {
+            permissionTask?.cancel()
+            permissionTask = nil
             XPCHelperClient.shared.stopNotificationWatching()
             dismissAll()
             return
         }
+        checkWatchingNow()
+    }
 
-        permissionTask = Task { [weak self, permissionCheckInterval] in
+    /// Checks at once and starts over from there, slowly once the helper is watching.
+    func checkWatchingNow() {
+        permissionTask?.cancel()
+        permissionTask = nil
+        guard Defaults[.showNotificationsInNotch] else { return }
+
+        permissionTask = Task { [weak self, watchingCheckInterval, waitingCheckInterval] in
             while !Task.isCancelled {
-                await self?.syncWatching()
-                try? await Task.sleep(for: permissionCheckInterval)
+                let isWatching = await self?.syncWatching() ?? false
+                try? await Task.sleep(for: isWatching ? watchingCheckInterval : waitingCheckInterval)
             }
         }
     }
 
     /// Runs all the time the feature is on, since the permission can come and go. Starting is harmless
-    /// when the helper is already watching, and heals anything that made it stop.
-    private func syncWatching() async {
-        guard Defaults[.showNotificationsInNotch] else { return }
+    /// when the helper is already watching, and heals anything that made it stop. True if it's watching.
+    private func syncWatching() async -> Bool {
+        guard Defaults[.showNotificationsInNotch] else { return false }
 
         var authorized = await XPCHelperClient.shared.isAccessibilityAuthorized()
         if !authorized, !didAskForPermission {
             didAskForPermission = true
             authorized = await XPCHelperClient.shared.ensureAccessibilityAuthorization(promptIfNeeded: true)
         }
-        guard Defaults[.showNotificationsInNotch] else { return }
+        guard Defaults[.showNotificationsInNotch] else { return false }
 
+        var isWatching = false
         if authorized {
-            _ = await XPCHelperClient.shared.startNotificationWatching()
+            isWatching = await XPCHelperClient.shared.startNotificationWatching()
             // Turned off while the helper was on its way
             if !Defaults[.showNotificationsInNotch] {
                 XPCHelperClient.shared.stopNotificationWatching()
@@ -112,6 +125,7 @@ final class SystemNotificationManager {
             dismissAll()
         }
         wasAuthorized = authorized
+        return isWatching
     }
 
     /// The helper is gone and with it whatever it had parked: a new one looks for such windows when
@@ -119,7 +133,7 @@ final class SystemNotificationManager {
     private func helperLost() async {
         try? await Task.sleep(for: .seconds(1))
         XPCHelperClient.shared.restoreStrandedNotifications()
-        await syncWatching()
+        checkWatchingNow()
     }
 
     // MARK: - Cards

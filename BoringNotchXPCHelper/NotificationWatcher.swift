@@ -22,6 +22,10 @@ private let structuralIdentifiers: Set<String> = [
     "widgets-overlay-view"
 ]
 private let settleDelay: TimeInterval = 0.15
+/// Children of windows that aren't watched for banners report events too, and a scan isn't cheap. The
+/// first scan after a quiet moment still runs at once.
+private let minScanInterval: TimeInterval = 0.25
+private let permissionCheckInterval: TimeInterval = 5
 private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
 /// be moved until then (about half a second). Moving it back at once would show the end of that slide.
@@ -147,6 +151,7 @@ final class NotificationWatcher {
     private var observerRunLoop: AXObserverRunLoop?
     private var observerContext: ObserverContext?
     private var scanScheduled = false
+    private var lastScan = Date.distantPast
     private var settleWorkItem: DispatchWorkItem?
     private var observedWindows: [CFHashCode: AXUIElement] = [:]
     private var liveBanners: [Int: LiveBanner] = [:]
@@ -187,6 +192,7 @@ final class NotificationWatcher {
 
         self.processIdentifier = processIdentifier
         watchForExit(of: processIdentifier)
+        watchPermission()
         scan()
         return true
     }
@@ -368,7 +374,7 @@ final class NotificationWatcher {
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.settleWorkItem = nil
-            self.scan()
+            self.scheduleScan()
         }
         settleWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay, execute: workItem)
@@ -377,7 +383,8 @@ final class NotificationWatcher {
     private func scheduleScan() {
         guard !scanScheduled else { return }
         scanScheduled = true
-        DispatchQueue.main.async { [weak self] in
+        let wait = max(0, minScanInterval - Date().timeIntervalSince(lastScan))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             guard let self else { return }
             self.scanScheduled = false
             self.scan()
@@ -385,6 +392,7 @@ final class NotificationWatcher {
     }
 
     private func scan() {
+        defer { lastScan = Date() }
         autoreleasepool {
             guard let appElement, let windows = appElement.windows() else { return }
             refreshObservedWindows(windows)
@@ -557,7 +565,6 @@ final class NotificationWatcher {
         let tokens = (parkedWindows[windowKey]?.tokens ?? []).union([token])
         parkedWindows[windowKey] = ParkedWindow(window: window, origin: origin, tokens: tokens)
         lastOrigin = origin
-        watchPermission()
         return true
     }
 
@@ -679,17 +686,15 @@ final class NotificationWatcher {
         return result == .invalidUIElement || (result == .success && window.position().map(isParked) != true)
     }
 
+    /// An observer may not survive the permission going away and coming back, and only a new start
+    /// makes a new one. So it's checked here, and the app hears about it when the watcher stops.
     private func watchPermission() {
-        guard permissionTimer == nil else { return }
+        permissionTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.schedule(deadline: .now() + permissionCheckInterval, repeating: permissionCheckInterval)
         timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            if self.parkedWindows.isEmpty {
-                self.permissionTimer?.cancel()
-                self.permissionTimer = nil
-            } else if !AXIsProcessTrusted() {
-                self.accessibilityLost()
+            if !AXIsProcessTrusted() {
+                self?.accessibilityLost()
             }
         }
         permissionTimer = timer
