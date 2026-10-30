@@ -39,7 +39,8 @@ final class FullscreenMediaDetector: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                self.updateStatus(with: self.currentSpaces)
+                // The status can stay the same while it comes to mean something else: "never" hides nothing
+                self.updateStatus(with: self.currentSpaces, alwaysPublish: true)
                 self.updateVideoChecks()
             }
 
@@ -53,7 +54,7 @@ final class FullscreenMediaDetector: ObservableObject {
         }
     }
 
-    private func updateStatus(with spaces: [MacroVisionKit.FullScreenMonitor.SpaceInfo]) {
+    private func updateStatus(with spaces: [MacroVisionKit.FullScreenMonitor.SpaceInfo], alwaysPublish: Bool = false) {
         var newStatus: [String: Bool] = [:]
         let option = Defaults[.hideNotchOption]
         let videoIsPlaying = option == .videoOnly && !spaces.isEmpty && isVideoPlaying()
@@ -73,7 +74,7 @@ final class FullscreenMediaDetector: ObservableObject {
         }
 
         // The video check comes by every 2 s, and most of the time nothing has changed
-        if newStatus != fullscreenStatus {
+        if alwaysPublish || newStatus != fullscreenStatus {
             fullscreenStatus = newStatus
         }
     }
