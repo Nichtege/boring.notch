@@ -668,6 +668,7 @@ struct Media: View {
                             customBadge(text: "Beta")
                         }
                 ) {
+                    Text("Hide while a video plays").tag(HideNotchOption.videoOnly)
                     Text("Hide for all apps").tag(HideNotchOption.always)
                     Text("Hide for media app only").tag(
                         HideNotchOption.nowPlayingOnly)

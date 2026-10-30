@@ -10808,6 +10808,16 @@
         }
       }
     },
+    "Hide while a video plays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausblenden, während ein Video läuft"
+          }
+        }
+      }
+    },
     "Hide from screen recording" : {
       "localizations" : {
         "ar" : {
