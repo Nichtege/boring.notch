@@ -3,8 +3,9 @@
 //  BoringNotchXPCHelper
 //
 //  Reads the banners Notification Center shows. A banner's window only leaves the screen when the app
-//  says its card is up, and every way out of here puts the window back. What a banner says stays in
-//  memory: tokens are made up here, so they hold none of it, and nothing logs it.
+//  says its card is up, and every way out of here puts the window back, as far as Accessibility still
+//  allows that. What a banner says stays in memory: tokens are made up here, so they hold none of it,
+//  and nothing logs it.
 //
 
 import AppKit
@@ -28,6 +29,7 @@ private let restoreDelay: TimeInterval = 0.35
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 private let restoreAttempts = 3
+private let maxRestoreRetries = 10
 private let reattachAttempts = 30
 
 private func isParked(_ position: CGPoint) -> Bool {
@@ -150,6 +152,7 @@ final class NotificationWatcher {
     private var liveBanners: [Int: LiveBanner] = [:]
     private var parkedWindows: [Int: ParkedWindow] = [:]
     private var lastOrigin: CGPoint?
+    private var restoreRetries = 0
     private var centerLastOpen: Date?
     private var bundleIDCache: [String: String?] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
@@ -250,6 +253,7 @@ final class NotificationWatcher {
         observerRunLoop = nil
         observerContext = nil
         scanScheduled = false
+        restoreRetries = 0
         liveBanners.removeAll()
         appElement = nil
         processIdentifier = nil
@@ -612,8 +616,9 @@ final class NotificationWatcher {
         }
     }
 
-    /// For when a window's own place was lost with the helper. Notification Center places the window
-    /// itself before it shows something new, so this only has to be on screen, where banners belong.
+    /// For when a window's own place was lost with the helper. This only has to be on screen, where
+    /// banners belong. Reports differ on whether Notification Center places the window again itself
+    /// before its next banner, so nothing relies on that.
     private func restingOrigin(of window: AXUIElement) -> CGPoint {
         let display = CGDisplayBounds(CGMainDisplayID())
         return CGPoint(x: display.maxX - (window.size()?.width ?? 0), y: display.minY)
@@ -631,12 +636,8 @@ final class NotificationWatcher {
     }
 
     private func restoreWindow(forKey key: Int) {
-        guard let parked = parkedWindows[key] else { return }
-        if !moveOffParking(parked.window, to: parked.origin), !AXIsProcessTrusted() {
-            accessibilityLost()
-            return
-        }
-        parkedWindows.removeValue(forKey: key)
+        guard let parked = parkedWindows.removeValue(forKey: key) else { return }
+        moveOffParking(parked.window, to: parked.origin)
     }
 
     /// Immediate: on stop the helper may be about to exit.
@@ -644,23 +645,38 @@ final class NotificationWatcher {
         Array(parkedWindows.keys).forEach(restoreWindow(forKey:))
     }
 
-    /// False if the window is still off screen. A window that couldn't be moved is found again by its
-    /// position in the next scan.
+    /// False if the window is still off screen. It's found again by its position in a later scan, and
+    /// since scans otherwise only follow AX events, a failure asks for one, a limited number of times.
     @discardableResult
     private func moveOffParking(_ window: AXUIElement, to origin: CGPoint) -> Bool {
         for attempt in 1...restoreAttempts {
-            // Notification Center may have placed it already, and its place beats the remembered one
-            if let position = window.position(), !isParked(position) { return true }
-
-            let result = window.move(to: origin)
-            if result == .invalidUIElement { return true }
-            if result == .success, window.position().map(isParked) != true { return true }
+            if tryMovingOffParking(window, to: origin) {
+                restoreRetries = 0
+                return true
+            }
             if attempt < restoreAttempts {
                 Thread.sleep(forTimeInterval: 0.1)
             }
         }
-        NSLog("[boringNotch] a notification window could not be moved back")
+
+        if restoreRetries < maxRestoreRetries {
+            restoreRetries += 1
+            if restoreRetries == maxRestoreRetries {
+                NSLog("[boringNotch] a notification window could not be moved back")
+            }
+            if isRunning {
+                scheduleSettleScan()
+            }
+        }
         return false
+    }
+
+    private func tryMovingOffParking(_ window: AXUIElement, to origin: CGPoint) -> Bool {
+        // Notification Center may have placed it already, and its place beats the remembered one
+        if let position = window.position(), !isParked(position) { return true }
+
+        let result = window.move(to: origin)
+        return result == .invalidUIElement || (result == .success && window.position().map(isParked) != true)
     }
 
     private func watchPermission() {
@@ -680,10 +696,11 @@ final class NotificationWatcher {
         timer.resume()
     }
 
-    /// The permission was taken back with a window off screen. Accessibility can't move it any more, so
-    /// what's parked stays there until it expires on its own. The system's own process is left alone.
+    /// The permission reads as gone. If it is, windows can't be moved any more: what's parked stays off
+    /// screen, its banner expires on its own, and the window comes back with the next start that has the
+    /// permission. A later banner could land off screen until then. The system's own process is left
+    /// alone. If the reading was false, stopping has just put everything back.
     private func accessibilityLost() {
-        parkedWindows.removeAll()
         stop()
         onStopped?()
     }
