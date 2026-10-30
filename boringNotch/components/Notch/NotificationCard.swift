@@ -23,17 +23,35 @@ private final class FirstClickHostingView<Content: View>: NSHostingView<Content>
 
 @MainActor
 final class NotificationCardModel: ObservableObject {
-    @Published var notification: SystemNotification?
-    @Published var isPresented = false
+    /// Behind the notch, then a ball with the app's icon below it, then the ball opened up into the card.
+    enum Stage {
+        case hidden, ball, card
+    }
+
+    // A new image on every update would crossfade with the old one while the icon moves
+    @Published var notification: SystemNotification? {
+        didSet { icon = notification?.bundleID.flatMap(AppIconAsNSImage(for:)) }
+    }
+    @Published var stage = Stage.hidden
+    private(set) var icon: NSImage?
+
+    var isPresented: Bool {
+        stage != .hidden
+    }
 }
 
 @MainActor
 final class NotificationCardController {
     static let shared = NotificationCardController()
 
-    private let width: CGFloat = 400
+    static let width: CGFloat = 400
+    /// Room around the card for the springs to overshoot, or the panel's edges would cut it off.
+    static let bleed: CGFloat = 12
+
     // Long enough for the spring to come to rest, or for the fade with reduced motion
-    private let motionDuration: Duration = .milliseconds(800)
+    private let motionDuration: Duration = .milliseconds(900)
+    // Shorter than the spring needs to settle, so the ball is still arriving as it opens up
+    private let ballDuration: Duration = .milliseconds(230)
     private let model = NotificationCardModel()
     private var panel: NotificationCardPanel?
     private var cardHeight: CGFloat = 72
@@ -54,22 +72,21 @@ final class NotificationCardController {
         panel.orderFrontRegardless()
         observeScreens()
 
-        let isComingIn = !model.isPresented
-        if isComingIn {
-            panel.hasShadow = false
-        }
+        let isComingIn = model.stage == .hidden
         motionTask = Task { @MainActor [weak self] in
-            if isComingIn {
+            if isComingIn && !Self.reduceMotion {
                 // One frame for the card to measure itself, so it starts from fully behind the notch
                 try? await Task.sleep(for: .milliseconds(20))
                 guard !Task.isCancelled else { return }
-                self?.model.isPresented = true
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.72)) {
+                    self?.model.stage = .ball
+                }
+                try? await Task.sleep(for: self?.ballDuration ?? .seconds(1))
+                guard !Task.isCancelled else { return }
             }
-            // The window's shadow doesn't follow what moves inside it, so it comes once the card rests
-            try? await Task.sleep(for: self?.motionDuration ?? .seconds(1))
-            guard !Task.isCancelled else { return }
-            panel.hasShadow = true
-            panel.invalidateShadow()
+            withAnimation(Self.reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.56, dampingFraction: 0.82)) {
+                self?.model.stage = .card
+            }
         }
         return true
     }
@@ -77,9 +94,17 @@ final class NotificationCardController {
     func hide() {
         guard let panel else { return }
         motionTask?.cancel()
-        panel.hasShadow = false
-        model.isPresented = false
         motionTask = Task { @MainActor [weak self] in
+            if !Self.reduceMotion {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.92)) {
+                    self?.model.stage = .ball
+                }
+                try? await Task.sleep(for: .milliseconds(190))
+                guard !Task.isCancelled else { return }
+            }
+            withAnimation(Self.reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.38, dampingFraction: 0.95)) {
+                self?.model.stage = .hidden
+            }
             try? await Task.sleep(for: self?.motionDuration ?? .seconds(1))
             guard let self, !Task.isCancelled else { return }
             panel.orderOut(nil)
@@ -124,9 +149,13 @@ final class NotificationCardController {
         screenObserver = nil
     }
 
+    private static var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     private func makePanel() -> NotificationCardPanel {
         let panel = NotificationCardPanel(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: cardHeight),
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: cardHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -162,9 +191,10 @@ final class NotificationCardController {
 
         // A line whose screen just went away is no place to line up with
         let top = (lineScreen == nil ? nil : line?.minY) ?? layout.notchBottom(on: screen)
-        let height = cardHeight + layout.gapBelowNotch
+        let width = Self.width + 2 * Self.bleed
+        let height = cardHeight + layout.gapBelowNotch + Self.bleed
         let frame = NSRect(x: screen.frame.midX - width / 2, y: top - height, width: width, height: height)
-        layout.move(panel, to: frame, animated: animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        layout.move(panel, to: frame, animated: animated && !Self.reduceMotion)
     }
 }
 
@@ -178,14 +208,14 @@ private struct NotificationCardView: View {
     @State private var cardHeight: CGFloat = 72
 
     private let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+    private let ballDiameter: CGFloat = 44
+    private let ballIconSize: CGFloat = 30
+    private let cardPadding: CGFloat = 14
+    private let cardIconSize: CGFloat = 40
 
-    private var motion: Animation {
-        reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.5, dampingFraction: 0.8)
-    }
-
-    /// All the way up behind the notch, including the gap.
-    private var hiddenOffset: CGFloat {
-        reduceMotion ? 0 : -(cardHeight + NotchPanelLayout.shared.gapBelowNotch)
+    /// With reduced motion there's no ball: the finished card fades in and out.
+    private var isOpened: Bool {
+        model.stage == .card || reduceMotion
     }
 
     var body: some View {
@@ -197,14 +227,18 @@ private struct NotificationCardView: View {
                         cardHeight = height
                         onHeightChange(height)
                     }
-                    .scaleEffect(model.isPresented || reduceMotion ? 1 : 0.92, anchor: .top)
-                    .offset(y: model.isPresented ? 0 : hiddenOffset)
-                    .opacity(model.isPresented ? 1 : 0)
+                    .modifier(NotificationBallDrop(
+                        progress: model.isPresented || reduceMotion ? 1 : 0,
+                        restingCenter: NotchPanelLayout.shared.gapBelowNotch + cardHeight / 2,
+                        gap: NotchPanelLayout.shared.gapBelowNotch,
+                        diameter: ballDiameter
+                    ))
+                    .opacity(model.isPresented || !reduceMotion ? 1 : 0)
                     .padding(.top, NotchPanelLayout.shared.gapBelowNotch)
+                    .padding(.horizontal, NotificationCardController.bleed)
             }
             Spacer(minLength: 0)
         }
-        .animation(motion, value: model.isPresented)
         .onChange(of: model.isPresented) {
             if !model.isPresented {
                 isHovering = false
@@ -223,9 +257,15 @@ private struct NotificationCardView: View {
             .id(notification.id)
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: notification.id)
-            .padding(14)
+            .padding(cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .smokedGlass(in: shape)
+            // The text waits until the ball has room for it, and always stays inside
+            .opacity(isOpened ? 1 : 0)
+            .blur(radius: isOpened ? 0 : 6)
+            .animation(.easeOut(duration: 0.2).delay(isOpened ? 0.1 : 0), value: isOpened)
+            .mask { outline }
+            .background { shell }
+            .overlay { movingIcon(notification) }
             .contentShape(shape)
             .onHover { hovering in
                 isHovering = hovering
@@ -241,9 +281,48 @@ private struct NotificationCardView: View {
             }
     }
 
+    private var outline: some View {
+        RoundedRectangle(cornerRadius: isOpened ? 26 : ballDiameter / 2, style: .continuous)
+            .frame(width: isOpened ? nil : ballDiameter, height: isOpened ? nil : ballDiameter)
+    }
+
+    /// Black like the notch it comes out of, and smoked glass once it has opened up. The glass keeps its
+    /// size and only gets uncovered, so it isn't rendered anew for every frame of the motion. A window's
+    /// shadow can't follow any of this, and only appears at once when the card rests, so this one's drawn.
+    private var shell: some View {
+        ZStack {
+            outline
+                .foregroundStyle(.black)
+                .shadow(color: .black.opacity(isOpened ? 0.4 : 0), radius: 8, y: 2)
+                .overlay(outline.blendMode(.destinationOut))
+                .compositingGroup()
+            Color.clear
+                .smokedGlass(in: shape)
+                .mask { outline }
+            outline
+                .foregroundStyle(.black)
+                .opacity(isOpened ? 0 : 1)
+        }
+    }
+
+    /// In the middle of the ball, then off to its place in the card.
+    private func movingIcon(_ notification: SystemNotification) -> some View {
+        GeometryReader { geometry in
+            icon(size: isOpened ? cardIconSize : ballIconSize)
+                .id(notification.id)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: notification.id)
+                .position(
+                    x: isOpened ? cardPadding + cardIconSize / 2 : geometry.size.width / 2,
+                    y: isOpened ? cardPadding + cardIconSize / 2 : geometry.size.height / 2
+                )
+        }
+        .allowsHitTesting(false)
+    }
+
     private func content(_ notification: SystemNotification) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            icon(for: notification)
+            Color.clear.frame(width: cardIconSize, height: cardIconSize)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(notification.title ?? notification.appName ?? "")
@@ -271,16 +350,18 @@ private struct NotificationCardView: View {
     }
 
     @ViewBuilder
-    private func icon(for notification: SystemNotification) -> some View {
-        if let image = notification.bundleID.flatMap(AppIconAsNSImage(for:)) {
+    private func icon(size: CGFloat) -> some View {
+        if let image = model.icon {
             Image(nsImage: image)
                 .resizable()
-                .frame(width: 40, height: 40)
+                .frame(width: size, height: size)
         } else {
             Image(systemName: "bell.fill")
-                .font(.system(size: 20))
+                .resizable()
+                .scaledToFit()
+                .padding(size / 4)
                 .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
+                .frame(width: size, height: size)
         }
     }
 
@@ -314,5 +395,71 @@ private struct NotificationCardView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return Text(formatter.localizedString(for: date, relativeTo: now))
+    }
+}
+
+/// How far the ball has come out of the notch: 0 above the panel's top edge, 1 in its place, and past 1
+/// when the spring overshoots. It stretches on the way, joined to the notch by a neck that thins until it snaps.
+private struct NotificationBallDrop: ViewModifier, Animatable {
+    var progress: CGFloat
+    let restingCenter: CGFloat
+    let gap: CGFloat
+    let diameter: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let stretch = sin(min(max(progress, 0), 1) * .pi)
+        let travel = restingCenter + diameter / 2
+        let center = restingCenter - travel * (1 - progress)
+
+        content
+            .scaleEffect(x: 1 - 0.08 * stretch, y: 1 + 0.14 * stretch)
+            .offset(y: -travel * (1 - progress))
+            .overlay(alignment: .top) {
+                BallNeck(center: center, restingCenter: restingCenter, radius: diameter / 2)
+                    .fill(.black)
+                    .frame(width: 3 * diameter, height: max(0, center + diameter / 2))
+                    .offset(y: -gap)
+            }
+    }
+}
+
+/// The liquid between notch and ball: spreads along the notch, thin in the middle, and melts into the ball.
+private struct BallNeck: Shape {
+    let center: CGFloat
+    let restingCenter: CGFloat
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let distance = center - radius
+        // Gone just before the ball is in its place
+        let left = 1 - max(distance, 0) / ((restingCenter - radius) * 0.9)
+        guard left > 0 else { return path }
+
+        let middle = rect.midX
+        let base = radius * 1.7 * pow(left, 0.7)
+        let waist = radius * 0.55 * pow(left, 1.2)
+        let side = radius * 0.77 * min(1, left * 3)
+        let joint = max(center - radius * 0.64, 0)
+
+        path.move(to: CGPoint(x: middle - base, y: 0))
+        path.addCurve(
+            to: CGPoint(x: middle - side, y: joint),
+            control1: CGPoint(x: middle - waist, y: distance * 0.35),
+            control2: CGPoint(x: middle - waist, y: joint * 0.75)
+        )
+        path.addLine(to: CGPoint(x: middle + side, y: joint))
+        path.addCurve(
+            to: CGPoint(x: middle + base, y: 0),
+            control1: CGPoint(x: middle + waist, y: joint * 0.75),
+            control2: CGPoint(x: middle + waist, y: distance * 0.35)
+        )
+        path.closeSubpath()
+        return path
     }
 }
