@@ -11,7 +11,6 @@ import EventKit
 import KeyboardShortcuts
 import LaunchAtLogin
 import SwiftUI
-import SwiftUIIntrospect
 
 struct SettingsView: View {
     @State private var selectedTab = "General"
@@ -1146,8 +1145,7 @@ struct Advanced: View {
                                 ForEach(PresetAccentColor.allCases) { preset in
                                     AccentCircleButton(
                                         isSelected: selectedPresetColor == preset,
-                                        color: preset.color,
-                                        isMulticolor: false
+                                        color: preset.color
                                     ) {
                                         selectedPresetColor = preset
                                         customAccentColor = preset.color
@@ -1298,7 +1296,6 @@ struct AccentCircleButton: View {
     let isSelected: Bool
     let color: Color
     var isSystemDefault: Bool = false
-    var isMulticolor: Bool = false
     let action: () -> Void
     
     var body: some View {

@@ -10,7 +10,6 @@ import SwiftUI
 struct TabButton: View {
     let label: String
     let icon: String
-    let selected: Bool
     let onClick: () -> Void
     
     var body: some View {
@@ -20,11 +19,12 @@ struct TabButton: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Text(LocalizedStringKey(label)))
     }
 }
 
 #Preview {
-    TabButton(label: "Home", icon: "tray.fill", selected: true) {
+    TabButton(label: "Home", icon: "tray.fill") {
         print("Tapped")
     }
 }
