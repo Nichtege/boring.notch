@@ -137,6 +137,7 @@ struct GeneralSettings: View {
     @Default(.automaticallySwitchDisplay) var automaticallySwitchDisplay
     @Default(.enableGestures) var enableGestures
     @Default(.openNotchOnHover) var openNotchOnHover
+    @State private var accessibilityAuthorized = false
     
 
     var body: some View {
@@ -180,6 +181,27 @@ struct GeneralSettings: View {
                     .disabled(showOnAllDisplays)
             } header: {
                 Text("System features")
+            }
+
+            Section {
+                Defaults.Toggle(key: .showNotificationsInNotch) {
+                    Text("Show notifications in the notch")
+                }
+                HStack {
+                    Text("Accessibility access")
+                    Spacer()
+                    (accessibilityAuthorized ? Text("Allowed") : Text("Missing"))
+                        .foregroundStyle(.secondary)
+                }
+                if !accessibilityAuthorized {
+                    Button("Open Accessibility Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+            } header: {
+                Text("Notifications")
             }
 
             Section {
@@ -264,6 +286,14 @@ struct GeneralSettings: View {
         .onChange(of: openNotchOnHover) {
             if !openNotchOnHover {
                 enableGestures = true
+            }
+        }
+        .task {
+            accessibilityAuthorized = await XPCHelperClient.shared.isAccessibilityAuthorized()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accessibilityAuthorizationChanged)) { notification in
+            if let granted = notification.userInfo?["granted"] as? Bool {
+                accessibilityAuthorized = granted
             }
         }
     }
