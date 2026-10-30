@@ -4,9 +4,5 @@
 <dict>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>This app measures the sound of the music app for the bars in the notch. Nothing is recorded or kept.</string>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict/>
-	</array>
 </dict>
 </plist>
