@@ -21,7 +21,7 @@ class AppleMusicController {
     }
 
     private var notificationTask: Task<Void, Never>?
-    private var artworkTrackID: String?
+    private var artworkKey: String?
     
     // MARK: - Initialization
     init() {
@@ -122,12 +122,14 @@ class AppleMusicController {
         }
 
         // Artwork is the heavy part, so only a new track asks for it. Streamed artwork can come
-        // late, so a track keeps asking until it has some.
-        let trackID = descriptor.atIndex(10)?.stringValue
+        // late, so a track keeps asking until it has some. A track without an ID always asks, and a
+        // stream can keep its ID across songs, so the title counts too: no old cover can stick.
+        let trackID = descriptor.atIndex(10)?.stringValue ?? ""
+        let key = trackID.isEmpty ? nil : "\(trackID) \(descriptor.atIndex(2)?.stringValue ?? "")"
         var artwork = self.playbackState.artwork
-        if trackID == nil || trackID != artworkTrackID {
+        if key == nil || key != artworkKey {
             artwork = await fetchArtwork()
-            artworkTrackID = artwork?.isEmpty == false ? trackID : nil
+            artworkKey = artwork?.isEmpty == false ? key : nil
         }
 
         var updatedState = self.playbackState
