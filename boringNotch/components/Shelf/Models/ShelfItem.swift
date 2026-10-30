@@ -123,12 +123,6 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
         return ShelfStateViewModel.shared.resolveFileURL(for: self)
     }
     
-    var URL: URL? {
-        if case let .file(bookmark) = kind { return resolvedContext(for: bookmark)?.url }
-        else if case let .link(url) = kind { return url }
-        else { return nil }
-    }
-    
     var icon: NSImage {
         guard case .file = kind else {
             return Self.thumbnailSymbolImage(systemName: kind.iconSymbolName) ?? NSImage()
@@ -159,8 +153,7 @@ private extension ShelfItem {
         systemName: String,
     size: CGSize = CGSize(width: 64, height: 80), 
     symbolPointSize: CGFloat = 38,
-    backgroundColor: NSColor = NSColor.white,
-    symbolColor: NSColor = NSColor.labelColor
+    backgroundColor: NSColor = NSColor.white
     ) -> NSImage? {
         let image = NSImage(size: size)
         image.lockFocus()

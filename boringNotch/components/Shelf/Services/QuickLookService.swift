@@ -19,11 +19,9 @@ final class QuickLookService: ObservableObject {
     @Published var isQuickLookOpen: Bool = false
 
     private var previewPanel: QLPreviewPanel?
-    private var dataSource: QuickLookDataSource?
     private var accessingURLs: [URL] = []
-    private var previewPanelObserver: Any?
 
-    func show(urls: [URL], selectFirst: Bool = true, slideshow: Bool = false) {
+    func show(urls: [URL], selectFirst: Bool = true) {
         guard !urls.isEmpty else { return }
         stopAccessingCurrentURLs()
         accessingURLs = urls.filter { url in
@@ -47,20 +45,6 @@ final class QuickLookService: ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(previewPanelWillClose(_:)), name: NSWindow.willCloseNotification, object: panel)
     }
 
-    func hide() {
-        stopAccessingCurrentURLs()
-        selectedURL = nil
-        urls.removeAll()
-        isQuickLookOpen = false
-        if let panel = previewPanel, panel.isVisible {
-            panel.orderOut(nil)
-        }
-        if let panel = previewPanel {
-            NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: panel)
-            previewPanel = nil
-        }
-    }
-    
     private func stopAccessingCurrentURLs() {
         NSLog("Stopping access to \(accessingURLs.count) URLs")
         for url in accessingURLs where url.isFileURL {
@@ -74,10 +58,6 @@ final class QuickLookService: ObservableObject {
         }
     }
     
-    func showQuickLook(urls: [URL]) {
-        show(urls: urls, selectFirst: true, slideshow: false)
-    }
-
     func updateSelection(urls: [URL]) {
         guard isQuickLookOpen else { return }
     show(urls: urls, selectFirst: true)
@@ -112,23 +92,5 @@ struct QuickLookPresenter: ViewModifier {
 extension View {
     func quickLookPresenter(using service: QuickLookService) -> some View {
         self.modifier(QuickLookPresenter(service: service))
-    }
-}
-
-
-final class QuickLookDataSource: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    private let urls: [URL]
-
-    init(urls: [URL]) {
-        self.urls = urls
-        super.init()
-    }
-
-    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        return urls.count
-    }
-    nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        guard index >= 0 && index < urls.count else { return nil }
-        return urls[index] as QLPreviewItem
     }
 }
