@@ -219,6 +219,13 @@ struct MusicControlsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
+        .overlay(alignment: .trailing) {
+            GeometryReader { geo in
+                // The name only fits when the last slot is empty and the calendar leaves enough room
+                MusicOutputButton(showsName: slots.last == MusicControlButton.none && geo.size.width > 300)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            }
+        }
     }
 
     private var activeSlots: [MusicControlButton] {
@@ -294,6 +301,116 @@ struct MusicControlsView: View {
             return .primary
         case .all, .one:
             return .red
+        }
+    }
+}
+
+struct MusicOutputButton: View {
+    let showsName: Bool
+
+    @EnvironmentObject var vm: BoringViewModel
+    @ObservedObject var musicManager = MusicManager.shared
+    @ObservedObject var outputController = MusicOutputController.shared
+    @State private var showPopover = false
+    @State private var isHoveringButton = false
+    @State private var isHoveringPopover = false
+    @State private var hideTask: Task<Void, Never>?
+
+    private let refreshInterval: Duration = .seconds(3)
+
+    private var isVisible: Bool {
+        musicManager.bundleIdentifier == "com.apple.Music" && !outputController.selectedDevices.isEmpty
+    }
+
+    private var currentIcon: String {
+        let selected = outputController.selectedDevices
+        return selected.count == 1 ? selected[0].iconName : "airplayaudio"
+    }
+
+    private var currentName: String {
+        outputController.selectedDevices.map(\.displayName).joined(separator: " + ")
+    }
+
+    var body: some View {
+        Button {
+            showPopover.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: currentIcon)
+                if showsName {
+                    Text(currentName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .font(.caption)
+            .foregroundColor(.gray)
+            .frame(maxWidth: 84, alignment: .trailing)
+            .frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .opacity(isVisible ? 1 : 0)
+        .disabled(!isVisible)
+        .onHover { hovering in
+            isHoveringButton = hovering
+            updateHideTask()
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+            devicePicker
+                .onHover { hovering in
+                    isHoveringPopover = hovering
+                    updateHideTask()
+                }
+        }
+        .onChange(of: showPopover) {
+            vm.isBatteryPopoverActive = showPopover
+        }
+        .task(id: musicManager.bundleIdentifier) {
+            while !Task.isCancelled {
+                await outputController.refresh()
+                try? await Task.sleep(for: refreshInterval)
+            }
+        }
+        .onDisappear {
+            hideTask?.cancel()
+            hideTask = nil
+        }
+    }
+
+    private var devicePicker: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(outputController.devices) { device in
+                Button {
+                    showPopover = false
+                    Task { await outputController.select(device) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: device.iconName)
+                            .frame(width: 18)
+                        Text(device.displayName)
+                        Spacer(minLength: 16)
+                        Image(systemName: "checkmark")
+                            .opacity(device.isSelected ? 1 : 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(6)
+    }
+
+    private func updateHideTask() {
+        hideTask?.cancel()
+        hideTask = nil
+        guard showPopover, !isHoveringButton, !isHoveringPopover else { return }
+        hideTask = Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { showPopover = false }
         }
     }
 }

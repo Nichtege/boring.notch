@@ -70,6 +70,9 @@ class MusicManager: ObservableObject {
 
     // MARK: - Initialization
     init() {
+        // Start remembering the Music output so resuming from the notch can restore it
+        _ = MusicOutputController.shared
+
         // Listen for changes to the default controller preference
         NotificationCenter.default.publisher(for: Notification.Name.mediaControllerChanged)
             .sink { [weak self] _ in
@@ -625,6 +628,9 @@ class MusicManager: ObservableObject {
     
     func togglePlay() {
         Task {
+            if !isPlaying && bundleIdentifier == "com.apple.Music" {
+                await MusicOutputController.shared.restoreLastOutput()
+            }
             await activeController?.togglePlay()
         }
     }
