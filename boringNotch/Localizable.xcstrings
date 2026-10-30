@@ -201,12 +201,12 @@
         }
       }
     },
-    "Needs the Screen Recording permission (restart the app after allowing it). macOS shows its recording icon while music plays. The sound is only measured, never kept. Without sound, the bars animate." : {
+    "Needs the System Audio Recording permission. macOS shows its recording icon while music plays. The sound is only measured, never kept. Without sound, the bars animate." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Braucht die Berechtigung für die Bildschirmaufnahme (App danach neu starten). Solange Musik läuft, zeigt macOS sein Aufnahme-Symbol. Der Ton wird nur gemessen und nie gespeichert. Ohne Ton laufen die Balken als Animation."
+            "value" : "Braucht die Berechtigung für die Systemaudio-Aufnahme. Solange Musik läuft, zeigt macOS sein Aufnahme-Symbol. Der Ton wird nur gemessen und nie gespeichert. Ohne Ton laufen die Balken als Animation."
           }
         }
       }

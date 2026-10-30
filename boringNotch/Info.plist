@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>This app measures the sound of the music app for the bars in the notch. Nothing is recorded or kept.</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>

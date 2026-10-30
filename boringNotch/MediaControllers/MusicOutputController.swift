@@ -67,6 +67,22 @@ enum LocalAudioRoute {
         return route(of: routerDevice ?? appDevice)
     }
 
+    /// The audio objects of an app's processes.
+    static func processes(for bundleID: String) -> [AudioObjectID] {
+        guard #available(macOS 14.2, *) else { return [] }
+        return objects(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList).filter {
+            string($0, kAudioProcessPropertyBundleID) == bundleID
+        }
+    }
+
+    static var systemOutputUID: String? {
+        var device = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var address = propertyAddress(kAudioHardwarePropertyDefaultOutputDevice)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return nil }
+        return string(device, kAudioDevicePropertyDeviceUID)
+    }
+
     static var systemOutput: Route? {
         var device = AudioObjectID(0)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)

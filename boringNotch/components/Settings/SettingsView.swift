@@ -750,7 +750,7 @@ struct Media: View {
                 Defaults.Toggle(key: .liveMusicVisualizer) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Bars follow the real sound")
-                        Text("Needs the Screen Recording permission (restart the app after allowing it). macOS shows its recording icon while music plays. The sound is only measured, never kept. Without sound, the bars animate.")
+                        Text("Needs the System Audio Recording permission. macOS shows its recording icon while music plays. The sound is only measured, never kept. Without sound, the bars animate.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

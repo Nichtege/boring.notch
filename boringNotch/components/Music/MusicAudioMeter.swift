@@ -9,8 +9,7 @@
 
 import Accelerate
 import AppKit
-import CoreMedia
-import ScreenCaptureKit
+import CoreAudio
 
 @MainActor
 final class MusicAudioMeter {
@@ -23,8 +22,7 @@ final class MusicAudioMeter {
 
     private var listeners: [ObjectIdentifier: Listener] = [:]
     private var bundleID: String?
-    private var stream: SCStream?
-    private var analyzer: MusicAudioAnalyzer?
+    private var tap: AnyObject?
     private var startTask: Task<Void, Never>?
     private var silenceTimer: Timer?
     private var lastLevels: Date = .distantPast
@@ -35,7 +33,7 @@ final class MusicAudioMeter {
     func add(_ owner: AnyObject, bundleID: String?, listener: @escaping Listener) {
         listeners[ObjectIdentifier(owner)] = listener
         self.bundleID = bundleID
-        if stream == nil && startTask == nil {
+        if tap == nil && startTask == nil {
             start()
         }
     }
@@ -49,53 +47,33 @@ final class MusicAudioMeter {
 
     // MARK: - Capture
     private func start() {
-        guard let bundleID else { return }
-        guard CGPreflightScreenCaptureAccess() else {
-            // macOS only ever shows this question once
-            CGRequestScreenCaptureAccess()
-            return
-        }
+        guard #available(macOS 14.2, *), let bundleID else { return }
 
         startTask = Task { [weak self] in
-            await self?.startStream(for: bundleID)
-            self?.startTask = nil
+            // Setting up the tap can take a moment, and the first start asks for the permission
+            let tap = await Task.detached(priority: .userInitiated) { () -> MusicAudioTap? in
+                let processes = LocalAudioRoute.processes(for: bundleID)
+                guard !processes.isEmpty, let outputUID = LocalAudioRoute.systemOutputUID else { return nil }
+                return MusicAudioTap(processes: processes, outputUID: outputUID) { levels in
+                    DispatchQueue.main.async { self?.deliver(levels) }
+                }
+            }.value
+            self?.started(tap)
         }
     }
 
-    private func startStream(for bundleID: String) async {
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            guard !Task.isCancelled, !listeners.isEmpty,
-                  let display = content.displays.first,
-                  let app = content.applications.first(where: { $0.bundleIdentifier == bundleID }) else { return }
-
-            let filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
-            let configuration = SCStreamConfiguration()
-            configuration.capturesAudio = true
-            configuration.sampleRate = MusicAudioAnalyzer.sampleRate
-            configuration.channelCount = 2
-            // The stream has to have a picture too, so it's the smallest and slowest there is
-            configuration.width = 2
-            configuration.height = 2
-            configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
-
-            let analyzer = MusicAudioAnalyzer { [weak self] levels in
-                DispatchQueue.main.async { self?.deliver(levels) }
+    @available(macOS 14.2, *)
+    private func started(_ newTap: MusicAudioTap?) {
+        startTask = nil
+        guard !listeners.isEmpty else {
+            if let newTap {
+                Task.detached { newTap.stop() }
             }
-            let stream = SCStream(filter: filter, configuration: configuration, delegate: analyzer)
-            try stream.addStreamOutput(analyzer, type: .audio, sampleHandlerQueue: analyzer.queue)
-            try stream.addStreamOutput(analyzer, type: .screen, sampleHandlerQueue: analyzer.queue)
-            try await stream.startCapture()
-
-            guard !Task.isCancelled, !listeners.isEmpty else {
-                try? await stream.stopCapture()
-                return
-            }
-            self.stream = stream
-            self.analyzer = analyzer
+            return
+        }
+        tap = newTap
+        if newTap != nil {
             startSilenceTimer()
-        } catch {
-            stop()
         }
     }
 
@@ -105,16 +83,15 @@ final class MusicAudioMeter {
         silenceTimer?.invalidate()
         silenceTimer = nil
         isShowingLevels = false
-        if let stream {
-            Task { try? await stream.stopCapture() }
+        if #available(macOS 14.2, *), let running = tap as? MusicAudioTap {
+            Task.detached { running.stop() }
         }
-        stream = nil
-        analyzer = nil
+        tap = nil
     }
 
     // MARK: - Levels
     private func deliver(_ levels: [CGFloat]) {
-        guard stream != nil else { return }
+        guard tap != nil else { return }
         lastLevels = Date()
         isShowingLevels = true
         listeners.values.forEach { $0(levels) }
@@ -133,21 +110,110 @@ final class MusicAudioMeter {
     }
 }
 
-/// Turns the sound into one level per bar. Runs on its own queue.
-private final class MusicAudioAnalyzer: NSObject, SCStreamOutput, SCStreamDelegate {
-    static let sampleRate = 48000
+/// Taps the sound of one app. Not ScreenCaptureKit: macOS takes any of its streams for sharing the screen and
+/// silences every notification for as long as it runs.
+@available(macOS 14.2, *)
+private final class MusicAudioTap {
+    private let description: CATapDescription
+    private let analyzer: MusicAudioAnalyzer
+    private var tapID = AudioObjectID(kAudioObjectUnknown)
+    private var aggregateID = AudioObjectID(kAudioObjectUnknown)
+    private var procID: AudioDeviceIOProcID?
 
-    let queue = DispatchQueue(label: "boringNotch.musicAudioMeter")
+    init?(processes: [AudioObjectID], outputUID: String, onLevels: @escaping ([CGFloat]) -> Void) {
+        description = CATapDescription(stereoMixdownOfProcesses: processes)
+        description.uuid = UUID()
+        description.name = "Boring Notch bars"
+        description.muteBehavior = .unmuted
+        description.isPrivate = true
+
+        var tap = AudioObjectID(kAudioObjectUnknown)
+        guard AudioHardwareCreateProcessTap(description, &tap) == noErr else { return nil }
+        tapID = tap
+
+        var format = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyFormat,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(tap, &address, 0, nil, &size, &format) == noErr,
+              format.mFormatID == kAudioFormatLinearPCM,
+              format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              format.mBitsPerChannel == 32 else {
+            AudioHardwareDestroyProcessTap(tap)
+            return nil
+        }
+        analyzer = MusicAudioAnalyzer(sampleRate: format.mSampleRate, onLevels: onLevels)
+
+        let properties: [String: Any] = [
+            kAudioAggregateDeviceNameKey: "Boring Notch bars",
+            kAudioAggregateDeviceUIDKey: UUID().uuidString,
+            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
+            kAudioAggregateDeviceIsPrivateKey: true,
+            kAudioAggregateDeviceIsStackedKey: false,
+            kAudioAggregateDeviceTapAutoStartKey: true,
+            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
+            kAudioAggregateDeviceTapListKey: [[
+                kAudioSubTapDriftCompensationKey: true,
+                kAudioSubTapUIDKey: description.uuid.uuidString,
+            ]],
+        ]
+        var aggregate = AudioObjectID(kAudioObjectUnknown)
+        guard AudioHardwareCreateAggregateDevice(properties as CFDictionary, &aggregate) == noErr else {
+            AudioHardwareDestroyProcessTap(tap)
+            return nil
+        }
+        aggregateID = aggregate
+
+        let analyzer = analyzer
+        var proc: AudioDeviceIOProcID?
+        let created = AudioDeviceCreateIOProcIDWithBlock(&proc, aggregate, analyzer.queue) { _, input, _, _, _ in
+            analyzer.process(input)
+        }
+        guard created == noErr, let proc else {
+            stop()
+            return nil
+        }
+        procID = proc
+        guard AudioDeviceStart(aggregate, proc) == noErr else {
+            stop()
+            return nil
+        }
+    }
+
+    func stop() {
+        if let procID {
+            AudioDeviceStop(aggregateID, procID)
+            AudioDeviceDestroyIOProcID(aggregateID, procID)
+        }
+        procID = nil
+        if aggregateID != AudioObjectID(kAudioObjectUnknown) {
+            AudioHardwareDestroyAggregateDevice(aggregateID)
+            aggregateID = AudioObjectID(kAudioObjectUnknown)
+        }
+        if tapID != AudioObjectID(kAudioObjectUnknown) {
+            AudioHardwareDestroyProcessTap(tapID)
+            tapID = AudioObjectID(kAudioObjectUnknown)
+        }
+    }
+}
+
+/// Turns the sound into one level per bar. Runs on its own queue.
+private final class MusicAudioAnalyzer {
+    let queue = DispatchQueue(label: "boringNotch.musicAudioMeter", qos: .userInitiated)
 
     private static let log2Size: vDSP_Length = 11
     private static let size = 1 << 11
-    private static let framesPerUpdate = sampleRate / 30
     // Where each bar starts and ends, in Hz: bass, low mids, mids, highs
     private static let bandEdges: [Float] = [60, 250, 1000, 4000, 14000]
     private static let quietestPeak: Float = 0.0005
     private static let smallestRangeInDecibels: Float = 8
     private static let limitDriftPerUpdate: Float = 0.08
 
+    private let sampleRate: Float
+    private let framesPerUpdate: Int
     private let onLevels: ([CGFloat]) -> Void
     private let setup = vDSP_create_fftsetup(MusicAudioAnalyzer.log2Size, FFTRadix(kFFTRadix2))
     private var window = [Float](repeating: 0, count: MusicAudioAnalyzer.size)
@@ -157,9 +223,10 @@ private final class MusicAudioAnalyzer: NSObject, SCStreamOutput, SCStreamDelega
     private var quietest = [Float](repeating: 200, count: MusicAudioAnalyzer.bandEdges.count - 1)
     private var smoothed = [Float](repeating: 0, count: MusicAudioAnalyzer.bandEdges.count - 1)
 
-    init(onLevels: @escaping ([CGFloat]) -> Void) {
+    init(sampleRate: Double, onLevels: @escaping ([CGFloat]) -> Void) {
+        self.sampleRate = Float(sampleRate)
+        self.framesPerUpdate = Int(sampleRate) / 30
         self.onLevels = onLevels
-        super.init()
         vDSP_hann_window(&window, vDSP_Length(Self.size), Int32(vDSP_HANN_NORM))
     }
 
@@ -169,48 +236,42 @@ private final class MusicAudioAnalyzer: NSObject, SCStreamOutput, SCStreamDelega
         }
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio, let mono = Self.mono(from: sampleBuffer) else { return }
+    func process(_ input: UnsafePointer<AudioBufferList>) {
+        guard let mono = Self.mono(from: input) else { return }
 
         samples.append(contentsOf: mono)
         framesSinceUpdate += mono.count
         if samples.count > Self.size {
             samples.removeFirst(samples.count - Self.size)
         }
-        guard samples.count == Self.size, framesSinceUpdate >= Self.framesPerUpdate else { return }
+        guard samples.count == Self.size, framesSinceUpdate >= framesPerUpdate else { return }
         framesSinceUpdate = 0
 
         // Silence counts as no sound at all, so the bars can fall back
-        guard (vDSP.maximumMagnitude(samples)) > Self.quietestPeak, let levels = analyze() else { return }
+        guard vDSP.maximumMagnitude(samples) > Self.quietestPeak, let levels = analyze() else { return }
         onLevels(levels)
     }
 
-    /// The channels of a buffer mixed down to one, as floats.
-    private static func mono(from sampleBuffer: CMSampleBuffer) -> [Float]? {
-        var needed = 0
-        CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: &needed, bufferListOut: nil, bufferListSize: 0,
-            blockBufferAllocator: nil, blockBufferMemoryAllocator: nil, flags: 0, blockBufferOut: nil)
-        guard needed > 0 else { return nil }
+    /// The channels of a buffer list mixed down to one, interleaved or not.
+    private static func mono(from input: UnsafePointer<AudioBufferList>) -> [Float]? {
+        let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+        guard let first = buffers.first, first.mNumberChannels > 0 else { return nil }
 
-        let memory = UnsafeMutableRawPointer.allocate(byteCount: needed, alignment: MemoryLayout<AudioBufferList>.alignment)
-        defer { memory.deallocate() }
-        let list = memory.bindMemory(to: AudioBufferList.self, capacity: 1)
-        var block: CMBlockBuffer?
-        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: nil, bufferListOut: list, bufferListSize: needed,
-            blockBufferAllocator: nil, blockBufferMemoryAllocator: nil, flags: 0, blockBufferOut: &block) == noErr else { return nil }
-
-        let buffers = UnsafeMutableAudioBufferListPointer(list)
-        guard let first = buffers.first else { return nil }
-        let count = Int(first.mDataByteSize) / MemoryLayout<Float>.size
-        var mono = [Float](repeating: 0, count: count)
+        let frames = Int(first.mDataByteSize) / MemoryLayout<Float>.size / Int(first.mNumberChannels)
+        guard frames > 0 else { return nil }
+        var mono = [Float](repeating: 0, count: frames)
+        var channels = 0
         for buffer in buffers {
-            guard let data = buffer.mData?.bindMemory(to: Float.self, capacity: count) else { continue }
-            vDSP_vadd(mono, 1, data, 1, &mono, 1, vDSP_Length(count))
+            guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            let stride = Int(buffer.mNumberChannels)
+            for channel in 0..<stride {
+                vDSP_vadd(data + channel, stride, mono, 1, &mono, 1, vDSP_Length(frames))
+            }
+            channels += stride
         }
-        var scale = 1 / Float(buffers.count)
-        vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(count))
+        guard channels > 0 else { return nil }
+        var scale = 1 / Float(channels)
+        vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(frames))
         return mono
     }
 
@@ -236,7 +297,7 @@ private final class MusicAudioAnalyzer: NSObject, SCStreamOutput, SCStreamDelega
             }
         }
 
-        let hertzPerBin = Float(Self.sampleRate) / Float(Self.size)
+        let hertzPerBin = sampleRate / Float(Self.size)
         var levels: [CGFloat] = []
         for band in 0..<smoothed.count {
             let low = max(1, Int(Self.bandEdges[band] / hertzPerBin))
