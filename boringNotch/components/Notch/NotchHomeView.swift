@@ -216,9 +216,7 @@ struct MusicControlsView: View {
                 MusicManager.shared.toggleRepeat()
             }
         case .volume:
-            // Takes the room of an empty slot, so the middle stays in the middle
             VolumeControlView()
-                .frame(maxWidth: .infinity, alignment: .leading)
         case .favorite:
             FavoriteControlButton()
         case .goBackward:
@@ -404,7 +402,7 @@ struct VolumeControlView: View {
     @ObservedObject var musicManager = MusicManager.shared
     @State private var volumeSliderValue: Double = 0.5
     @State private var dragging: Bool = false
-    @State private var showVolumeSlider: Bool = true
+    @State private var showVolumeSlider: Bool = false
     @State private var lastVolumeUpdateTime: Date = Date.distantPast
     private let volumeUpdateThrottle: TimeInterval = 0.1
     
