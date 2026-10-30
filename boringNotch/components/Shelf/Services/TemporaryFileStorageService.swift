@@ -21,9 +21,27 @@ class TemporaryFileStorageService {
     
     /// Creates a temporary file and tracks it for manual cleanup
     func createTempFile(for type: TempFileType) async -> URL? {
-        return await withCheckedContinuation { continuation in
-            let result = createTempFile(for: type)
-            continuation.resume(returning: result)
+        let uuid = UUID().uuidString
+        let dirURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(uuid, isDirectory: true)
+
+        let fileURL: URL
+        let data: Data
+        switch type {
+        case .data(let contents, let suggestedName):
+            fileURL = dirURL.appendingPathComponent(suggestedName ?? ".dat")
+            data = contents
+        case .text(let string):
+            fileURL = dirURL.appendingPathComponent("\(uuid).txt")
+            data = Data(string.utf8)
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+            try data.write(to: fileURL)
+            return fileURL
+        } catch {
+            print("Error: \(error)")
+            return nil
         }
     }
     
@@ -47,48 +65,6 @@ class TemporaryFileStorageService {
 
         } catch {
             print("Error: \(error.localizedDescription)")
-        }
-    }
-    
-    // MARK: - Private Implementation
-    
-    private func createTempFile(for type: TempFileType) -> URL? {
-        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
-        let uuid = UUID().uuidString
-        
-        switch type {
-        case .data(let data, let suggestedName):
-            let filename = suggestedName ?? ".dat"
-            let dirURL = tempDir.appendingPathComponent(uuid, isDirectory: true)
-            let fileURL = dirURL.appendingPathComponent(filename)
-            
-            do {
-                try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
-                try data.write(to: fileURL)
-                return fileURL
-            } catch {
-                print("Error: \(error)")
-                return nil
-            }
-            
-        case .text(let string):
-            let filename = "\(uuid).txt"
-            let dirURL = tempDir.appendingPathComponent(uuid, isDirectory: true)
-            let fileURL = dirURL.appendingPathComponent(filename)
-            
-            guard let data = string.data(using: .utf8) else {
-                print("❌ Failed to convert text to data")
-                return nil
-            }
-            
-            do {
-                try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
-                try data.write(to: fileURL)
-                return fileURL
-            } catch {
-                print("Error: \(error)")
-                return nil
-            }
         }
     }
     

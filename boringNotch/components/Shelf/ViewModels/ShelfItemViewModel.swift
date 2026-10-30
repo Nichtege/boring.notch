@@ -712,14 +712,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                     
                     if let resultURL = resultURL {
-                        // Create bookmark and add to shelf as temporary item
-                        if let bookmark = try? Bookmark(url: resultURL) {
-                            let newItem = ShelfItem(
-                                kind: .file(bookmark: bookmark.data),
-                                isTemporary: true
-                            )
-                            ShelfStateViewModel.shared.add([newItem])
-                        }
+                        addToShelf(resultURL)
                     }
                 } catch {
                     print("❌ Failed to remove background: \(error.localizedDescription)")
@@ -742,14 +735,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                     
                     if let resultURL = resultURL {
-                        // Create bookmark and add to shelf as temporary item
-                        if let bookmark = try? Bookmark(url: resultURL) {
-                            let newItem = ShelfItem(
-                                kind: .file(bookmark: bookmark.data),
-                                isTemporary: true
-                            )
-                            ShelfStateViewModel.shared.add([newItem])
-                        }
+                        addToShelf(resultURL)
                     }
                 } catch {
                     print("❌ Failed to create PDF: \(error.localizedDescription)")
@@ -950,14 +936,7 @@ final class ShelfItemViewModel: ObservableObject {
                         }
                         
                         if let resultURL = resultURL {
-                            // Create bookmark and add to shelf as temporary item
-                            if let bookmark = try? Bookmark(url: resultURL) {
-                                let newItem = ShelfItem(
-                                    kind: .file(bookmark: bookmark.data),
-                                    isTemporary: true
-                                )
-                                ShelfStateViewModel.shared.add([newItem])
-                            }
+                            addToShelf(resultURL)
                         }
                     } catch {
                         print("❌ Failed to convert image: \(error.localizedDescription)")
@@ -967,6 +946,15 @@ final class ShelfItemViewModel: ObservableObject {
             }
         }
         
+        /// What an image action made goes on the shelf as a temporary item.
+        @MainActor
+        private func addToShelf(_ url: URL) {
+            if let bookmark = try? Bookmark(url: url) {
+                let newItem = ShelfItem(kind: .file(bookmark: bookmark.data), isTemporary: true)
+                ShelfStateViewModel.shared.add([newItem])
+            }
+        }
+
         @MainActor
         private func showErrorAlert(title: String, message: String) {
             let alert = NSAlert()
