@@ -312,9 +312,14 @@ struct MusicOutputButton: View {
                     isHoveringPopover = hovering
                     updateHideTask()
                 }
+                // What's really on screen, also if this view goes away first: the notch can't close before
+                .onAppear { vm.isBatteryPopoverActive = true }
+                .onDisappear {
+                    vm.isBatteryPopoverActive = false
+                    showPopover = false
+                }
         }
         .onChange(of: showPopover) {
-            vm.isBatteryPopoverActive = showPopover
             if showPopover {
                 Task { await outputController.refreshPairedAirPods() }
             }
