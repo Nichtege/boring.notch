@@ -56,3 +56,32 @@ final class NotchPanelLayout {
         }
     }
 }
+
+// MARK: - Material
+extension View {
+    /// Smoked glass: white text on it measured 8.2:1 over a white page. A tint on the glass itself
+    /// doesn't get there, the black has to go underneath. Glass brings its own edge, the opaque
+    /// fallback needs one drawn.
+    func smokedGlass<S: InsettableShape>(in shape: S) -> some View {
+        modifier(SmokedGlass(shape: shape))
+    }
+}
+
+private struct SmokedGlass<S: InsettableShape>: ViewModifier {
+    let shape: S
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), !reduceTransparency, contrast != .increased {
+            content
+                .background(.black.opacity(0.6), in: shape)
+                .glassEffect(.regular, in: shape)
+        } else {
+            content
+                .background(.black, in: shape)
+                .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        }
+    }
+}

@@ -558,14 +558,13 @@ struct AtlasPromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             content
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.black)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(isDropTarget ? Color.orange : Color.white.opacity(0.12), lineWidth: isDropTarget ? 2 : 1)
-                )
+                .smokedGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    if isDropTarget {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.orange, lineWidth: 2)
+                    }
+                }
                 .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
                     for provider in providers {
                         _ = provider.loadObject(ofClass: URL.self) { url, _ in
