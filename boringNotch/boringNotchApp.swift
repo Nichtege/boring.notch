@@ -393,12 +393,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showOnboardingWindow()
             }
             playWelcomeSound()
-        } else if MusicManager.shared.isNowPlayingDeprecated
-            && Defaults[.mediaController] == .nowPlaying
-        {
-            DispatchQueue.main.async {
-                self.showOnboardingWindow(step: .musicPermission)
-            }
         }
 
         previousScreens = NSScreen.screens
@@ -498,7 +492,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showOnboardingWindow(step: OnboardingStep = .welcome) {
+    private func showOnboardingWindow() {
         if onboardingWindowController == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 400, height: 600),
@@ -512,7 +506,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.titleVisibility = .hidden
             window.contentView = NSHostingView(
                 rootView: OnboardingView(
-                    step: step,
                     onFinish: {
                         window.orderOut(nil)
                         window.close()

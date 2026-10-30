@@ -403,8 +403,6 @@ struct FavoriteControlButton: View {
         HoverButton(icon: iconName, iconColor: iconColor, scale: .medium) {
             MusicManager.shared.toggleFavoriteTrack()
         }
-        .disabled(!musicManager.canFavoriteTrack)
-        .opacity(musicManager.canFavoriteTrack ? 1 : 0.35)
     }
 
     private var iconName: String {
@@ -436,21 +434,18 @@ struct VolumeControlView: View {
     var body: some View {
         HStack(spacing: 4) {
             Button(action: {
-                if musicManager.volumeControlSupported {
-                    withAnimation(.easeInOut(duration: 0.12)) {
-                        showVolumeSlider.toggle()
-                    }
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    showVolumeSlider.toggle()
                 }
             }) {
                 Image(systemName: volumeIcon)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(musicManager.volumeControlSupported ? .white : .gray)
+                    .foregroundColor(.white)
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(!musicManager.volumeControlSupported)
             .frame(width: 24)
 
-            if showVolumeSlider && musicManager.volumeControlSupported {
+            if showVolumeSlider {
                 CustomSlider(
                     value: $volumeSliderValue,
                     range: 0.0...1.0,
@@ -478,13 +473,6 @@ struct VolumeControlView: View {
                 volumeSliderValue = volume
             }
         }
-        .onReceive(musicManager.$volumeControlSupported) { supported in
-            if !supported {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showVolumeSlider = false
-                }
-            }
-        }
         .onChange(of: showVolumeSlider) { _, isShowing in
             if isShowing {
                 // Sync volume from app when slider appears
@@ -497,9 +485,7 @@ struct VolumeControlView: View {
     
     
     private var volumeIcon: String {
-        if !musicManager.volumeControlSupported {
-            return "speaker.slash"
-        } else if volumeSliderValue == 0 {
+        if volumeSliderValue == 0 {
             return "speaker.slash.fill"
         } else if volumeSliderValue < 0.33 {
             return "speaker.1.fill"

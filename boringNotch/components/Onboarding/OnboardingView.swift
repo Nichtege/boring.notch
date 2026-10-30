@@ -14,7 +14,6 @@ enum OnboardingStep {
     case calendarPermission
     case remindersPermission
     case accessibilityPermission
-    case musicPermission
     case finished
 }
 
@@ -111,26 +110,11 @@ struct OnboardingView: View {
                     onAllow: {
                         Task {
                             await requestAccessibilityPermission()
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                step = .musicPermission
-                            }
+                            finishSteps()
                         }
                     },
                     onSkip: {
-                        withAnimation(.easeInOut(duration: 0.6)) {
-                            step = .musicPermission
-                        }
-                    }
-                )
-                .transition(.opacity)
-                
-            case .musicPermission:
-                MusicControllerSelectionView(
-                    onContinue: {
-                        withAnimation(.easeInOut(duration: 0.6)) {
-                            BoringViewCoordinator.shared.firstLaunch = false
-                            step = .finished
-                        }
+                        finishSteps()
                     }
                 )
                 .transition(.opacity)
@@ -140,6 +124,14 @@ struct OnboardingView: View {
             }
         }
         .frame(width: 400, height: 600)
+    }
+
+    /// The notch starts reacting to the pointer from here on.
+    private func finishSteps() {
+        withAnimation(.easeInOut(duration: 0.6)) {
+            BoringViewCoordinator.shared.firstLaunch = false
+            step = .finished
+        }
     }
 
     // MARK: - Permission Request Logic

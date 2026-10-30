@@ -9,7 +9,7 @@ import Foundation
 import Combine
 import SwiftUI
 
-class AppleMusicController: MediaControllerProtocol {
+class AppleMusicController {
     // MARK: - Properties
     @Published private var playbackState: PlaybackState = PlaybackState(
         bundleIdentifier: "com.apple.Music",
@@ -18,14 +18,6 @@ class AppleMusicController: MediaControllerProtocol {
     
     var playbackStatePublisher: AnyPublisher<PlaybackState, Never> {
         $playbackState.eraseToAnyPublisher()
-    }
-
-    var supportsVolumeControl: Bool {
-        return true
-    }
-
-    var supportsFavorite: Bool {
-        return true
     }
 
     private var notificationTask: Task<Void, Never>?
@@ -102,7 +94,7 @@ class AppleMusicController: MediaControllerProtocol {
         await updatePlaybackInfo()
     }
     
-    func isActive() -> Bool {
+    private func isActive() -> Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
     }
 

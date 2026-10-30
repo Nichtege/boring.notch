@@ -186,7 +186,6 @@ We’re all about good vibes and awesome contributions! Read [CONTRIBUTING.md](C
 We would like to express our gratitude to the authors and maintainers of the open-source projects that made this possible. 
 
 ## Notable Projects
-- **[MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter)** –  An open-source project that allowed us to use the Now Playing source in macOS 15.4+
 - **[NotchDrop](https://github.com/Lakr233/NotchDrop)** – An open-source project that has been instrumental in developing the first version of the "Shelf" feature in Boring Notch.
 
 For a full list of licenses and attributions, please see the [Third-Party Licenses](./THIRD_PARTY_LICENSES.md) file.
