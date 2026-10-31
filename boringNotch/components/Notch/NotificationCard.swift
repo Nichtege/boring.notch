@@ -282,7 +282,7 @@ private struct NotificationCardView: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: Text("Close")) {
-                SystemNotificationManager.shared.dismissActive()
+                SystemNotificationManager.shared.dismissActive(seen: true)
             }
     }
 
@@ -382,7 +382,7 @@ private struct NotificationCardView: View {
 
             if isHovering {
                 Button {
-                    SystemNotificationManager.shared.dismissActive()
+                    SystemNotificationManager.shared.dismissActive(seen: true)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 13))

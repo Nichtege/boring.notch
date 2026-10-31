@@ -167,12 +167,16 @@ final class SystemNotificationManager {
         present(notification)
     }
 
-    func dismissActive() {
+    /// Seen means the user dealt with the card. Its banner then stays away until it's gone by itself: there's
+    /// nothing left to tell, and it would only flash back for a moment.
+    func dismissActive(seen: Bool = false) {
         guard let notification = activeNotification else { return }
         dismissTask?.cancel()
         dismissTask = nil
         activeNotification = nil
-        releaseBanner(of: notification)
+        if !seen {
+            releaseBanner(of: notification)
+        }
 
         if queuedNotifications.isEmpty {
             isCardHovered = false
@@ -208,7 +212,7 @@ final class SystemNotificationManager {
             let pressed = await XPCHelperClient.shared.pressNotification(notification.id)
             let opened = if pressed { true } else { await activateApp(of: notification) }
             if opened, activeNotification?.id == notification.id {
-                dismissActive()
+                dismissActive(seen: true)
             }
         }
     }
