@@ -320,6 +320,9 @@ class AppleMusicController: NSObject {
             on error errorText number errorNumber
                 -- No answer says nothing about what's playing
                 if errorNumber is -1712 then error errorText number errorNumber
+                -- Music going away lands here too, and one more question would start it again
+                if errorNumber is -600 or errorNumber is -609 then return {}
+                if it is not running then return {}
                 return {false, "", "", "", 0, 0, false, 0, sound volume, "", false}
             end try
         end tell
