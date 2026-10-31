@@ -308,8 +308,10 @@ final class MusicOutputController: NSObject, ObservableObject {
     private func fetchDevices() async -> [MusicOutputDevice]? {
         guard isMusicRunning else { return nil }
 
+        // Checked once more in there: this can wait behind a script that hangs on a quitting Music
         let script = """
         tell application "Music"
+            if it is not running then return {}
             set deviceList to {}
             repeat with outputDevice in (every AirPlay device whose available is true)
                 set end of deviceList to {name of outputDevice, (kind of outputDevice) as text, selected of outputDevice}
