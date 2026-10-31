@@ -184,7 +184,8 @@ final class NotificationWatcher {
     private var parkedWindows: [Int: ParkedWindow] = [:]
     private var lastOrigin: CGPoint?
     private var restoreRetries = 0
-    private var centerLastOpen: Date?
+    private var centerWasOpen = false
+    private var centerClosedAt: Date?
     /// Finding an app can take long, and the main queue has windows to put back. Both caches are only
     /// used on this queue.
     private let bundleIDQueue = DispatchQueue(label: "com.nichtege.boringnotch.bundleID", qos: .userInitiated)
@@ -437,11 +438,16 @@ final class NotificationWatcher {
             // On macOS 27 the open center lays itself out in the window banners use. Nothing it
             // shows may stay off screen, and none of it is news.
             guard !centerMayBeOpen(appElement) else {
-                centerLastOpen = Date()
+                centerWasOpen = true
                 restoreAllWindows()
                 return
             }
-            let centerIsClosing = centerLastOpen.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
+            // An open center can sit there without a single event, so its closing starts with this scan
+            if centerWasOpen {
+                centerWasOpen = false
+                centerClosedAt = Date()
+            }
+            let centerIsClosing = centerClosedAt.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
 
             var seen = Set<Int>()
             for window in windows {
