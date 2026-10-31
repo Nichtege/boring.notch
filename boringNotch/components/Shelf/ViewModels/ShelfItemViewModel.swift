@@ -187,7 +187,7 @@ final class ShelfItemViewModel: ObservableObject {
                         .font: NSFont.menuFont(ofSize: 0),
                         .foregroundColor: NSColor.labelColor
                     ])
-                    let defaultPart = NSAttributedString(string: " (default)", attributes: [
+                    let defaultPart = NSAttributedString(string: String(localized: " (default)"), attributes: [
                         .font: NSFont.menuFont(ofSize: 0),
                         .foregroundColor: NSColor.secondaryLabelColor
                     ])
@@ -285,16 +285,25 @@ final class ShelfItemViewModel: ObservableObject {
 
         let actionTarget = MenuActionTarget(item: item, view: view, viewModel: self)
 
+        // The handler goes by the English title, so that stays on the item. An app's name is already right.
+        func localize(_ menuItem: NSMenuItem) {
+            guard !(menuItem.representedObject is URL) else { return }
+            menuItem.identifier = NSUserInterfaceItemIdentifier(menuItem.title)
+            menuItem.title = Bundle.main.localizedString(forKey: menuItem.title, value: nil, table: nil)
+        }
+
         for menuItem in menu.items {
             if menuItem.isSeparatorItem { continue }
             menuItem.target = actionTarget
             menuItem.action = #selector(MenuActionTarget.handle(_:))
+            localize(menuItem)
 
             if let submenu = menuItem.submenu {
                 for subItem in submenu.items {
                     if !subItem.isSeparatorItem {
                         subItem.target = actionTarget
                         subItem.action = #selector(MenuActionTarget.handle(_:))
+                        localize(subItem)
                     }
                 }
             }
@@ -326,7 +335,7 @@ final class ShelfItemViewModel: ObservableObject {
         }
 
         @MainActor @objc func handle(_ sender: NSMenuItem) {
-            let title = sender.title
+            let title = sender.identifier?.rawValue ?? sender.title
 
             if let marker = sender.representedObject as? String, marker == "__OTHER__" {
                 openWithPanel()
@@ -513,9 +522,9 @@ final class ShelfItemViewModel: ObservableObject {
             guard let fileURL = targetURL else { return }
 
             let panel = NSOpenPanel()
-            panel.title = "Choose Application"
+            panel.title = String(localized: "Choose Application")
             panel.message = "Choose an application to open the document \"\(item.displayName)\"."
-            panel.prompt = "Open"
+            panel.prompt = String(localized: "Open")
             panel.allowsMultipleSelection = false
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
@@ -669,8 +678,8 @@ final class ShelfItemViewModel: ObservableObject {
                     let didStart = fileURL.startAccessingSecurityScopedResource()
 
                     let savePanel = NSSavePanel()
-                    savePanel.title = "Rename File"
-                    savePanel.prompt = "Rename"
+                    savePanel.title = String(localized: "Rename File")
+                    savePanel.prompt = String(localized: "Rename")
                     savePanel.nameFieldStringValue = fileURL.lastPathComponent
                     savePanel.directoryURL = fileURL.deletingLastPathComponent()
                     savePanel.begin { response in
@@ -714,7 +723,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                 } catch {
                     print("❌ Failed to remove background: \(error.localizedDescription)")
-                    await showErrorAlert(title: "Background Removal Failed", message: error.localizedDescription)
+                    await showErrorAlert(title: String(localized: "Background Removal Failed"), message: error.localizedDescription)
                 }
             }
         }
@@ -737,7 +746,7 @@ final class ShelfItemViewModel: ObservableObject {
                     }
                 } catch {
                     print("❌ Failed to create PDF: \(error.localizedDescription)")
-                    await showErrorAlert(title: "PDF Creation Failed", message: error.localizedDescription)
+                    await showErrorAlert(title: String(localized: "PDF Creation Failed"), message: error.localizedDescription)
                 }
             }
         }
@@ -751,10 +760,10 @@ final class ShelfItemViewModel: ObservableObject {
             
             // Create and show conversion options dialog with better layout
             let alert = NSAlert()
-            alert.messageText = "Convert Image"
+            alert.messageText = String(localized: "Convert Image")
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "Convert")
-            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: String(localized: "Convert"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
             
             // Create accessory view with better spacing and organization
             let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 180))
@@ -938,7 +947,7 @@ final class ShelfItemViewModel: ObservableObject {
                         }
                     } catch {
                         print("❌ Failed to convert image: \(error.localizedDescription)")
-                        showErrorAlert(title: "Image Conversion Failed", message: error.localizedDescription)
+                        showErrorAlert(title: String(localized: "Image Conversion Failed"), message: error.localizedDescription)
                     }
                 }
             }
