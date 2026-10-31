@@ -36,7 +36,6 @@ final class SystemNotificationManager {
     private var queuedNotifications: [SystemNotification] = []
     private var isCardHovered = false
     private var didAskForPermission = false
-    private var wasAuthorized = false
     private var dismissTask: Task<Void, Never>?
     private var permissionTask: Task<Void, Never>?
     private var settingCancellable: AnyCancellable?
@@ -111,18 +110,15 @@ final class SystemNotificationManager {
         }
         guard Defaults[.showNotificationsInNotch] else { return false }
 
-        var isWatching = false
-        if authorized {
-            isWatching = await XPCHelperClient.shared.startNotificationWatching()
-            // Turned off while the helper was on its way
-            if !Defaults[.showNotificationsInNotch] {
-                XPCHelperClient.shared.stopNotificationWatching()
-            }
-        } else if wasAuthorized {
-            // The helper has put back what it could by now
-            dismissAll()
+        // Without the permission cards stay and time out as usual. A helper that can't move windows any
+        // more leaves a parked banner off screen, so its card may be all that's left of the notification.
+        guard authorized else { return false }
+
+        let isWatching = await XPCHelperClient.shared.startNotificationWatching()
+        // Turned off while the helper was on its way
+        if !Defaults[.showNotificationsInNotch] {
+            XPCHelperClient.shared.stopNotificationWatching()
         }
-        wasAuthorized = authorized
         return isWatching
     }
 
