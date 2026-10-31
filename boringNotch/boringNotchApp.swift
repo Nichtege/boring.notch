@@ -99,6 +99,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // The next window starts out not hovered, and an open notch would have nothing to close it
             if vm.notchState == .open {
                 vm.close()
+                // The window that would have reported it is gone
+                NotchPanelLayout.shared.notchChanged(vm, isOpen: false)
             }
         }
     }
@@ -163,7 +165,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isPointerInsideOpenNotch(of viewModel: BoringViewModel) -> Bool {
         guard let screen = viewModel.screenUUID.flatMap({ NSScreen.screen(withUUID: $0) }) else { return false }
-        return openNotchRegion(on: screen).contains(NSEvent.mouseLocation)
+        return NSMouseInRect(NSEvent.mouseLocation, openNotchRegion(on: screen), false)
     }
 
     private func handleDragEntersNotchRegion(onScreen screen: NSScreen) {

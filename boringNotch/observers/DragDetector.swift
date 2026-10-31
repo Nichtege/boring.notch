@@ -66,7 +66,7 @@ final class DragDetector {
             guard self.isDragging else { return }
 
             // The pasteboard is another process, so only a drag that reaches the notch asks it
-            guard self.notchRegion.contains(NSEvent.mouseLocation) else {
+            guard NSMouseInRect(NSEvent.mouseLocation, self.notchRegion, false) else {
                 self.hasEnteredNotchRegion = false
                 return
             }
@@ -89,7 +89,8 @@ final class DragDetector {
             guard let self = self else { return }
             guard self.isDragging else { return }
 
-            if self.hasReachedNotchRegion && !self.notchRegion.contains(NSEvent.mouseLocation) {
+            // Not CGRect.contains: a pointer against the top of the screen is on the rect's upper edge
+            if self.hasReachedNotchRegion && !NSMouseInRect(NSEvent.mouseLocation, self.notchRegion, false) {
                 self.onDragEndsOutsideNotchRegion?()
             }
             self.isDragging = false
