@@ -715,6 +715,11 @@ final class NotificationWatcher {
         return CGPoint(x: display.maxX - (window.size()?.width ?? 0), y: display.minY)
     }
 
+    private func hasDisplay(at point: CGPoint) -> Bool {
+        var count: UInt32 = 0
+        return CGGetDisplaysWithPoint(point, 0, nil, &count) != .success || count > 0
+    }
+
     private func releaseAfterSlideOut(token: String) {
         for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
             parkedWindows[key]?.tokens.remove(token)
@@ -741,6 +746,8 @@ final class NotificationWatcher {
     /// since scans otherwise only follow AX events, a failure asks for one, a limited number of times.
     @discardableResult
     private func moveOffParking(_ window: AXUIElement, to origin: CGPoint) -> Bool {
+        // The display it came from may have been unplugged or moved since
+        let origin = hasDisplay(at: origin) ? origin : restingOrigin(of: window)
         for attempt in 1...restoreAttempts {
             if tryMovingOffParking(window, to: origin) {
                 restoreRetries = 0
