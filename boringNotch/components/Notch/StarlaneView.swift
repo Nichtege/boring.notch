@@ -298,7 +298,7 @@ private struct StarlaneLimitBar: View {
         }
         .font(.caption2)
         .monospacedDigit()
-        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(date: .omitted, time: .shortened))"))
+        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(.dateTime.weekday(.abbreviated).hour().minute()))"))
     }
 }
 
