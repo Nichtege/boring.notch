@@ -705,6 +705,7 @@ struct AtlasPromptView: View {
                             .foregroundStyle(.gray)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(Text("Stop waiting"))
                     .help(Text("Stop waiting here. What Atlas already has still gets its answer in Starlane."))
                 }
                 if chat.hasConversation {
@@ -715,6 +716,7 @@ struct AtlasPromptView: View {
                             .foregroundStyle(.gray)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(Text("Open Starlane"))
                     .help(Text("Open Starlane"))
                 }
                 Button {

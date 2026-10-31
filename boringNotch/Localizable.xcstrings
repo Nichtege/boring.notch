@@ -15421,6 +15421,16 @@
           }
         }
       }
+    },
+    "Stop waiting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht mehr warten"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
