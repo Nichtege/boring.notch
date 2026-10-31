@@ -9,7 +9,7 @@ import Foundation
 import Combine
 import SwiftUI
 
-class AppleMusicController {
+class AppleMusicController: NSObject {
     // MARK: - Properties
     @Published private var playbackState: PlaybackState = PlaybackState(
         bundleIdentifier: "com.apple.Music",
@@ -20,11 +20,15 @@ class AppleMusicController {
         $playbackState.eraseToAnyPublisher()
     }
 
-    private var notificationTask: Task<Void, Never>?
     private var artworkKey: String?
-    
+    private var updateTask: Task<Void, Never>?
+    private var isUpdateDue = false
+    private var mayBeQuitting = false
+    private var retryTask: Task<Void, Never>?
+
     // MARK: - Initialization
-    init() {
+    override init() {
+        super.init()
         setupPlaybackStateChangeObserver()
         Task {
             await updatePlaybackInfo()
@@ -32,24 +36,95 @@ class AppleMusicController {
     }
     
     private func setupPlaybackStateChangeObserver() {
-        notificationTask = Task { @Sendable [weak self] in
-            let notifications = DistributedNotificationCenter.default().notifications(
-                named: NSNotification.Name("com.apple.Music.playerInfo")
-            )
-            
-            for await notification in notifications {
-                if notification.userInfo?["Player State"] as? String == "Stopped" {
-                    // Music may be quitting, and asking it right now could start it again
-                    await self?.publishNotPlaying()
-                    try? await Task.sleep(for: .seconds(2))
-                }
+        // macOS holds back the rest once this app has been active and isn't any more, which only
+        // happens through Settings: after a visit there the closed notch would stop hearing of songs
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(playerInfoChanged(_:)),
+            name: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        // Music doesn't tell about sleep, and the time asleep would count as played
+        workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
                 await self?.updatePlaybackInfo()
             }
         }
+        workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            guard AppleMusicController.isMusic(notification) else { return }
+            Task { @MainActor in
+                await self?.updatePlaybackInfo()
+            }
+        }
+        // A crash or force quit says nothing. No script here: it would start Music again
+        workspace.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            guard AppleMusicController.isMusic(notification) else { return }
+            Task { @MainActor in
+                self?.retryTask?.cancel()
+                self?.publishNotPlaying()
+            }
+        }
     }
-    
+
+    private static func isMusic(_ notification: Notification) -> Bool {
+        let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        return app?.bundleIdentifier == "com.apple.Music"
+    }
+
     deinit {
-        notificationTask?.cancel()
+        DistributedNotificationCenter.default().removeObserver(self)
+        updateTask?.cancel()
+        retryTask?.cancel()
+    }
+
+    /// What Music says here holds even when it's too busy for the script that follows, which would
+    /// leave the old state showing. A key it doesn't send keeps the old value until the script answers.
+    /// Distributed notifications always arrive on the main thread.
+    @MainActor
+    @objc private func playerInfoChanged(_ notification: Notification) {
+        let info = notification.userInfo
+        let playerState = info?["Player State"] as? String
+        var updatedState = playbackState
+
+        if let playerState, (playerState == "Playing") != updatedState.isPlaying {
+            // The bar counts on from the last known position, so that has to be right from here on
+            if updatedState.isPlaying {
+                updatedState.currentTime += Date().timeIntervalSince(updatedState.lastUpdated) * updatedState.playbackRate
+            }
+            updatedState.isPlaying = playerState == "Playing"
+            updatedState.lastUpdated = Date()
+        }
+        if let title = info?["Name"] as? String, title != updatedState.title {
+            updatedState.title = title
+            updatedState.currentTime = 0
+            updatedState.lastUpdated = Date()
+        }
+        if let artist = info?["Artist"] as? String {
+            updatedState.artist = artist
+        }
+        if let album = info?["Album"] as? String {
+            updatedState.album = album
+        }
+        playbackState = updatedState
+
+        retryTask?.cancel()
+        mayBeQuitting = playerState == "Stopped"
+        isUpdateDue = true
+        guard updateTask == nil else { return }
+        updateTask = Task { @MainActor [weak self] in
+            while let self, self.isUpdateDue {
+                self.isUpdateDue = false
+                if self.mayBeQuitting {
+                    // Music may be quitting, and asking it right now could start it again
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                await self.updatePlaybackInfo()
+            }
+            self?.updateTask = nil
+        }
     }
     
     // MARK: - Protocol Implementation
@@ -91,11 +166,15 @@ class AppleMusicController {
         await updatePlaybackInfo()
     }
     
+    /// On the main actor as it writes the state that updates work on.
+    @MainActor
     func setVolume(_ level: Double) async {
         let clampedLevel = max(0.0, min(1.0, level))
-        let volumePercentage = Int(clampedLevel * 100)
-        await executeCommand("set sound volume to \(volumePercentage)")
-        playbackState.volume = clampedLevel
+        let volumePercentage = Int((clampedLevel * 100).rounded())
+        // If that didn't reach Music, its old volume is still the true one
+        if await executeCommand("set sound volume to \(volumePercentage)") {
+            playbackState.volume = clampedLevel
+        }
     }
     
     private func isActive() -> Bool {
@@ -110,12 +189,19 @@ class AppleMusicController {
     
     /// On the main actor since updates can overlap. The scripts themselves run detached.
     @MainActor
-    func updatePlaybackInfo() async {
+    func updatePlaybackInfo(isRetry: Bool = false) async {
         guard isActive() else {
             publishNotPlaying()
             return
         }
-        guard let descriptor = await askedTwice({ try? await self.fetchPlaybackInfoAsync() }) else { return }
+        guard let descriptor = await askedTwice({ try? await self.fetchPlaybackInfoAsync() }) else {
+            if !isRetry {
+                retryUpdate()
+            }
+            return
+        }
+        // What the bar counts from, not when the slower art got here
+        let readAt = Date()
         guard descriptor.numberOfItems >= 11 else {
             // Only a script that found Music gone has nothing to say
             publishNotPlaying()
@@ -128,17 +214,31 @@ class AppleMusicController {
         let trackID = descriptor.atIndex(10)?.stringValue ?? ""
         let key = trackID.isEmpty ? nil : "\(trackID) \(descriptor.atIndex(2)?.stringValue ?? "")"
         var artwork = self.playbackState.artwork
+        var answeredKey = artworkKey
         if key == nil || key != artworkKey {
-            artwork = await askedTwice { await self.fetchArtwork() }
-            artworkKey = artwork?.isEmpty == false ? key : nil
+            // No answer is nil and no art is empty. Either way this track has no cover yet, not the last one's
+            let answer = await askedTwice { await self.fetchArtwork() }
+            artwork = answer?.isEmpty == false ? answer : nil
+            answeredKey = artwork == nil ? nil : key
+            if answer == nil && !isRetry {
+                retryUpdate()
+            }
         }
+
+        // Music has said something newer since this was read, and that update comes next
+        guard !isUpdateDue else { return }
+        artworkKey = answeredKey
 
         var updatedState = self.playbackState
         
         updatedState.isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
-        updatedState.title = descriptor.atIndex(2)?.stringValue ?? "Unknown"
-        updatedState.artist = descriptor.atIndex(3)?.stringValue ?? "Unknown"
-        updatedState.album = descriptor.atIndex(4)?.stringValue ?? "Unknown"
+        // The script leaves these empty when there's no current track, as the wording is the app's language
+        let title = descriptor.atIndex(2)?.stringValue
+        let hasNoTrack = title?.isEmpty == true
+        let unknown = String(localized: "Unknown")
+        updatedState.title = hasNoTrack ? String(localized: "Not Playing") : title ?? unknown
+        updatedState.artist = hasNoTrack ? unknown : descriptor.atIndex(3)?.stringValue ?? unknown
+        updatedState.album = hasNoTrack ? unknown : descriptor.atIndex(4)?.stringValue ?? unknown
         updatedState.currentTime = descriptor.atIndex(5)?.doubleValue ?? 0
         updatedState.duration = descriptor.atIndex(6)?.doubleValue ?? 0
         updatedState.isShuffled = descriptor.atIndex(7)?.booleanValue ?? false
@@ -149,7 +249,7 @@ class AppleMusicController {
         updatedState.artwork = artwork
         let lovedState = descriptor.atIndex(11)?.booleanValue ?? false
         updatedState.isFavorite = lovedState
-        updatedState.lastUpdated = Date()
+        updatedState.lastUpdated = readAt
         self.playbackState = updatedState
     }
     
@@ -163,6 +263,17 @@ class AppleMusicController {
         }
     }
     
+    /// Whatever asked won't ask again, and Music's busy moments pass. Only once, as it can also hang for good.
+    @MainActor
+    private func retryUpdate() {
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await self?.updatePlaybackInfo(isRetry: true)
+        }
+    }
+
     /// Music sometimes doesn't answer one script and does answer the next, and a track's first
     /// update may be the only one it gets.
     private func askedTwice<T>(_ ask: () async -> T?) async -> T? {
@@ -170,10 +281,11 @@ class AppleMusicController {
         return await ask()
     }
 
-    private func executeCommand(_ command: String) async {
-        guard isActive() else { return }
+    @discardableResult
+    private func executeCommand(_ command: String) async -> Bool {
+        guard isActive() else { return false }
         let script = "tell application \"Music\" to \(command)"
-        try? await AppleScriptHelper.executeVoid(script)
+        return (try? await AppleScriptHelper.executeVoid(script)) != nil
     }
     
     private func fetchPlaybackInfoAsync() async throws -> NSAppleEventDescriptor? {
@@ -208,7 +320,10 @@ class AppleMusicController {
             on error errorText number errorNumber
                 -- No answer says nothing about what's playing
                 if errorNumber is -1712 then error errorText number errorNumber
-                return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, "", false}
+                -- Music going away lands here too, and one more question would start it again
+                if errorNumber is -600 or errorNumber is -609 then return {}
+                if it is not running then return {}
+                return {false, "", "", "", 0, 0, false, 0, sound volume, "", false}
             end try
         end tell
         """
@@ -222,12 +337,14 @@ class AppleMusicController {
             if it is not running then return ""
             try
                 return data of artwork 1 of current track
-            on error
+            on error errorText number errorNumber
+                -- No answer says nothing about the art
+                if errorNumber is -1712 then error errorText number errorNumber
                 return ""
             end try
         end tell
         """
-        
+
         return try? await AppleScriptHelper.execute(script)?.data
     }
     

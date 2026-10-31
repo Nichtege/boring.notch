@@ -119,7 +119,7 @@ struct MusicOutputDevice: Identifiable, Equatable {
     /// Set on paired AirPods that Music doesn't list. Choosing them connects them.
     var bluetoothAddress: String? = nil
 
-    var id: String { bluetoothAddress ?? name }
+    var id: String { bluetoothAddress ?? localRoute?.name ?? name }
 
     var displayName: String {
         localRoute?.name ?? (kind == "computer" ? "MacBook" : name)
@@ -146,7 +146,7 @@ struct MusicOutputDevice: Identifiable, Equatable {
     }
 }
 
-final class MusicOutputController: ObservableObject {
+final class MusicOutputController: NSObject, ObservableObject {
     static let shared = MusicOutputController()
 
     @Published private(set) var devices: [MusicOutputDevice] = []
@@ -155,7 +155,6 @@ final class MusicOutputController: ObservableObject {
     // Music keeps the old device selected for a few seconds after a switch
     private let switchSettleTime: TimeInterval = 15
     private var ignoreSelectionUntil: Date = .distantPast
-    private var notificationTask: Task<Void, Never>?
 
     var selectedDevices: [MusicOutputDevice] {
         devices.filter(\.isSelected)
@@ -163,7 +162,11 @@ final class MusicOutputController: ObservableObject {
 
     /// What the picker offers: Music's list, and paired AirPods it can't have because they aren't connected.
     var pickerDevices: [MusicOutputDevice] {
-        devices + pairedAirPods.filter { airPods in
+        // "This Mac" goes by the name of where its sound goes now, and the MacBook has to stay a choice
+        let macBook = devices.filter { $0.localRoute != nil }.map {
+            MusicOutputDevice(name: $0.name, kind: $0.kind, isSelected: false)
+        }
+        return devices + macBook + pairedAirPods.filter { airPods in
             !devices.contains { $0.name == airPods.name || $0.localRoute?.name == airPods.name }
         }
     }
@@ -172,16 +175,22 @@ final class MusicOutputController: ObservableObject {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
     }
 
-    private init() {
-        notificationTask = Task { @Sendable [weak self] in
-            let notifications = DistributedNotificationCenter.default().notifications(
-                named: NSNotification.Name("com.apple.Music.playerInfo")
-            )
+    private override init() {
+        super.init()
+        // Also while this app isn't active, as macOS holds back the rest once it has been
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(playerInfoChanged(_:)),
+            name: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
 
-            for await notification in notifications {
-                guard notification.userInfo?["Player State"] as? String == "Paused" else { continue }
-                await self?.rememberCurrentOutput()
-            }
+    @objc private func playerInfoChanged(_ notification: Notification) {
+        guard notification.userInfo?["Player State"] as? String == "Paused" else { return }
+        Task { @MainActor in
+            await rememberCurrentOutput()
         }
     }
 
@@ -189,8 +198,11 @@ final class MusicOutputController: ObservableObject {
     @MainActor
     func refresh() async {
         guard Date() >= ignoreSelectionUntil else { return }
+        let answer = await fetchDevices()
+        // Something was picked while this asked, so the answer is from before that
+        guard Date() >= ignoreSelectionUntil else { return }
         // No answer from Music isn't an empty list, and the button would go away with it
-        guard let fetched = await fetchDevices() else {
+        guard let fetched = answer else {
             if !isMusicRunning {
                 devices = []
             }
@@ -227,13 +239,25 @@ final class MusicOutputController: ObservableObject {
     @MainActor
     func select(_ device: MusicOutputDevice) async {
         if let address = device.bluetoothAddress {
-            await connectAirPods(address)
+            await connectAirPods(address, name: device.name)
             return
+        }
+        // Music's "this Mac" plays wherever the Mac's output is, so that has to move as well.
+        // An entry that shows a route is there already.
+        if device.kind == "computer" && device.localRoute == nil && LocalAudioRoute.systemOutput?.isBuiltIn == false {
+            XPCHelperClient.shared.setDefaultOutput(named: nil)
+        } else if device.kind == "Bluetooth device" {
+            XPCHelperClient.shared.setDefaultOutput(named: device.name)
         }
         ignoreSelectionUntil = Date().addingTimeInterval(switchSettleTime)
         Defaults[.lastMusicOutputDevices] = [device.name]
         devices = devices.map {
-            MusicOutputDevice(name: $0.name, kind: $0.kind, isSelected: $0.name == device.name)
+            MusicOutputDevice(
+                name: $0.name,
+                kind: $0.kind,
+                isSelected: $0.name == device.name,
+                localRoute: $0.name == device.name ? device.localRoute : nil
+            )
         }
         await setOutput(to: [device.name])
     }
@@ -250,26 +274,31 @@ final class MusicOutputController: ObservableObject {
         guard !target.isEmpty, Set(target) != selected else { return }
 
         ignoreSelectionUntil = Date().addingTimeInterval(switchSettleTime)
-        devices = current.map {
+        devices = showingLocalRoute(in: current.map {
             MusicOutputDevice(name: $0.name, kind: $0.kind, isSelected: target.contains($0.name))
-        }
+        })
         await setOutput(to: target)
     }
 
     // MARK: - Private Methods
     /// macOS makes them the default output once they're connected, which Music only follows from "this Mac".
+    /// It doesn't if they already were connected, so that's asked for. If they've only just connected this
+    /// finds no device yet and macOS does it.
     /// If they can't connect (in their case, say) nothing changes and nothing is said.
     @MainActor
-    private func connectAirPods(_ address: String) async {
+    private func connectAirPods(_ address: String, name: String) async {
         guard await XPCHelperClient.shared.connectAirPods(address) else { return }
+        XPCHelperClient.shared.setDefaultOutput(named: name)
         if let computer = devices.first(where: { $0.kind == "computer" }), !computer.isSelected {
-            await select(computer)
+            let route = LocalAudioRoute.Route(name: name, transport: kAudioDeviceTransportTypeBluetooth)
+            await select(MusicOutputDevice(name: computer.name, kind: computer.kind, isSelected: true, localRoute: route))
         }
     }
 
     @MainActor
     private func rememberCurrentOutput() async {
-        guard Date() >= ignoreSelectionUntil, let current = await fetchDevices() else { return }
+        guard Date() >= ignoreSelectionUntil, let current = await fetchDevices(),
+              Date() >= ignoreSelectionUntil else { return }
         let selected = current.filter(\.isSelected).map(\.name)
         if !selected.isEmpty {
             Defaults[.lastMusicOutputDevices] = selected
@@ -309,11 +338,16 @@ final class MusicOutputController: ObservableObject {
             return "AirPlay device \"\(escaped)\""
         }.joined(separator: ", ")
 
+        // Switching can take longer than a script's time limit, and music can't stay stopped because of that
         let script = """
         tell application "Music"
             set wasPlaying to player state is playing
-            set current AirPlay devices to {\(deviceList)}
-            if wasPlaying then play
+            try
+                set current AirPlay devices to {\(deviceList)}
+            end try
+            if wasPlaying then
+                if it is running then play
+            end if
         end tell
         """
         try? await AppleScriptHelper.executeVoid(script)

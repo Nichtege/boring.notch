@@ -92,8 +92,8 @@ class MusicManager: ObservableObject {
         let albumChanged = state.album != self.lastArtworkAlbum
         let bundleChanged = state.bundleIdentifier != self.lastArtworkBundleIdentifier
 
-        // Check for artwork changes
-        let artworkChanged = state.artwork != nil && state.artwork != self.artworkData
+        // Check for artwork changes. Having none any more counts: that track shows the app icon, not the last cover
+        let artworkChanged = state.artwork != self.artworkData
         let hasContentChange = titleChanged || artistChanged || albumChanged || artworkChanged || bundleChanged
 
         // Handle artwork and visual transitions for changed content
@@ -109,13 +109,11 @@ class MusicManager: ObservableObject {
             }
             self.artworkData = state.artwork
 
-            if artworkChanged || state.artwork == nil {
-                // Update last artwork change values
-                self.lastArtworkTitle = state.title
-                self.lastArtworkArtist = state.artist
-                self.lastArtworkAlbum = state.album
-                self.lastArtworkBundleIdentifier = state.bundleIdentifier
-            }
+            // Update last artwork change values, also for a track with the same cover: it'd count as new on every publish
+            self.lastArtworkTitle = state.title
+            self.lastArtworkArtist = state.artist
+            self.lastArtworkAlbum = state.album
+            self.lastArtworkBundleIdentifier = state.bundleIdentifier
 
             // Only update sneak peek if there's actual content and something changed
             if !state.title.isEmpty && !state.artist.isEmpty && state.isPlaying {
@@ -169,7 +167,8 @@ class MusicManager: ObservableObject {
             self.isFavoriteTrack = state.isFavorite
         }
         
-        if volumeChanged {
+        // With a newer volume on its way this is old news, and the slider would snap back to it
+        if volumeChanged && volumeTask == nil {
             self.volume = state.volume
         }
         
@@ -296,7 +295,7 @@ class MusicManager: ObservableObject {
         }
     }
     func skip(seconds: TimeInterval) {
-        let newPos = min(max(0, elapsedTime + seconds), songDuration)
+        let newPos = min(max(0, estimatedPlaybackPosition() + seconds), songDuration)
         seek(to: newPos)
     }
     
@@ -347,7 +346,7 @@ class MusicManager: ObservableObject {
             let currentVolume = Double(volumeValue) / 100.0
             
             await MainActor.run {
-                if abs(currentVolume - self.volume) > 0.01 {
+                if self.volumeTask == nil && abs(currentVolume - self.volume) > 0.01 {
                     self.volume = currentVolume
                 }
             }

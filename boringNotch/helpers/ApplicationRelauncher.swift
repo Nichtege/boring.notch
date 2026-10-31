@@ -9,17 +9,11 @@ import AppKit
 
 enum ApplicationRelauncher {
     static func restart() {
-        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
-
-        let workspace = NSWorkspace.shared
-
-        guard let appURL = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier)
-        else { return }
-
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
 
-        workspace.openApplication(at: appURL, configuration: configuration, completionHandler: nil)
+        // This very copy: asking for the bundle ID could pick another build with the same ID
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration, completionHandler: nil)
 
         NSApplication.shared.terminate(nil)
     }

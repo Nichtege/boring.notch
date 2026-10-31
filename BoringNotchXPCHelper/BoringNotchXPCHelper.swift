@@ -145,6 +145,62 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         AudioObjectSetPropertyData(system, &defaultInput, 0, nil, size, &builtIn)
     }
 
+    // MARK: - Output
+
+    /// Sends the Mac's sound to the output device with this name, or without one to the MacBook's own speakers.
+    @objc func setDefaultOutput(named name: String?) {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var size: UInt32 = 0
+        var devicesAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyDataSize(system, &devicesAddress, 0, nil, &size) == noErr else { return }
+        var devices = [AudioObjectID](repeating: kAudioObjectUnknown, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &devicesAddress, 0, nil, &size, &devices) == noErr else { return }
+
+        let target = devices.first { device in
+            // AirPods can also be a microphone by the same name, which isn't the one to pick
+            var streams = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamsSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(device, &streams, 0, nil, &streamsSize) == noErr, streamsSize > 0 else { return false }
+
+            if let name {
+                var nameAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioObjectPropertyName,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                var deviceName: Unmanaged<CFString>?
+                var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+                guard AudioObjectGetPropertyData(device, &nameAddress, 0, nil, &nameSize, &deviceName) == noErr else { return false }
+                return deviceName?.takeRetainedValue() as String? == name
+            }
+            var transportAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var transport: UInt32 = 0
+            var transportSize = UInt32(MemoryLayout<UInt32>.size)
+            guard AudioObjectGetPropertyData(device, &transportAddress, 0, nil, &transportSize, &transport) == noErr else { return false }
+            return transport == kAudioDeviceTransportTypeBuiltIn
+        }
+        guard var target else { return }
+
+        var defaultOutput = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectSetPropertyData(system, &defaultOutput, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &target)
+    }
+
     // MARK: - AirPods
 
     private static var pairedAirPods: [IOBluetoothDevice] {

@@ -16,6 +16,7 @@ class AudioSpectrum: NSView {
     private var animationTimer: Timer?
     private var isListening = false
     private var isLive = false
+    private var wantsLive = false
     private let lowestLiveScale: CGFloat = 0.2
     
     override init(frame frameRect: NSRect) {
@@ -96,8 +97,21 @@ class AudioSpectrum: NSView {
         }
     }
     
+    /// A whole window closing (screen lock) may not dismantle this, and the tap would run on for good.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            setListening(false)
+            animationTimer?.invalidate()
+            animationTimer = nil
+        } else {
+            setPlaying(isPlaying, live: wantsLive)
+        }
+    }
+
     func setPlaying(_ playing: Bool, live: Bool) {
         isPlaying = playing
+        wantsLive = live
         setListening(playing && live)
         if !isPlaying {
             stopAnimating()

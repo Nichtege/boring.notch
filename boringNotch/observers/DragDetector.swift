@@ -15,6 +15,8 @@ final class DragDetector {
     typealias VoidCallback = () -> Void
 
     var onDragEntersNotchRegion: VoidCallback?
+    /// Only after a drag that reached the region: it can't have been dropped there.
+    var onDragEndsOutsideNotchRegion: VoidCallback?
 
     private var mouseDownMonitor: Any?
     private var mouseDraggedMonitor: Any?
@@ -24,6 +26,7 @@ final class DragDetector {
     private var isDragging: Bool = false
     private var isContentDragging: Bool = false
     private var hasEnteredNotchRegion: Bool = false
+    private var hasReachedNotchRegion: Bool = false
 
     private let notchRegion: CGRect
     private let dragPasteboard = NSPasteboard(name: .drag)
@@ -54,6 +57,7 @@ final class DragDetector {
             self.isDragging = true
             self.isContentDragging = false
             self.hasEnteredNotchRegion = false
+            self.hasReachedNotchRegion = false
         }
 
         // Track drag movement and notch region intersection
@@ -76,6 +80,7 @@ final class DragDetector {
 
             if self.isContentDragging && !self.hasEnteredNotchRegion {
                 self.hasEnteredNotchRegion = true
+                self.hasReachedNotchRegion = true
                 self.onDragEntersNotchRegion?()
             }
         }
@@ -83,10 +88,14 @@ final class DragDetector {
         mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
             guard let self = self else { return }
             guard self.isDragging else { return }
-            
+
+            if self.hasReachedNotchRegion && !self.notchRegion.contains(NSEvent.mouseLocation) {
+                self.onDragEndsOutsideNotchRegion?()
+            }
             self.isDragging = false
             self.isContentDragging = false
             self.hasEnteredNotchRegion = false
+            self.hasReachedNotchRegion = false
             self.pasteboardChangeCount = -1
         }
     }
@@ -103,6 +112,7 @@ final class DragDetector {
         isDragging = false
         isContentDragging = false
         hasEnteredNotchRegion = false
+        hasReachedNotchRegion = false
     }
 
     deinit {

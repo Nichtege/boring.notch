@@ -204,7 +204,12 @@ extension XPCHelperClient {
     nonisolated func keepMicOnMacBook() {
         send { $0.keepMicOnMacBook() }
     }
-    
+
+    /// To the device with this name, or to the MacBook's own speakers.
+    nonisolated func setDefaultOutput(named name: String?) {
+        send { $0.setDefaultOutput(named: name) }
+    }
+
     nonisolated func pairedAirPods() async -> [[String: String]] {
         await ask { $0.pairedAirPods(with: $1) } ?? []
     }

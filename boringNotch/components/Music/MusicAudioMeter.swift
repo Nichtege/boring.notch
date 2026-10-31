@@ -64,7 +64,8 @@ final class MusicAudioMeter {
 
     private func started(_ newTap: MusicAudioTap?) {
         startTask = nil
-        guard !listeners.isEmpty else {
+        // A stop and a new start can't cancel a setup under way, and only one tap may ever run
+        guard !listeners.isEmpty, tap == nil else {
             if let newTap {
                 Task.detached { newTap.stop() }
             }

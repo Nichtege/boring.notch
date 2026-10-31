@@ -62,14 +62,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    func onScreenLocked(_ notification: Notification) {
+    @objc func onScreenLocked(_ notification: Notification) {
         SystemNotificationManager.shared.dismissAll()
         cleanupWindows()
     }
 
     @MainActor
-    func onScreenUnlocked(_ notification: Notification) {
+    @objc func onScreenUnlocked(_ notification: Notification) {
         adjustWindowPosition()
+        MusicManager.shared.forceUpdate()
     }
 
     private func cleanupWindows(shouldInvert: Bool = false) {
@@ -95,6 +96,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 windowScreenDidChangeObserver = nil
             }
             self.window = nil
+            // The next window starts out not hovered, and an open notch would have nothing to close it
+            if vm.notchState == .open {
+                vm.close()
+            }
         }
     }
 
@@ -128,19 +133,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupDragDetectorForScreen(_ screen: NSScreen) {
         guard let uuid = screen.displayUUID else { return }
         
-        let screenFrame = screen.frame
-        let notchHeight = openNotchSize.height
-        let notchWidth = openNotchSize.width
-        
-        // Create notch region at the top-center of the screen where an open notch would occupy
-        let notchRegion = CGRect(
-            x: screenFrame.midX - notchWidth / 2,
-            y: screenFrame.maxY - notchHeight,
-            width: notchWidth,
-            height: notchHeight
-        )
-        
-        let detector = DragDetector(notchRegion: notchRegion)
+        let detector = DragDetector(notchRegion: openNotchRegion(on: screen))
         
         detector.onDragEntersNotchRegion = { [weak self] in
             Task { @MainActor in
@@ -148,12 +141,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
+        detector.onDragEndsOutsideNotchRegion = { [weak self] in
+            Task { @MainActor in
+                self?.handleDragEndsOutsideNotchRegion(onScreen: screen)
+            }
+        }
+        
         dragDetectors[uuid] = detector
         detector.startMonitoring()
     }
 
+    /// The top-center of the screen, where an open notch sits.
+    private func openNotchRegion(on screen: NSScreen) -> CGRect {
+        CGRect(
+            x: screen.frame.midX - openNotchSize.width / 2,
+            y: screen.frame.maxY - openNotchSize.height,
+            width: openNotchSize.width,
+            height: openNotchSize.height
+        )
+    }
+
+    private func isPointerInsideOpenNotch(of viewModel: BoringViewModel) -> Bool {
+        guard let screen = viewModel.screenUUID.flatMap({ NSScreen.screen(withUUID: $0) }) else { return false }
+        return openNotchRegion(on: screen).contains(NSEvent.mouseLocation)
+    }
+
     private func handleDragEntersNotchRegion(onScreen screen: NSScreen) {
-        guard let uuid = screen.displayUUID else { return }
+        guard Defaults[.boringShelf], let uuid = screen.displayUUID else { return }
         
         if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid] {
             viewModel.open()
@@ -161,6 +175,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !Defaults[.showOnAllDisplays], let windowScreen = window?.screen, screen == windowScreen {
             vm.open()
             coordinator.currentView = .shelf
+        }
+    }
+
+    /// A fast drag can pass through without any drop target noticing, and they're what closes the notch again.
+    private func handleDragEndsOutsideNotchRegion(onScreen screen: NSScreen) {
+        guard Defaults[.boringShelf], let uuid = screen.displayUUID else { return }
+        
+        if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid], viewModel.notchState == .open {
+            viewModel.close()
+        } else if !Defaults[.showOnAllDisplays], window?.screen == screen, vm.notchState == .open {
+            vm.close()
         }
     }
 
@@ -266,21 +291,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Also while this app isn't active, as macOS holds back the rest once it has been
         DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name(rawValue: "com.apple.screenIsLocked"),
-            object: nil, queue: .main) { [weak self] notification in
-                Task { @MainActor in
-                    self?.onScreenLocked(notification)
-                }
-        }
+            self,
+            selector: #selector(onScreenLocked(_:)),
+            name: NSNotification.Name(rawValue: "com.apple.screenIsLocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
-            object: nil, queue: .main) { [weak self] notification in
-                Task { @MainActor in
-                    self?.onScreenUnlocked(notification)
-                }
-        }
+            self,
+            selector: #selector(onScreenUnlocked(_:)),
+            name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
@@ -334,7 +360,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         do {
                             try await Task.sleep(for: .seconds(3))
                             await MainActor.run {
-                                viewModel?.close()
+                                // With the pointer on it, moving away closes it as usual
+                                guard let viewModel, !self.isPointerInsideOpenNotch(of: viewModel) else { return }
+                                viewModel.close()
                             }
                         } catch { }
                     }
@@ -447,7 +475,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             vm.screenUUID = selectedScreen.displayUUID
-            vm.notchSize = getClosedNotchSize(screenUUID: selectedScreen.displayUUID)
+            if vm.notchState == .closed {
+                vm.notchSize = getClosedNotchSize(screenUUID: selectedScreen.displayUUID)
+            }
 
             if window == nil {
                 window = createBoringNotchWindow(for: selectedScreen, with: vm)
