@@ -11,8 +11,30 @@ import SwiftUI
 struct MixerView: View {
     @ObservedObject var mixer = AppVolumeMixer.shared
     @ObservedObject var musicManager = MusicManager.shared
+    @State private var equalizedApp: EqualizerView.App?
 
     var body: some View {
+        Group {
+            if let equalizedApp {
+                EqualizerView(app: equalizedApp) {
+                    self.equalizedApp = nil
+                }
+            } else {
+                list
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            mixer.tabAppeared()
+            Task { await musicManager.syncVolumeFromActiveApp() }
+        }
+        .onDisappear(perform: mixer.tabDisappeared)
+    }
+
+    private var list: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 2) {
                 if mixer.macHasVolume {
@@ -23,7 +45,15 @@ struct MixerView: View {
                 }
 
                 if let music = mixer.music {
-                    MixerRow(name: Text(music.localizedName ?? ""), volume: musicManager.volume, onChange: musicManager.setVolume(to:)) {
+                    let app = EqualizerView.App(id: music.bundleIdentifier ?? "", name: music.localizedName ?? "", icon: music.icon)
+                    MixerRow(
+                        name: Text(app.name),
+                        isFailing: mixer.musicIsFailing,
+                        volume: musicManager.volume,
+                        onChange: musicManager.setVolume(to:),
+                        equalizerIsActive: mixer.equalizer(for: app.id).isActive,
+                        onEqualizer: { equalizedApp = app }
+                    ) {
                         appIcon(music.icon)
                     }
                 }
@@ -34,7 +64,9 @@ struct MixerView: View {
                         isFailing: row.isFailing,
                         volume: row.volume,
                         onChange: { mixer.setVolume($0, for: row.id) },
-                        onRelease: mixer.saveVolumes
+                        onRelease: mixer.saveVolumes,
+                        equalizerIsActive: mixer.equalizer(for: row.id).isActive,
+                        onEqualizer: { equalizedApp = EqualizerView.App(id: row.id, name: row.name, icon: row.icon) }
                     ) {
                         appIcon(row.icon)
                     }
@@ -51,15 +83,6 @@ struct MixerView: View {
             }
         }
         .scrollBounceBehavior(.basedOnSize)
-        .padding(.horizontal, 12)
-        .padding(.top, 2)
-        .padding(.bottom, 4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear {
-            mixer.tabAppeared()
-            Task { await musicManager.syncVolumeFromActiveApp() }
-        }
-        .onDisappear(perform: mixer.tabDisappeared)
     }
 
     private func appIcon(_ icon: NSImage?) -> some View {
@@ -75,6 +98,8 @@ private struct MixerRow<Icon: View>: View {
     let volume: Double
     let onChange: (Double) -> Void
     var onRelease: () -> Void = {}
+    var equalizerIsActive = false
+    var onEqualizer: (() -> Void)?
     @ViewBuilder let icon: () -> Icon
 
     @State private var value: Double = 0
@@ -105,7 +130,8 @@ private struct MixerRow<Icon: View>: View {
                     onChange(newValue)
                     onRelease()
                 },
-                onDragChange: onChange
+                onDragChange: onChange,
+                detentCount: SliderDetents.volumeCount
             )
             .frame(height: 10)
             Text(verbatim: "\(Int((value * 100).rounded())) %")
@@ -113,6 +139,21 @@ private struct MixerRow<Icon: View>: View {
                 .monospacedDigit()
                 .foregroundStyle(.gray)
                 .frame(width: 38, alignment: .trailing)
+            Group {
+                if let onEqualizer {
+                    Button(action: onEqualizer) {
+                        Image(systemName: "slider.vertical.3")
+                            .foregroundStyle(equalizerIsActive ? .white : .gray)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Equalizer")
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(width: 20)
         }
         .font(.caption)
         .padding(.horizontal, 6)

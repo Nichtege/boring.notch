@@ -1,6 +1,286 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Headphones" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopfhörer"
+          }
+        }
+      }
+    },
+    "AirPods Pro 3 (approximate)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AirPods Pro 3 (Näherung)"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus"
+          }
+        }
+      }
+    },
+    "Back" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück"
+          }
+        }
+      }
+    },
+    "Equalizer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equalizer"
+          }
+        }
+      }
+    },
+    "Flat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linear"
+          }
+        }
+      }
+    },
+    "Acoustic" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akustik"
+          }
+        }
+      }
+    },
+    "Bass Booster" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bass erhöhen"
+          }
+        }
+      }
+    },
+    "Bass Reducer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bass reduzieren"
+          }
+        }
+      }
+    },
+    "Classical" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klassik"
+          }
+        }
+      }
+    },
+    "Dance" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dance"
+          }
+        }
+      }
+    },
+    "Deep" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deep"
+          }
+        }
+      }
+    },
+    "Electronic" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Electronic"
+          }
+        }
+      }
+    },
+    "Hip-Hop" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hip-Hop"
+          }
+        }
+      }
+    },
+    "Jazz" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jazz"
+          }
+        }
+      }
+    },
+    "Latin" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latin"
+          }
+        }
+      }
+    },
+    "Loudness" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loudness"
+          }
+        }
+      }
+    },
+    "Lounge" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lounge"
+          }
+        }
+      }
+    },
+    "Piano" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Piano"
+          }
+        }
+      }
+    },
+    "Pop" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pop"
+          }
+        }
+      }
+    },
+    "R&B" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "R&B"
+          }
+        }
+      }
+    },
+    "Rock" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rock"
+          }
+        }
+      }
+    },
+    "Small Speakers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleine Boxen"
+          }
+        }
+      }
+    },
+    "Spoken Word" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache"
+          }
+        }
+      }
+    },
+    "Treble Booster" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höhen verstärken"
+          }
+        }
+      }
+    },
+    "Treble Reducer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höhen reduzieren"
+          }
+        }
+      }
+    },
+    "Vocal Booster" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme verstärken"
+          }
+        }
+      }
+    },
     "Customize which controls appear in the music player." : {
       "localizations" : {
         "de" : {
