@@ -56,9 +56,10 @@ struct MediaDevicesView: View {
     private var rows: [Row] {
         var rows = [macRow]
         rows += media.devices.map { device in
-            Row(
-                name: device.deviceName,
-                icon: RemoteNowPlaying.iconName(for: device.deviceName),
+            let speaker = media.speaker(of: device)
+            return Row(
+                name: speaker.map { "\(device.deviceName) → \($0.name)" } ?? device.deviceName,
+                icon: speaker?.iconName ?? RemoteNowPlaying.iconName(for: device.deviceName),
                 title: device.state.title,
                 artist: device.state.artist,
                 cover: device.cover,
@@ -71,9 +72,11 @@ struct MediaDevicesView: View {
             )
         }
         // Speakers Music can reach, of which macOS hasn't told anything. Headphones play only what this Mac sends them
+        let usedSpeakers = media.devices.compactMap { media.speaker(of: $0)?.name }
         rows += outputs.devices
             .filter { device in
-                device.kind != "computer" && device.kind != "Bluetooth device" && !rows.contains { $0.name == device.name }
+                device.kind != "computer" && device.kind != "Bluetooth device"
+                    && !usedSpeakers.contains(device.name) && !rows.contains { $0.name == device.name }
             }
             .map { Row(name: $0.name, icon: $0.iconName) }
         return rows

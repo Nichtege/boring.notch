@@ -34,12 +34,32 @@ final class RemoteMediaManager: ObservableObject {
             .store(in: &cancellables)
 
         let music = MusicManager.shared
-        Publishers.Merge(music.$isPlaying.map { _ in () }, music.$songTitle.map { _ in () })
+        Publishers.Merge3(
+            music.$isPlaying.map { _ in () },
+            music.$songTitle.map { _ in () },
+            MusicOutputController.shared.$devices.map { _ in () }
+        )
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
                 self?.updateControlTile()
             }
             .store(in: &cancellables)
+
+        Task { @MainActor in
+            await MusicOutputController.shared.refresh()
+        }
+    }
+
+    /// Where an iPhone's sound comes out. macOS won't say to this app, but it only knows an iPhone at all while that
+    /// plays to a speaker: its own name for the connection is "iPhone → speaker". So with one speaker in reach that
+    /// has nothing of its own to tell, it's that one. With more it can't be told, and then this is nil.
+    func speaker(of device: RemoteNowPlaying) -> MusicOutputDevice? {
+        guard RemoteNowPlaying.iconName(for: device.deviceName) != RemoteNowPlaying.iconName(for: "") else { return nil }
+        let speakers = MusicOutputController.shared.devices.filter { output in
+            output.kind != "computer" && output.kind != "Bluetooth device"
+                && !devices.contains { $0.deviceName == output.name }
+        }
+        return speakers.count == 1 ? speakers.first : nil
     }
 
     func select(_ deviceName: String?) {
@@ -70,7 +90,12 @@ final class RemoteMediaManager: ObservableObject {
         if music.isPlaying {
             tile = [music.songTitle, "Mac", "laptopcomputer"]
         } else if let playing = devices.first(where: \.state.isPlaying) {
-            tile = [playing.state.title, playing.deviceName, RemoteNowPlaying.iconName(for: playing.deviceName)]
+            let speaker = speaker(of: playing)
+            tile = [
+                playing.state.title,
+                speaker?.name ?? playing.deviceName,
+                speaker?.iconName ?? RemoteNowPlaying.iconName(for: playing.deviceName),
+            ]
         }
         guard tile != lastControlTile else { return }
         lastControlTile = tile

@@ -99,7 +99,7 @@ struct AlbumArtView: View {
     private var appIconOverlay: some View {
         if vm.notchState == .open, let device = musicManager.remoteDevice {
             // Its app is on that device, so this Mac may have no icon for it
-            Image(systemName: RemoteNowPlaying.iconName(for: device.deviceName))
+            Image(systemName: RemoteMediaManager.shared.speaker(of: device)?.iconName ?? RemoteNowPlaying.iconName(for: device.deviceName))
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(.white)
                 .frame(width: 26, height: 26)
@@ -207,15 +207,16 @@ struct MusicControlsView: View {
 
     /// Where another device plays can't be changed from here, so this leads to the list of them.
     private func remoteLabel(_ device: RemoteNowPlaying, showsName: Bool) -> some View {
-        Button {
+        let speaker = RemoteMediaManager.shared.speaker(of: device)
+        return Button {
             withAnimation(.smooth) {
                 BoringViewCoordinator.shared.currentView = .devices
             }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: RemoteNowPlaying.iconName(for: device.deviceName))
+                Image(systemName: speaker?.iconName ?? RemoteNowPlaying.iconName(for: device.deviceName))
                 if showsName {
-                    Text(verbatim: device.deviceName)
+                    Text(verbatim: speaker?.name ?? device.deviceName)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
