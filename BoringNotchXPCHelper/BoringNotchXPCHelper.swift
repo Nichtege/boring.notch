@@ -203,8 +203,11 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
 
     // MARK: - AirPods
 
+    /// "… - Find My" entries are the Find My network's, not pairings anything can connect to.
     private static var pairedAirPods: [IOBluetoothDevice] {
-        (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []).filter { $0.name?.contains("AirPods") == true }
+        (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []).filter { device in
+            device.name?.contains("AirPods") == true && device.name?.hasSuffix("Find My") == false
+        }
     }
 
     @objc func pairedAirPods(with reply: @escaping ([[String: String]]) -> Void) {
