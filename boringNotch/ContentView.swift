@@ -249,8 +249,12 @@ struct ContentView: View {
             anyDropDebounceTask?.cancel()
 
             if isTargeted {
-                if vm.notchState == .closed && Defaults[.boringShelf] {
+                guard Defaults[.boringShelf] else { return }
+                // Also when it's open on another tab already, as passing over it on the way can open it first
+                withAnimation(.smooth) {
                     coordinator.currentView = .shelf
+                }
+                if vm.notchState == .closed {
                     doOpen()
                 }
                 return

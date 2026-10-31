@@ -203,7 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid] {
             viewModel.open()
             coordinator.currentView = .shelf
-        } else if !Defaults[.showOnAllDisplays], let windowScreen = window?.screen, screen == windowScreen {
+        } else if !Defaults[.showOnAllDisplays], window?.screen?.displayUUID == uuid {
             vm.open()
             coordinator.currentView = .shelf
         }
@@ -215,7 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid], viewModel.notchState == .open {
             viewModel.close()
-        } else if !Defaults[.showOnAllDisplays], window?.screen == screen, vm.notchState == .open {
+        } else if !Defaults[.showOnAllDisplays], window?.screen?.displayUUID == uuid, vm.notchState == .open {
             vm.close()
         }
     }
