@@ -286,9 +286,9 @@ final class AtlasChat: ObservableObject {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
-            includeScreen = withScreen
-            attachments = files
         }
+        includeScreen = includeScreen || withScreen
+        attachments = files + attachments
         phase = .failed(message)
         if comesBack {
             AtlasPromptController.shared.showAnswer()
