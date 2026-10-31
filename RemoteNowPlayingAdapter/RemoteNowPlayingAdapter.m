@@ -141,7 +141,7 @@ static void handleCommand(NSString *line) {
         scheduleRefresh();
         return;
     }
-    NSDictionary *commands = @{@"play": @0, @"pause": @1, @"toggle": @2, @"next": @4, @"previous": @5, @"forward": @17, @"backward": @18};
+    NSDictionary *commands = @{@"toggle": @2, @"next": @4, @"previous": @5, @"forward": @17, @"backward": @18};
     NSNumber *command = commands[fields.firstObject];
     id origin = fields.count > 1 ? originsByName[fields[1]] : nil;
     if (!command || !origin) return;

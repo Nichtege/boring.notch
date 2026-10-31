@@ -8,11 +8,6 @@
 import Foundation
 import Defaults
 
-public enum Style {
-    case notch
-    case floating
-}
-
 public enum NotchState {
     case closed
     case open

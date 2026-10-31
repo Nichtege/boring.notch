@@ -686,7 +686,7 @@ struct About: View {
                     HStack {
                         Text("Release name")
                         Spacer()
-                        Text(Defaults[.releaseName])
+                        Text(verbatim: "Flying Rabbit 🐇🪽")
                             .foregroundStyle(.secondary)
                     }
                     HStack {

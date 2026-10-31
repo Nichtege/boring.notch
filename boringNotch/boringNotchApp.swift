@@ -14,7 +14,6 @@ import SwiftUI
 struct DynamicNotchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Default(.menubarIcon) var showMenuBarIcon
-    @Environment(\.openWindow) var openWindow
 
     var body: some Scene {
         MenuBarExtra("boring.notch", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
@@ -42,7 +41,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
     let vm: BoringViewModel = .init()
     @ObservedObject var coordinator = BoringViewCoordinator.shared
-    var quickShareService = QuickShareService.shared
     var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
@@ -263,6 +261,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MicLock.start()
         _ = AppVolumeMixer.shared
         _ = RemoteMediaManager.shared
+        // Finding the share services takes a moment, which shouldn't fall into the first drag to the shelf
+        _ = QuickShareService.shared
 
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
