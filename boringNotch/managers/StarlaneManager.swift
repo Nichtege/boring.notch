@@ -17,6 +17,11 @@ struct StarlaneSummary: Decodable, Equatable {
         let id: String?
         let name: String
         let state: String
+
+        /// Names can repeat: the server's numbering starts over with it, while restored terminals keep theirs.
+        var identity: String {
+            id ?? name
+        }
     }
 
     struct LimitWindow: Decodable, Equatable {
@@ -57,8 +62,22 @@ struct StarlaneSummary: Decodable, Equatable {
         case nextDeadline = "next_deadline"
     }
 
-    var needsNames: [String] {
-        terminals.filter { $0.state == "needs" }.map(\.name)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        live = try container.decode(Int.self, forKey: .live)
+        busy = try container.decode(Int.self, forKey: .busy)
+        needs = try container.decode(Int.self, forKey: .needs)
+        done = try container.decode(Int.self, forKey: .done)
+        paused = try container.decode(Int.self, forKey: .paused)
+        limited = try container.decode(Int.self, forKey: .limited)
+        terminals = try container.decode([Terminal].self, forKey: .terminals)
+        nextDeadline = try container.decodeIfPresent(Deadline.self, forKey: .nextDeadline)
+        // A limit that can't be read shouldn't cost the whole tab
+        limit = try? container.decode([LimitWindow].self, forKey: .limit)
+    }
+
+    var needing: [Terminal] {
+        terminals.filter { $0.state == "needs" }
     }
 }
 
@@ -189,6 +208,7 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     func save(host: String, key: String) -> Bool {
         guard StarlaneKeychain.write(host, account: "address"),
               StarlaneKeychain.write(key, account: "key") else { return false }
+        AtlasChat.shared.forgetServer()
         restart()
         return true
     }
@@ -196,6 +216,7 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     func removeCredentials() {
         StarlaneKeychain.delete("address")
         StarlaneKeychain.delete("key")
+        AtlasChat.shared.forgetServer()
         restart()
     }
 
@@ -287,14 +308,17 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
             status = .connected
         }
 
-        let needs = Set(newSummary.needsNames)
-        if let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
-            newlyNeedingName = name
-            if Defaults[.starlaneBanner] && !FocusTimer.shared.holdsBanners {
+        // Known means it had its banner. So one held by a focus session, or a second new one in this poll, comes with a later poll
+        let needs = Set(newSummary.needing.map(\.identity))
+        var known = (knownNeeds ?? needs).intersection(needs)
+        if !FocusTimer.shared.holdsBanners, let new = newSummary.needing.first(where: { !known.contains($0.identity) }) {
+            known.insert(new.identity)
+            newlyNeedingName = new.name
+            if Defaults[.starlaneBanner] {
                 BoringViewCoordinator.shared.toggleExpandingView(status: true, type: .starlane)
             }
         }
-        knownNeeds = needs
+        knownNeeds = known
 
         if summary != newSummary {
             withAnimation(.smooth) {

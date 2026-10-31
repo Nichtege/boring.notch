@@ -292,13 +292,13 @@ private struct StarlaneLimitBar: View {
                 }
             }
             .frame(height: 4)
-            Text("\(Int(window.usedPercent.rounded())) %")
+            Text("\(Int(min(max(window.usedPercent, 0), 1000).rounded())) %")
                 .foregroundStyle(color == .white ? .gray : color)
                 .frame(width: 32, alignment: .trailing)
         }
         .font(.caption2)
         .monospacedDigit()
-        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(date: .omitted, time: .shortened))"))
+        .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(.dateTime.weekday(.abbreviated).hour().minute()))"))
     }
 }
 

@@ -33,7 +33,9 @@ enum ScreenSnapshot {
             throw Failure.notAllowed
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else {
+            throw Failure.failed
+        }
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         let screenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
@@ -48,8 +50,8 @@ enum ScreenSnapshot {
         configuration.width = Int(CGFloat(display.width) * scale)
         configuration.height = Int(CGFloat(display.height) * scale)
 
-        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-        guard let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration),
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
             throw Failure.failed
         }
         return data
@@ -76,7 +78,7 @@ final class AtlasChat: ObservableObject {
     @Published var input = ""
     @Published var includeScreen = false
     @Published private(set) var attachments: [AtlasAttachment] = []
-    @Published private(set) var attachmentProblem = ""
+    @Published var attachmentProblem = ""
     @Published private(set) var questionHasScreen = false
     @Published private(set) var questionFileCount = 0
     @Published private(set) var question = ""
@@ -102,12 +104,13 @@ final class AtlasChat: ObservableObject {
 
     // The server's own limits; it checks them again, along with the kinds of files it takes
     private let maxAttachments = 10
-    private let maxAttachmentSize = 20 * 1024 * 1024
     private let pollInterval: Duration = .milliseconds(1500)
-    // About half a minute without an answer from the server
-    private let failuresBeforeGivingUp = 20
+    // How long the server may stay silent during a job. Time the Mac sleeps doesn't count
+    private let silenceBeforeGivingUp: Duration = .seconds(120)
     private var token: String?
     private var thread: String?
+    // On their way, until the server has the message. Then they're gone: a job can run for many minutes
+    private var sendingFiles: [AtlasAttachment] = []
     private var task: Task<Void, Never>?
     private lazy var session = StarlaneManager.shared.makeSession(requestTimeout: 30, resourceTimeout: 60)
 
@@ -153,6 +156,7 @@ final class AtlasChat: ObservableObject {
 
     // MARK: - Actions
     func attachClipboard() {
+        attachmentProblem = ""
         let board = NSPasteboard.general
         let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !files.isEmpty {
@@ -174,7 +178,13 @@ final class AtlasChat: ObservableObject {
                 url.stopAccessingSecurityScopedResource()
             }
         }
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+        // Read whole, not mapped: a file that gets shorter before it's sent would crash the app. So look at the size first
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= maxSize(of: url.lastPathComponent) else {
+            attachmentProblem = String(localized: "\(url.lastPathComponent) is too large.")
+            return
+        }
+        guard let data = try? Data(contentsOf: url) else {
             attachmentProblem = String(localized: "\(url.lastPathComponent) can't be read.")
             return
         }
@@ -191,12 +201,20 @@ final class AtlasChat: ObservableObject {
             attachmentProblem = String(localized: "At most \(maxAttachments) files per message.")
             return
         }
-        guard data.count <= maxAttachmentSize else {
+        guard data.count <= maxSize(of: name) else {
             attachmentProblem = String(localized: "\(name) is too large.")
             return
         }
-        attachmentProblem = ""
         attachments.append(AtlasAttachment(name: name, data: data))
+    }
+
+    /// What the server takes per file. Besides images and PDFs it only takes text.
+    private func maxSize(of name: String) -> Int {
+        let kind = (name as NSString).pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "gif", "webp"].contains(kind) {
+            return 5 * 1024 * 1024
+        }
+        return kind == "pdf" ? 20 * 1024 * 1024 : 1024 * 1024
     }
 
     func send() {
@@ -208,19 +226,19 @@ final class AtlasChat: ObservableObject {
 
         // Asked for one message at a time: nothing stays attached
         let withScreen = includeScreen
-        let files = attachments
+        sendingFiles = attachments
         includeScreen = false
         attachments = []
         attachmentProblem = ""
         questionHasScreen = withScreen
-        questionFileCount = files.count
+        questionFileCount = sendingFiles.count
 
         input = ""
         question = text
         answer = ""
         step = ""
         phase = .sending
-        task = Task { await deliver(text, withScreen: withScreen, files: files) }
+        task = Task { await deliver(text, withScreen: withScreen) }
     }
 
     /// Forgets the conversation here. Atlas keeps it, so it stays readable in Starlane.
@@ -230,6 +248,7 @@ final class AtlasChat: ObservableObject {
         input = ""
         includeScreen = false
         attachments = []
+        sendingFiles = []
         attachmentProblem = ""
         questionHasScreen = false
         questionFileCount = 0
@@ -240,18 +259,32 @@ final class AtlasChat: ObservableObject {
         phase = .idle
     }
 
+    /// The address or key changed: the token and the conversation belong to the old server.
+    func forgetServer() {
+        reset()
+        token = nil
+    }
+
     // MARK: - Talking to Starlane
-    private func deliver(_ text: String, withScreen: Bool, files: [AtlasAttachment]) async {
-        func failed(_ message: String) {
-            fail(message, restoring: text, withScreen: withScreen, files: files)
+    private func deliver(_ text: String, withScreen: Bool) async {
+        func failed(_ message: String, comesBack: Bool = true) {
+            fail(message, comesBack: comesBack, restoring: text, withScreen: withScreen)
         }
 
         do {
+            // The server answers a stale token without reading the upload, and through the proxy that 401 can get lost.
+            // So an upload starts with a fresh token, for the price of one more look at the page
+            if withScreen || !sendingFiles.isEmpty {
+                token = nil
+            }
             var ids = withScreen ? [try await uploadScreen()] : []
-            for file in files {
+            for file in sendingFiles {
                 ids.append(try await upload(file.data, name: file.name))
             }
             let job = try await post(text, files: ids)
+            // Stopped while this was on its way: the conversation is already forgotten here
+            try Task.checkCancellation()
+            sendingFiles = []
             thread = job.thread ?? job.id
             phase = .running
             await follow(job.id)
@@ -263,24 +296,33 @@ final class AtlasChat: ObservableObject {
             failed(String(localized: "Allow Screen Recording for Boring Notch in System Settings, then restart the app."))
         } catch is ScreenSnapshot.Failure {
             failed(String(localized: "The screenshot couldn't be taken."))
+        } catch is DecodingError {
+            failed(String(localized: "This Starlane version can't be talked to from here."))
         } catch {
-            failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"))
+            // Only said in the line, for when it's open or next opened: losing the network never brings anything up by itself
+            failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"), comesBack: false)
         }
     }
 
-    private func fail(_ message: String, restoring text: String, withScreen: Bool, files: [AtlasAttachment]) {
+    private func fail(_ message: String, comesBack: Bool, restoring text: String, withScreen: Bool) {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
-            includeScreen = withScreen
-            attachments = files
         }
+        includeScreen = includeScreen || withScreen
+        attachments = sendingFiles + attachments
+        sendingFiles = []
         phase = .failed(message)
+        if comesBack {
+            AtlasPromptController.shared.showAnswer()
+        }
     }
 
     private func uploadScreen() async throws -> String {
         step = String(localized: "Taking a screenshot…")
-        return try await upload(try await ScreenSnapshot.jpeg(), name: "screen.jpg")
+        let jpeg = try await ScreenSnapshot.jpeg()
+        step = ""
+        return try await upload(jpeg, name: "screen.jpg")
     }
 
     private func upload(_ data: Data, name: String) async throws -> String {
@@ -308,7 +350,8 @@ final class AtlasChat: ObservableObject {
     }
 
     private func follow(_ id: String) async {
-        var failures = 0
+        let clock = SuspendingClock()
+        var lastAnswer = clock.now
         var tick = 0
 
         while !Task.isCancelled {
@@ -331,12 +374,12 @@ final class AtlasChat: ObservableObject {
                     finish(job)
                     return
                 }
-                failures = 0
+                lastAnswer = clock.now
             } catch {
-                failures += 1
-                if failures >= failuresBeforeGivingUp {
+                guard !Task.isCancelled else { return }
+                // Only said in the line, for when it's open or next opened: losing the network never brings anything up by itself
+                if clock.now - lastAnswer > silenceBeforeGivingUp {
                     phase = .failed(String(localized: "Lost the connection. The answer will still appear in Starlane."))
-                    AtlasPromptController.shared.showAnswer()
                     return
                 }
             }
@@ -376,6 +419,10 @@ final class AtlasChat: ObservableObject {
 
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
+        // The GETs are the polls of a job: a dead peer shouldn't hold one for the session's 30 s
+        if method == "GET" {
+            request.timeoutInterval = 10
+        }
         request.setValue(currentToken, forHTTPHeaderField: "X-AOS-Token")
         if let body {
             request.httpBody = body
@@ -391,8 +438,11 @@ final class AtlasChat: ObservableObject {
             token = nil
             throw ChatError.expiredToken
         default:
-            let error = (try? JSONDecoder().decode(Reply.self, from: data))?.error
-            throw ChatError.refused(error ?? String(localized: "Starlane refused this (\(status))."))
+            if let error = (try? JSONDecoder().decode(Reply.self, from: data))?.error {
+                throw ChatError.refused(error)
+            }
+            // Without the server's own words, a 5xx is the proxy saying that the server is gone (a 502 when it's stopped)
+            throw status >= 500 ? ChatError.unreachable : ChatError.refused(String(localized: "Starlane refused this (\(status))."))
         }
     }
 
@@ -411,8 +461,14 @@ final class AtlasChat: ObservableObject {
             throw ChatError.refused(notConfigured)
         }
         let (data, response) = try await session.data(from: url)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200:
+            break
+        case 401, 403:
             throw ChatError.refused(String(localized: "Refused: check the key and your Tailscale login"))
+        default:
+            // A stopped server (502) or one without its vault (500): nothing wrong with the key
+            throw ChatError.unreachable
         }
 
         let page: Page? = await Task.detached(priority: .userInitiated) {
@@ -447,8 +503,18 @@ final class AtlasPromptController {
     private let width: CGFloat = 560
     private var panel: AtlasPromptPanel?
     private var placedFrame: NSRect = .zero
+    private var pendingAnswer = false
+    private var fullscreenCancellable: AnyCancellable?
 
-    private init() {}
+    private init() {
+        fullscreenCancellable = FullscreenMediaDetector.shared.$fullscreenStatus
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                if self?.pendingAnswer == true {
+                    self?.showAnswer()
+                }
+            }
+    }
 
     /// Where the line is, while it's up. The notification card sits below it.
     var lineFrame: NSRect? {
@@ -467,9 +533,13 @@ final class AtlasPromptController {
         }
     }
 
-    /// A running answer that finishes behind a closed line comes back, except over a video.
+    /// A running answer that finishes behind a closed line comes back. Over a video it waits until the video is gone.
     func showAnswer() {
-        guard panel?.isVisible != true, !FullscreenMediaDetector.shared.fullscreenStatus.values.contains(true) else { return }
+        guard panel?.isVisible != true, AtlasChat.shared.hasConversation else { return }
+        guard !FullscreenMediaDetector.shared.hidesClosedNotch else {
+            pendingAnswer = true
+            return
+        }
         show(focus: false)
     }
 
@@ -488,6 +558,7 @@ final class AtlasPromptController {
     }
 
     private func show(focus: Bool) {
+        pendingAnswer = false
         let panel = panel ?? makePanel()
         self.panel = panel
         place(panel, height: panel.frame.height)
@@ -578,6 +649,7 @@ struct AtlasPromptView: View {
                     }
                 }
                 .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+                    chat.attachmentProblem = ""
                     for provider in providers {
                         _ = provider.loadObject(ofClass: URL.self) { url, _ in
                             guard let url else { return }
@@ -626,6 +698,14 @@ struct AtlasPromptView: View {
                 if chat.isBusy {
                     ProgressView()
                         .controlSize(.small)
+                    Button {
+                        chat.reset()
+                    } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundStyle(.gray)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help(Text("Stop waiting here. What Atlas already has still gets its answer in Starlane."))
                 }
                 if chat.hasConversation {
                     Button {
