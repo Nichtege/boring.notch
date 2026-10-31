@@ -425,7 +425,8 @@ struct VolumeControlView: View {
                 dragging: $dragging,
                 lastDragged: .constant(Date.distantPast),
                 onValueChange: MusicManager.shared.setVolume(to:),
-                onDragChange: MusicManager.shared.setVolume(to:)
+                onDragChange: MusicManager.shared.setVolume(to:),
+                detentCount: SliderDetents.volumeCount
             )
             .frame(width: 80, height: 8)
         }
@@ -546,6 +547,36 @@ struct MusicSliderView: View {
     }
 }
 
+/// Clicks under the finger while a slider passes its steps, like the notches of a volume knob. Only a finger on
+/// a Force Touch trackpad feels them.
+struct SliderDetents {
+    /// Every 5%
+    static let volumeCount = 20
+
+    private let minimumGap: TimeInterval = 0.03
+    private var current: Int?
+    private var lastClick = Date.distantPast
+
+    /// The ends are stops, and a slider with a middle clicks harder there too.
+    mutating func update(progress: Double, count: Int, hasMiddle: Bool = false) {
+        let detent = Int((progress * Double(count)).rounded())
+        defer { current = detent }
+        guard let current, current != detent, Defaults[.enableHaptics] else { return }
+
+        // Swiped across, one click per step would only buzz
+        let now = Date()
+        guard now.timeIntervalSince(lastClick) >= minimumGap else { return }
+        lastClick = now
+
+        let isStop = detent == 0 || detent == count || (hasMiddle && detent == count / 2)
+        NSHapticFeedbackManager.defaultPerformer.perform(isStop ? .levelChange : .alignment, performanceTime: .now)
+    }
+
+    mutating func end() {
+        current = nil
+    }
+}
+
 struct CustomSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double>
@@ -554,6 +585,9 @@ struct CustomSlider: View {
     @Binding var lastDragged: Date
     var onValueChange: ((Double) -> Void)?
     var onDragChange: ((Double) -> Void)?
+    var detentCount = 0
+
+    @State private var detents = SliderDetents()
 
     var body: some View {
         GeometryReader { geometry in
@@ -584,9 +618,13 @@ struct CustomSlider: View {
                         }
                         let newValue = range.lowerBound + Double(gesture.location.x / width) * rangeSpan
                         value = min(max(newValue, range.lowerBound), range.upperBound)
+                        if detentCount > 0, rangeSpan > 0 {
+                            detents.update(progress: (value - range.lowerBound) / rangeSpan, count: detentCount)
+                        }
                         onDragChange?(value)
                     }
                     .onEnded { _ in
+                        detents.end()
                         onValueChange?(value)
                         dragging = false
                         lastDragged = Date()
