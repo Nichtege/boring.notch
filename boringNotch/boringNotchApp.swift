@@ -164,6 +164,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    private func viewModelUnderPointer() -> BoringViewModel {
+        guard Defaults[.showOnAllDisplays] else { return vm }
+        let mouseLocation = NSEvent.mouseLocation
+        for screen in NSScreen.screens where screen.frame.contains(mouseLocation) {
+            if let uuid = screen.displayUUID, let screenViewModel = viewModels[uuid] {
+                return screenViewModel
+            }
+        }
+        return vm
+    }
+
+    /// Long enough to get there with the pointer, which then keeps it open as usual.
+    @objc private func onShowMedia(_ notification: Notification) {
+        Task { @MainActor in
+            let viewModel = self.viewModelUnderPointer()
+            self.closeNotchTask?.cancel()
+            self.coordinator.currentView = .home
+            MusicManager.shared.isDeviceListShown = true
+            viewModel.open()
+            self.closeNotchTask = Task { [weak viewModel] in
+                do {
+                    try await Task.sleep(for: .seconds(10))
+                    guard let viewModel, !self.isPointerInsideOpenNotch(of: viewModel) else { return }
+                    viewModel.close()
+                } catch { }
+            }
+        }
+    }
+
     private func isPointerInsideOpenNotch(of viewModel: BoringViewModel) -> Bool {
         guard let screen = viewModel.screenUUID.flatMap({ NSScreen.screen(withUUID: $0) }) else { return false }
         return NSMouseInRect(NSEvent.mouseLocation, openNotchRegion(on: screen), false)
@@ -311,6 +340,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             suspensionBehavior: .deliverImmediately
         )
 
+        // From the tile in Control Center, which is its own process
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(onShowMedia(_:)),
+            name: NSNotification.Name(rawValue: "com.nichtege.boringnotch.showMedia"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
             if Defaults[.sneakPeekStyles] == .inline {
@@ -335,20 +373,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { [weak self] in
                 guard let self = self else { return }
 
-                let mouseLocation = NSEvent.mouseLocation
-
-                var viewModel = self.vm
-
-                if Defaults[.showOnAllDisplays] {
-                    for screen in NSScreen.screens {
-                        if screen.frame.contains(mouseLocation) {
-                            if let uuid = screen.displayUUID, let screenViewModel = self.viewModels[uuid] {
-                                viewModel = screenViewModel
-                                break
-                            }
-                        }
-                    }
-                }
+                let viewModel = self.viewModelUnderPointer()
 
                 self.closeNotchTask?.cancel()
                 self.closeNotchTask = nil

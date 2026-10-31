@@ -112,6 +112,8 @@
 		F38DE6482D8243E7008B5C6D /* BatteryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */; };
 		A1F00001A1F00001A1F00001 /* RemoteNowPlayingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F00002A1F00002A1F00002 /* RemoteNowPlayingController.swift */; };
 		A1F00015A1F00015A1F00015 /* libRemoteNowPlayingAdapter.dylib in Embed Now Playing Adapter */ = {isa = PBXBuildFile; fileRef = A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A1F00027A1F00027A1F00027 /* BoringControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1F00021A1F00021A1F00021 /* BoringControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1F0002EA1F0002EA1F0002E /* MediaDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +130,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = A1F00010A1F00010A1F00010;
 			remoteInfo = RemoteNowPlayingAdapter;
+		};
+		A1F00029A1F00029A1F00029 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 14CEF40A2C5CAED200855D72 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1F00020A1F00020A1F00020;
+			remoteInfo = BoringControls;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -152,6 +161,17 @@
 				A1F00015A1F00015A1F00015 /* libRemoteNowPlayingAdapter.dylib in Embed Now Playing Adapter */,
 			);
 			name = "Embed Now Playing Adapter";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1F00028A1F00028A1F00028 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1F00027A1F00027A1F00027 /* BoringControls.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -262,6 +282,8 @@
 		F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryActivityManager.swift; sourceTree = "<group>"; };
 		A1F00002A1F00002A1F00002 /* RemoteNowPlayingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNowPlayingController.swift; sourceTree = "<group>"; };
 		A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libRemoteNowPlayingAdapter.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1F00021A1F00021A1F00021 /* BoringControls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BoringControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDevicesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -272,12 +294,20 @@
 			);
 			target = 11F7484E2EC9AABA00F841DB /* BoringNotchXPCHelper */;
 		};
+		A1F00026A1F00026A1F00026 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A1F00020A1F00020A1F00020 /* BoringControls */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		112FB72F2CCF12CC0015238C /* private */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = private; sourceTree = "<group>"; };
 		11F748502EC9AABA00F841DB /* BoringNotchXPCHelper */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (11F7485C2EC9AABA00F841DB /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringNotchXPCHelper; sourceTree = "<group>"; };
 		A1F00014A1F00014A1F00014 /* RemoteNowPlayingAdapter */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = RemoteNowPlayingAdapter; sourceTree = "<group>"; };
+		A1F00025A1F00025A1F00025 /* BoringControls */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A1F00026A1F00026A1F00026 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringControls; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -299,6 +329,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A1F00013A1F00013A1F00013 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1F00023A1F00023A1F00023 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -442,6 +479,7 @@
 				14CEF4142C5CAED300855D72 /* boringNotch */,
 				11F748502EC9AABA00F841DB /* BoringNotchXPCHelper */,
 				A1F00014A1F00014A1F00014 /* RemoteNowPlayingAdapter */,
+				A1F00025A1F00025A1F00025 /* BoringControls */,
 				14CEF4132C5CAED300855D72 /* Products */,
 				14D031EC2C689DB70096E6A1 /* Frameworks */,
 			);
@@ -453,6 +491,7 @@
 				14CEF4122C5CAED300855D72 /* Boring Notch.app */,
 				11F7484F2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc */,
 				A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */,
+				A1F00021A1F00021A1F00021 /* BoringControls.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -594,6 +633,7 @@
 				1194E8862EA6DDA7009C82D6 /* BoringNotchWindow.swift */,
 				1160F8D72DD98230006FBB94 /* NotchShape.swift */,
 				9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */,
+				A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */,
 				A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */,
 				A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */,
 				A1EE000EA1EE000EA1EE000E /* FocusView.swift */,
@@ -672,12 +712,14 @@
 				14CEF4102C5CAED300855D72 /* Resources */,
 				11F748412EC8051E00F841DB /* Embed XPC Services */,
 				A1F00016A1F00016A1F00016 /* Embed Now Playing Adapter */,
+				A1F00028A1F00028A1F00028 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				11F7485A2EC9AABA00F841DB /* PBXTargetDependency */,
 				A1F00018A1F00018A1F00018 /* PBXTargetDependency */,
+				A1F0002AA1F0002AA1F0002A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				112FB72F2CCF12CC0015238C /* private */,
@@ -712,6 +754,28 @@
 			productName = RemoteNowPlayingAdapter;
 			productReference = A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */;
 			productType = "com.apple.product-type.library.dynamic";
+		};
+		A1F00020A1F00020A1F00020 /* BoringControls */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1F0002BA1F0002BA1F0002B /* Build configuration list for PBXNativeTarget "BoringControls" */;
+			buildPhases = (
+				A1F00022A1F00022A1F00022 /* Sources */,
+				A1F00023A1F00023A1F00023 /* Frameworks */,
+				A1F00024A1F00024A1F00024 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1F00025A1F00025A1F00025 /* BoringControls */,
+			);
+			name = BoringControls;
+			packageProductDependencies = (
+			);
+			productName = BoringControls;
+			productReference = A1F00021A1F00021A1F00021 /* BoringControls.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -753,6 +817,7 @@
 				14CEF4112C5CAED300855D72 /* boringNotch */,
 				11F7484E2EC9AABA00F841DB /* BoringNotchXPCHelper */,
 				A1F00010A1F00010A1F00010 /* RemoteNowPlayingAdapter */,
+				A1F00020A1F00020A1F00020 /* BoringControls */,
 			);
 		};
 /* End PBXProject section */
@@ -773,6 +838,13 @@
 				14CEF41A2C5CAED400855D72 /* Assets.xcassets in Resources */,
 				B17266E12C6532560031BA0D /* Localizable.xcstrings in Resources */,
 				14A7E5972C65FD31008C1BE9 /* boring.m4a in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1F00024A1F00024A1F00024 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -845,6 +917,7 @@
 				14A7E5882C64A89C008C1BE9 /* HelloAnimation.swift in Sources */,
 				111BEA612ED09B1B0079DD4E /* NSScreen+UUID.swift in Sources */,
 				9AB0C6BD2C73C9CB00F7CD30 /* NotchHomeView.swift in Sources */,
+				A1F0002EA1F0002EA1F0002E /* MediaDevicesView.swift in Sources */,
 				B172AAC02C95DA0B001623F1 /* InlineHUD.swift in Sources */,
 				B1B112912C6A572100093D8F /* EditPanelView.swift in Sources */,
 				1153BD912D986DB300979FB0 /* PlaybackState.swift in Sources */,
@@ -896,6 +969,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1F00022A1F00022A1F00022 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -908,6 +988,11 @@
 			isa = PBXTargetDependency;
 			target = A1F00010A1F00010A1F00010 /* RemoteNowPlayingAdapter */;
 			targetProxy = A1F00017A1F00017A1F00017 /* PBXContainerItemProxy */;
+		};
+		A1F0002AA1F0002AA1F0002A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1F00020A1F00020A1F00020 /* BoringControls */;
+			targetProxy = A1F00029A1F00029A1F00029 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1223,6 +1308,76 @@
 			};
 			name = Release;
 		};
+		A1F0002CA1F0002CA1F0002C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BoringControls/BoringControls.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 271;
+				DEVELOPMENT_TEAM = MC8NLUCW46;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BoringControls/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Boring Notch";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2.7.3;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AppIntents,
+					"-framework",
+					WidgetKit,
+					"-framework",
+					SwiftUI,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nichtege.boringnotch.BoringControls;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1F0002DA1F0002DA1F0002D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BoringControls/BoringControls.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 271;
+				DEVELOPMENT_TEAM = MC8NLUCW46;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BoringControls/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Boring Notch";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2.7.3;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AppIntents,
+					"-framework",
+					WidgetKit,
+					"-framework",
+					SwiftUI,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nichtege.boringnotch.BoringControls;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1258,6 +1413,15 @@
 			buildConfigurations = (
 				A1F0001AA1F0001AA1F0001A /* Debug */,
 				A1F0001BA1F0001BA1F0001B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1F0002BA1F0002BA1F0002B /* Build configuration list for PBXNativeTarget "BoringControls" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1F0002CA1F0002CA1F0002C /* Debug */,
+				A1F0002DA1F0002DA1F0002D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -26,17 +26,22 @@ final class RemoteNowPlayingController {
         case toggle, next, previous
         case skip(seconds: Int)
 
-        fileprivate var line: String {
+        fileprivate func line(for device: String) -> String {
             switch self {
-            case .toggle: return "toggle"
-            case .next: return "next"
-            case .previous: return "previous"
-            case .skip(let seconds): return seconds < 0 ? "backward \(-seconds)" : "forward \(seconds)"
+            case .toggle: return "toggle\t\(device)"
+            case .next: return "next\t\(device)"
+            case .previous: return "previous\t\(device)"
+            case .skip(let seconds):
+                return seconds < 0 ? "backward\t\(device)\t\(-seconds)" : "forward\t\(device)\t\(seconds)"
             }
         }
     }
 
     private struct Update: Decodable {
+        var devices: [Device]
+    }
+
+    private struct Device: Decodable {
         var title: String?
         var artist: String?
         var album: String?
@@ -50,7 +55,7 @@ final class RemoteNowPlayingController {
         var artwork: String?
     }
 
-    @Published private(set) var nowPlaying: RemoteNowPlaying?
+    @Published private(set) var devices: [RemoteNowPlaying] = []
 
     private let restartDelay: Duration = .seconds(30)
     private let triesBeforeGivingUp = 5
@@ -59,8 +64,7 @@ final class RemoteNowPlayingController {
     private var input: FileHandle?
     private var failures = 0
     private var buffer = Data()
-    private var artwork: Data?
-    private var artworkItem: String?
+    private var artworks: [String: (item: String?, data: Data?)] = [:]
 
     init() {
         start()
@@ -71,8 +75,18 @@ final class RemoteNowPlayingController {
         process?.terminate()
     }
 
-    func send(_ command: Command) {
-        guard process?.isRunning == true, let data = (command.line + "\n").data(using: .utf8) else { return }
+    func send(_ command: Command, to device: String?) {
+        guard let device else { return }
+        write(command.line(for: device))
+    }
+
+    /// For when a device may just have come. macOS doesn't tell of those.
+    func refresh() {
+        write("refresh")
+    }
+
+    private func write(_ line: String) {
+        guard process?.isRunning == true, let data = (line + "\n").data(using: .utf8) else { return }
         try? input?.write(contentsOf: data)
     }
 
@@ -124,10 +138,9 @@ final class RemoteNowPlayingController {
     }
 
     private func stopped() {
-        nowPlaying = nil
+        devices = []
         buffer.removeAll()
-        artwork = nil
-        artworkItem = nil
+        artworks = [:]
         failures += 1
         guard failures < triesBeforeGivingUp else { return }
         Task { @MainActor [weak self, restartDelay] in
@@ -142,25 +155,22 @@ final class RemoteNowPlayingController {
             let line = buffer[buffer.startIndex..<end]
             if let update = try? JSONDecoder().decode(Update.self, from: line) {
                 failures = 0
-                apply(update)
+                devices = update.devices.compactMap(nowPlaying)
             }
             buffer.removeSubrange(buffer.startIndex...end)
         }
     }
 
-    private func apply(_ update: Update) {
-        guard let title = update.title else {
-            nowPlaying = nil
-            return
-        }
+    private func nowPlaying(_ update: Device) -> RemoteNowPlaying? {
+        guard let title = update.title else { return nil }
+        let deviceName = update.device ?? ""
 
         // The cover comes once and can be a moment late, so it stays until the item changes
+        var artwork = artworks[deviceName]?.item == update.item ? artworks[deviceName]?.data : nil
         if let encoded = update.artwork, let data = Data(base64Encoded: encoded) {
             artwork = data
-        } else if update.item != artworkItem {
-            artwork = nil
         }
-        artworkItem = update.item
+        artworks[deviceName] = (update.item, artwork)
 
         let rate = update.rate ?? 0
         var state = PlaybackState(bundleIdentifier: update.app ?? "")
@@ -173,6 +183,6 @@ final class RemoteNowPlayingController {
         state.playbackRate = rate > 0 ? rate : 1
         state.lastUpdated = update.stamp.map(Date.init(timeIntervalSince1970:)) ?? Date()
         state.artwork = artwork
-        nowPlaying = RemoteNowPlaying(state: state, deviceName: update.device ?? "")
+        return RemoteNowPlaying(state: state, deviceName: deviceName)
     }
 }

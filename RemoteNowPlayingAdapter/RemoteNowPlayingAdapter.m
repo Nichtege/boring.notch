@@ -33,15 +33,13 @@ static CFStringRef *skipIntervalKey;
 
 // All of this belongs to the queue
 static dispatch_queue_t queue;
-static id currentOrigin;
+static NSDictionary *originsByName;
 static NSString *lastLine;
-static NSString *lastArtworkKey;
+static NSMutableDictionary *lastArtworkKeys;
 static BOOL isRefreshDue;
 
 static NSDictionary *payload(NSDictionary *info, id origin, id client) {
     NSString *title = info[@"kMRMediaRemoteNowPlayingInfoTitle"];
-    if (title.length == 0) return @{};
-
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"title"] = title;
     result[@"artist"] = info[@"kMRMediaRemoteNowPlayingInfoArtist"];
@@ -57,36 +55,35 @@ static NSDictionary *payload(NSDictionary *info, id origin, id client) {
     return result;
 }
 
-static void emit(NSDictionary *info, NSDictionary *fields) {
-    NSData *json = [NSJSONSerialization dataWithJSONObject:fields options:NSJSONWritingSortedKeys error:nil];
+static void emit(NSArray *entries) {
+    NSMutableArray *devices = [NSMutableArray array];
+    for (NSArray *entry in entries) {
+        [devices addObject:payload(entry[1], entry[0], entry[2] == NSNull.null ? nil : entry[2])];
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"devices": devices} options:NSJSONWritingSortedKeys error:nil];
     if (!json) return;
     NSString *line = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
 
     // A cover comes once for each item. It can also follow a moment after the rest
-    NSData *artwork = info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];
-    NSString *artworkKey = [NSString stringWithFormat:@"%@|%@", fields[@"item"], info[@"kMRMediaRemoteNowPlayingInfoArtworkIdentifier"]];
-    BOOL hasNewArtwork = artwork.length > 0 && ![artworkKey isEqualToString:lastArtworkKey];
+    BOOL hasNewArtwork = NO;
+    for (NSUInteger index = 0; index < entries.count; index++) {
+        NSDictionary *info = entries[index][1];
+        NSData *artwork = info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];
+        NSString *device = devices[index][@"device"] ?: @"";
+        NSString *artworkKey = [NSString stringWithFormat:@"%@|%@", devices[index][@"item"], info[@"kMRMediaRemoteNowPlayingInfoArtworkIdentifier"]];
+        if (artwork.length > 0 && ![artworkKey isEqualToString:lastArtworkKeys[device]]) {
+            lastArtworkKeys[device] = artworkKey;
+            devices[index][@"artwork"] = [artwork base64EncodedStringWithOptions:0];
+            hasNewArtwork = YES;
+        }
+    }
     if (!hasNewArtwork && [line isEqualToString:lastLine]) return;
     lastLine = line;
 
-    if (hasNewArtwork) {
-        lastArtworkKey = artworkKey;
-        NSMutableDictionary *withArtwork = [fields mutableCopy];
-        withArtwork[@"artwork"] = [artwork base64EncodedStringWithOptions:0];
-        json = [NSJSONSerialization dataWithJSONObject:withArtwork options:0 error:nil];
-    }
+    if (hasNewArtwork) json = [NSJSONSerialization dataWithJSONObject:@{@"devices": devices} options:0 error:nil];
     fwrite(json.bytes, 1, json.length, stdout);
     fputc('\n', stdout);
     fflush(stdout);
-}
-
-static BOOL isNewer(NSDictionary *info, NSDictionary *other) {
-    BOOL plays = [info[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] doubleValue] > 0;
-    BOOL otherPlays = [other[@"kMRMediaRemoteNowPlayingInfoPlaybackRate"] doubleValue] > 0;
-    if (plays != otherPlays) return plays;
-    NSDate *stamp = info[@"kMRMediaRemoteNowPlayingInfoTimestamp"] ?: NSDate.distantPast;
-    NSDate *otherStamp = other[@"kMRMediaRemoteNowPlayingInfoTimestamp"] ?: NSDate.distantPast;
-    return [stamp compare:otherStamp] == NSOrderedDescending;
 }
 
 static void refresh(void) {
@@ -109,19 +106,18 @@ static void refresh(void) {
             });
         }
         dispatch_group_notify(group, queue, ^{
-            // What plays comes first, and otherwise what played last. A speaker keeps its song from hours ago
-            NSArray *best = nil;
+            // Only what has something to show, and always in the same order
+            NSMutableArray *entries = [NSMutableArray array];
+            NSMutableDictionary *names = [NSMutableDictionary dictionary];
             for (NSArray *entry in found) {
-                if (entry[1][@"kMRMediaRemoteNowPlayingInfoTitle"] == nil) continue;
-                if (best == nil || isNewer(entry[1], best[1])) best = entry;
+                if ([entry[0] respondsToSelector:@selector(displayName)]) names[[entry[0] displayName]] = entry[0];
+                if (entry[1][@"kMRMediaRemoteNowPlayingInfoTitle"] != nil) [entries addObject:entry];
             }
-            currentOrigin = best[0];
-            if (best) {
-                id client = best[2] == NSNull.null ? nil : best[2];
-                emit(best[1], payload(best[1], best[0], client));
-            } else {
-                emit(@{}, @{});
-            }
+            originsByName = names;
+            [entries sortUsingComparator:^NSComparisonResult(NSArray *one, NSArray *other) {
+                return [[one[0] description] compare:[other[0] description]];
+            }];
+            emit(entries);
         });
     });
 }
@@ -138,15 +134,21 @@ static void scheduleRefresh(void) {
     });
 }
 
+/// One line: the command, its device, and how far for a skip. Separated by tabs, as device names have spaces.
 static void handleCommand(NSString *line) {
-    NSArray *words = [line componentsSeparatedByString:@" "];
+    NSArray *fields = [line componentsSeparatedByString:@"\t"];
+    if ([fields.firstObject isEqualToString:@"refresh"]) {
+        scheduleRefresh();
+        return;
+    }
     NSDictionary *commands = @{@"play": @0, @"pause": @1, @"toggle": @2, @"next": @4, @"previous": @5, @"forward": @17, @"backward": @18};
-    NSNumber *command = commands[words.firstObject];
-    if (!command || !currentOrigin) return;
+    NSNumber *command = commands[fields.firstObject];
+    id origin = fields.count > 1 ? originsByName[fields[1]] : nil;
+    if (!command || !origin) return;
 
     NSDictionary *options = nil;
-    if (words.count > 1 && skipIntervalKey) options = @{(__bridge NSString *)*skipIntervalKey: @([words[1] doubleValue])};
-    id path = (__bridge_transfer id)makePath(currentOrigin, nil, nil);
+    if (fields.count > 2 && skipIntervalKey) options = @{(__bridge NSString *)*skipIntervalKey: @([fields[2] doubleValue])};
+    id path = (__bridge_transfer id)makePath(origin, nil, nil);
     sendCommand(command.unsignedIntValue, (__bridge CFDictionaryRef)options, (__bridge void *)path, 0, queue, ^(unsigned error, CFArrayRef statuses) {});
 }
 
@@ -164,6 +166,7 @@ __attribute__((visibility("default"))) void run(void) {
     if (!registerForNotifications || !getOrigins || !getInfo || !getClient || !isLocal || !makePath || !sendCommand) return;
 
     queue = dispatch_queue_create("com.nichtege.boringnotch.remotenowplaying", DISPATCH_QUEUE_SERIAL);
+    lastArtworkKeys = [NSMutableDictionary dictionary];
 
     registerForNotifications(dispatch_get_main_queue());
     NSArray *names = @[
@@ -186,7 +189,7 @@ __attribute__((visibility("default"))) void run(void) {
     dispatch_resume(timer);
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        char buffer[64];
+        char buffer[256];
         while (fgets(buffer, sizeof buffer, stdin)) {
             NSString *line = [[NSString stringWithUTF8String:buffer] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
             dispatch_async(queue, ^{ handleCommand(line); });

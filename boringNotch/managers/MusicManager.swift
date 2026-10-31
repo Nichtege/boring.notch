@@ -8,6 +8,7 @@ import AppKit
 import Combine
 import Defaults
 import SwiftUI
+import WidgetKit
 
 let defaultImage: NSImage = .init(
     systemSymbolName: "heart.fill",
@@ -22,9 +23,8 @@ class MusicManager: ObservableObject {
 
     private let controller = AppleMusicController()
     private let remote = RemoteNowPlayingController()
-    private var musicState: PlaybackState?
-    private var remoteNowPlaying: RemoteNowPlaying?
-    private var isRemoteShown = false
+    private var shownRemote: String?
+    private var lastControlTile: [String]?
     private var pendingVolume: Double?
     private var volumeTask: Task<Void, Never>?
 
@@ -49,6 +49,9 @@ class MusicManager: ObservableObject {
     @Published var isFavoriteTrack: Bool = false
     /// The other device's name while what shows comes from there
     @Published private(set) var remoteName: String? = nil
+    @Published private(set) var musicState: PlaybackState?
+    @Published private(set) var remoteDevices: [RemoteNowPlaying] = []
+    @Published var isDeviceListShown = false
 
     var isRemoteSource: Bool {
         remoteName != nil
@@ -74,10 +77,10 @@ class MusicManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        remote.$nowPlaying
+        remote.$devices
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] nowPlaying in
-                self?.remoteChanged(nowPlaying)
+            .sink { [weak self] devices in
+                self?.remoteChanged(devices)
             }
             .store(in: &cancellables)
     }
@@ -94,39 +97,79 @@ class MusicManager: ObservableObject {
         let started = state.isPlaying && musicState?.isPlaying != true
         musicState = state
         if started {
-            isRemoteShown = false
-        } else if !state.isPlaying && remoteNowPlaying?.state.isPlaying == true {
-            isRemoteShown = true
+            shownRemote = nil
+        } else if !state.isPlaying && shownRemote == nil {
+            shownRemote = remoteDevices.first(where: \.state.isPlaying)?.deviceName
         }
         showCurrentSource()
     }
 
     @MainActor
-    private func remoteChanged(_ nowPlaying: RemoteNowPlaying?) {
-        let isPlaying = nowPlaying?.state.isPlaying == true
-        let started = isPlaying && remoteNowPlaying?.state.isPlaying != true
-        let isOtherDevice = nowPlaying?.deviceName != remoteNowPlaying?.deviceName
-        remoteNowPlaying = nowPlaying
-        // A device that's left behind a speaker's song from hours ago isn't what anyone was listening to
-        if nowPlaying == nil || (!isPlaying && isOtherDevice) {
-            isRemoteShown = false
-        } else if started {
-            isRemoteShown = true
-        } else if !isPlaying && musicState?.isPlaying == true {
-            isRemoteShown = false
+    private func remoteChanged(_ devices: [RemoteNowPlaying]) {
+        let started = devices.first { device in
+            device.state.isPlaying && remoteDevices.first { $0.deviceName == device.deviceName }?.state.isPlaying != true
+        }
+        let shown = devices.first { $0.deviceName == shownRemote }
+        remoteDevices = devices
+        if let started {
+            shownRemote = started.deviceName
+        } else if shownRemote != nil && shown?.state.isPlaying != true {
+            // A speaker's song from hours ago doesn't take over from anything that stops: only what plays does
+            if musicState?.isPlaying == true {
+                shownRemote = nil
+            } else if let playing = devices.first(where: \.state.isPlaying) {
+                shownRemote = playing.deviceName
+            } else if shown == nil {
+                shownRemote = nil
+            }
         }
         showCurrentSource()
+    }
+
+    /// What the list says to show: another device, or nil for this Mac.
+    @MainActor
+    func show(_ deviceName: String?) {
+        shownRemote = deviceName
+        isDeviceListShown = false
+        showCurrentSource()
+    }
+
+    func refreshRemoteDevices() {
+        remote.refresh()
     }
 
     @MainActor
     private func showCurrentSource() {
-        let shown = isRemoteShown ? remoteNowPlaying : nil
+        let shown = remoteDevices.first { $0.deviceName == shownRemote }
         if remoteName != shown?.deviceName {
             remoteName = shown?.deviceName
         }
         if let state = shown?.state ?? musicState {
             updateFromPlaybackState(state)
         }
+        updateControlTile()
+    }
+
+    /// The tile in Control Center, which is its own process. It only gets to know what plays, and only while it does.
+    @MainActor
+    private func updateControlTile() {
+        // What plays, also when the notch was told to show something else
+        let device = remoteDevices.first { $0.deviceName == shownRemote && $0.state.isPlaying }
+            ?? (musicState?.isPlaying == true ? nil : remoteDevices.first(where: \.state.isPlaying))
+        let state = device?.state ?? musicState
+        let tile = state?.isPlaying == true ? [
+            state?.title ?? "",
+            device?.deviceName ?? "Mac",
+            device.map { RemoteNowPlaying.iconName(for: $0.deviceName) } ?? "laptopcomputer",
+        ] : nil
+        guard tile != lastControlTile else { return }
+        lastControlTile = tile
+
+        let shared = UserDefaults(suiteName: "MC8NLUCW46.com.nichtege.boringnotch")
+        shared?.set(tile?[0], forKey: "mediaTileTitle")
+        shared?.set(tile?[1], forKey: "mediaTileDevice")
+        shared?.set(tile?[2], forKey: "mediaTileIcon")
+        ControlCenter.shared.reloadControls(ofKind: "com.nichtege.boringnotch.media")
     }
 
     @MainActor
@@ -334,12 +377,17 @@ class MusicManager: ObservableObject {
     }
 
     func togglePlay() {
-        guard !isRemoteSource else {
-            remote.send(.toggle)
+        togglePlay(on: remoteName)
+    }
+
+    /// nil for this Mac.
+    func togglePlay(on deviceName: String?) {
+        guard deviceName == nil else {
+            remote.send(.toggle, to: deviceName)
             return
         }
         Task {
-            if !isPlaying && bundleIdentifier == "com.apple.Music" {
+            if musicState?.isPlaying != true {
                 await MusicOutputController.shared.restoreLastOutput()
             }
             await controller.togglePlay()
@@ -348,7 +396,7 @@ class MusicManager: ObservableObject {
 
     func nextTrack() {
         guard !isRemoteSource else {
-            remote.send(.next)
+            remote.send(.next, to: remoteName)
             return
         }
         Task {
@@ -358,7 +406,7 @@ class MusicManager: ObservableObject {
 
     func previousTrack() {
         guard !isRemoteSource else {
-            remote.send(.previous)
+            remote.send(.previous, to: remoteName)
             return
         }
         Task {
@@ -374,7 +422,7 @@ class MusicManager: ObservableObject {
     }
     func skip(seconds: TimeInterval) {
         guard !isRemoteSource else {
-            remote.send(.skip(seconds: Int(seconds)))
+            remote.send(.skip(seconds: Int(seconds)), to: remoteName)
             return
         }
         let newPos = min(max(0, estimatedPlaybackPosition() + seconds), songDuration)

@@ -206,18 +206,24 @@ struct MusicControlsView: View {
     }
 
     private func remoteLabel(_ name: String, showsName: Bool) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: RemoteNowPlaying.iconName(for: name))
-            if showsName {
-                Text(name)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+        Button {
+            musicManager.isDeviceListShown = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: RemoteNowPlaying.iconName(for: name))
+                if showsName {
+                    Text(name)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
+            .font(.caption)
+            .foregroundColor(.gray)
+            .frame(maxWidth: 84, alignment: .trailing)
+            .frame(height: 30)
+            .contentShape(Rectangle())
         }
-        .font(.caption)
-        .foregroundColor(.gray)
-        .frame(maxWidth: 84, alignment: .trailing)
-        .frame(height: 30)
+        .buttonStyle(PlainButtonStyle())
     }
 
     private var activeSlots: [MusicControlButton] {
@@ -374,6 +380,23 @@ struct MusicOutputButton: View {
 
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: 2) {
+            Button {
+                showPopover = false
+                musicManager.isDeviceListShown = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "hifispeaker.2.fill")
+                        .frame(width: 18)
+                    Text("All devices")
+                        .fixedSize()
+                    Spacer(minLength: 16)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            Divider()
             ForEach(outputController.pickerDevices) { device in
                 Button {
                     showPopover = false
@@ -497,6 +520,7 @@ struct VolumeControlView: View {
 struct NotchHomeView: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var coordinator = BoringViewCoordinator.shared
+    @ObservedObject var musicManager = MusicManager.shared
     let albumArtNamespace: Namespace.ID
 
     var body: some View {
@@ -511,11 +535,19 @@ struct NotchHomeView: View {
 
     private var mainContent: some View {
         HStack(alignment: .top, spacing: 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
-
+            if musicManager.isDeviceListShown {
+                MediaDevicesView()
+            } else {
+                MusicPlayerView(albumArtNamespace: albumArtNamespace)
+            }
         }
         .transition(.opacity)
         .blur(radius: vm.notchState == .closed ? 30 : 0)
+        .onChange(of: vm.notchState) {
+            if vm.notchState == .closed {
+                musicManager.isDeviceListShown = false
+            }
+        }
     }
 }
 

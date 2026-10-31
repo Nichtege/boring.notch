@@ -16071,6 +16071,36 @@
           }
         }
       }
+    },
+    "All devices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Geräte"
+          }
+        }
+      }
+    },
+    "Nothing to show" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts zu sehen"
+          }
+        }
+      }
+    },
+    "Media on your devices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medien"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
