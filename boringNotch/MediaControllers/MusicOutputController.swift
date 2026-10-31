@@ -198,8 +198,11 @@ final class MusicOutputController: NSObject, ObservableObject {
     @MainActor
     func refresh() async {
         guard Date() >= ignoreSelectionUntil else { return }
+        let answer = await fetchDevices()
+        // Something was picked while this asked, so the answer is from before that
+        guard Date() >= ignoreSelectionUntil else { return }
         // No answer from Music isn't an empty list, and the button would go away with it
-        guard let fetched = await fetchDevices() else {
+        guard let fetched = answer else {
             if !isMusicRunning {
                 devices = []
             }
@@ -294,7 +297,8 @@ final class MusicOutputController: NSObject, ObservableObject {
 
     @MainActor
     private func rememberCurrentOutput() async {
-        guard Date() >= ignoreSelectionUntil, let current = await fetchDevices() else { return }
+        guard Date() >= ignoreSelectionUntil, let current = await fetchDevices(),
+              Date() >= ignoreSelectionUntil else { return }
         let selected = current.filter(\.isSelected).map(\.name)
         if !selected.isEmpty {
             Defaults[.lastMusicOutputDevices] = selected
@@ -334,11 +338,16 @@ final class MusicOutputController: NSObject, ObservableObject {
             return "AirPlay device \"\(escaped)\""
         }.joined(separator: ", ")
 
+        // Switching can take longer than a script's time limit, and music can't stay stopped because of that
         let script = """
         tell application "Music"
             set wasPlaying to player state is playing
-            set current AirPlay devices to {\(deviceList)}
-            if wasPlaying then play
+            try
+                set current AirPlay devices to {\(deviceList)}
+            end try
+            if wasPlaying then
+                if it is running then play
+            end if
         end tell
         """
         try? await AppleScriptHelper.executeVoid(script)
