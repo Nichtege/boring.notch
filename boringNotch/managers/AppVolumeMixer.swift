@@ -139,6 +139,18 @@ final class AppVolumeMixer: ObservableObject {
         refresh()
     }
 
+    /// In case a tap could outlast this app, which would leave its app muted. It's a moment at most.
+    func stopTaps() {
+        let taps = active.values.map(\.tap)
+        active.removeAll()
+        let done = DispatchSemaphore(value: 0)
+        appVolumeQueue.async {
+            taps.forEach { $0.stop() }
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 1)
+    }
+
     /// Loudness doesn't follow the gain. Squared, half the slider sounds about half as loud.
     private static func gain(_ volume: Double) -> Float {
         Float(volume * volume)
@@ -492,9 +504,7 @@ private final class AppVolumeTap: @unchecked Sendable {
         let oldTap = tapID
         tapID = AudioObjectID(kAudioObjectUnknown)
         let status = connect()
-        if oldTap != AudioObjectID(kAudioObjectUnknown) {
-            AudioHardwareDestroyProcessTap(oldTap)
-        }
+        destroyTap(oldTap)
         if status != noErr {
             fail(status)
         }
@@ -518,9 +528,16 @@ private final class AppVolumeTap: @unchecked Sendable {
     func stop() {
         isStopped = true
         disconnect()
-        if tapID != AudioObjectID(kAudioObjectUnknown) {
-            AudioHardwareDestroyProcessTap(tapID)
-            tapID = AudioObjectID(kAudioObjectUnknown)
+        destroyTap(tapID)
+        tapID = AudioObjectID(kAudioObjectUnknown)
+    }
+
+    /// One left behind keeps its app muted, so a second try is worth it.
+    private func destroyTap(_ tap: AudioObjectID) {
+        guard tap != AudioObjectID(kAudioObjectUnknown), AudioHardwareDestroyProcessTap(tap) != noErr else { return }
+        let status = AudioHardwareDestroyProcessTap(tap)
+        if status != noErr {
+            NSLog("Mixer: tap still there (%d)", status)
         }
     }
 

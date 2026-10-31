@@ -54,6 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AppVolumeMixer.shared.stopTaps()
         MusicManager.shared.destroy()
         cleanupDragDetectors()
         cleanupWindows()
