@@ -179,6 +179,7 @@ struct BoringBatteryView: View {
     @State var isForNotification: Bool = false
     
     @State private var showPopupMenu: Bool = false
+    @State private var isHoveringButton: Bool = false
     @State private var isHoveringPopover: Bool = false
     @State private var hideTask: Task<Void, Never>? = nil
 
@@ -207,6 +208,10 @@ struct BoringBatteryView: View {
             }
         }
         .buttonStyle(ScaleButtonStyle())
+        .onHover { hovering in
+            isHoveringButton = hovering
+            updateHideTask()
+        }
         .popover(
             isPresented: $showPopupMenu,
             arrowEdge: .bottom) {
@@ -223,16 +228,14 @@ struct BoringBatteryView: View {
             )
             .onHover { hovering in
                 isHoveringPopover = hovering
-                if hovering {
-                    hideTask?.cancel()
-                    hideTask = nil
-                } else {
-                    scheduleHideIfNeeded()
-                }
+                updateHideTask()
             }
-        }
-        .onChange(of: showPopupMenu) {
-            vm.isBatteryPopoverActive = showPopupMenu
+            // What's really on screen, also if this view goes away first: the notch can't close before
+            .onAppear { vm.isBatteryPopoverActive = true }
+            .onDisappear {
+                vm.isBatteryPopoverActive = false
+                showPopupMenu = false
+            }
         }
         .onDisappear {
             hideTask?.cancel()
@@ -240,9 +243,10 @@ struct BoringBatteryView: View {
         }
     }
 
-    private func scheduleHideIfNeeded() {
-        if isHoveringPopover { return }
+    private func updateHideTask() {
         hideTask?.cancel()
+        hideTask = nil
+        guard showPopupMenu, !isHoveringButton, !isHoveringPopover else { return }
         hideTask = Task {
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
