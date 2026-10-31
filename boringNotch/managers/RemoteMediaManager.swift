@@ -6,6 +6,7 @@
 //
 
 import Combine
+import Defaults
 import Foundation
 import WidgetKit
 
@@ -14,8 +15,8 @@ final class RemoteMediaManager: ObservableObject {
 
     @Published private(set) var devices: [RemoteNowPlaying] = []
     /// What was picked in the Devices tab, nil for this Mac. Stays while the device is away, as an iPhone that
-    /// pauses goes away for a while, and it should show again when it's back.
-    @Published private(set) var selected: String?
+    /// pauses goes away for a while, and it should show again when it's back. Also over a restart of this app.
+    @Published private(set) var selected = Defaults[.selectedMediaDevice]
     /// Says the notch's close gesture should leave a scroll in the list alone
     var scrolls = false
 
@@ -64,6 +65,7 @@ final class RemoteMediaManager: ObservableObject {
 
     func select(_ deviceName: String?) {
         selected = deviceName
+        Defaults[.selectedMediaDevice] = deviceName
         showSelected()
     }
 
