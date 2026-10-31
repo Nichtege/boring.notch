@@ -253,6 +253,11 @@ final class AtlasChat: ObservableObject {
         }
 
         do {
+            // The server answers a stale token without reading the upload, and through the proxy that 401 can get lost.
+            // So an upload starts with a fresh token, for the price of one more look at the page
+            if withScreen || !files.isEmpty {
+                token = nil
+            }
             var ids = withScreen ? [try await uploadScreen()] : []
             for file in files {
                 ids.append(try await upload(file.data, name: file.name))
