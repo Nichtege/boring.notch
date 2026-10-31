@@ -198,6 +198,31 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
             mElement: kAudioObjectPropertyElementMain
         )
         AudioObjectSetPropertyData(system, &defaultOutput, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &target)
+        announceManualOutput(target)
+    }
+
+    /// With AirPods in the ears, macOS takes the sound back to them as soon as any app starts playing, and sound
+    /// restarts on every change of output. It only leaves a choice alone that it has heard of, which is what Control
+    /// Center tells it with this. On a macOS that doesn't know this any more, AirPods just win as they would anyway.
+    private func announceManualOutput(_ device: AudioObjectID) {
+        func string(_ selector: AudioObjectPropertySelector) -> String? {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var value: Unmanaged<CFString>?
+            var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+            return value?.takeRetainedValue() as String?
+        }
+        guard let uid = string(kAudioDevicePropertyDeviceUID), let name = string(kAudioObjectPropertyName) else { return }
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name("com.apple.controlcenter.systemAudioDeviceSelected"),
+            object: nil,
+            userInfo: ["uid": uid, "name": name, "audioDevice": "output", "source": "ControlCenter"],
+            deliverImmediately: true
+        )
     }
 
     // MARK: - Keyboard Brightness
