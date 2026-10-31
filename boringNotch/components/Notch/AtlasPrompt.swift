@@ -33,7 +33,9 @@ enum ScreenSnapshot {
             throw Failure.notAllowed
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else {
+            throw Failure.failed
+        }
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         let screenID = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
@@ -48,8 +50,8 @@ enum ScreenSnapshot {
         configuration.width = Int(CGFloat(display.width) * scale)
         configuration.height = Int(CGFloat(display.height) * scale)
 
-        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-        guard let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration),
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
             throw Failure.failed
         }
         return data
@@ -276,6 +278,8 @@ final class AtlasChat: ObservableObject {
             failed(String(localized: "Allow Screen Recording for Boring Notch in System Settings, then restart the app."))
         } catch is ScreenSnapshot.Failure {
             failed(String(localized: "The screenshot couldn't be taken."))
+        } catch is DecodingError {
+            failed(String(localized: "This Starlane version can't be talked to from here."))
         } catch {
             // Said in the line, for when it's open or next opened. No network never brings anything up by itself
             failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"), comesBack: false)
@@ -297,7 +301,9 @@ final class AtlasChat: ObservableObject {
 
     private func uploadScreen() async throws -> String {
         step = String(localized: "Taking a screenshot…")
-        return try await upload(try await ScreenSnapshot.jpeg(), name: "screen.jpg")
+        let jpeg = try await ScreenSnapshot.jpeg()
+        step = ""
+        return try await upload(jpeg, name: "screen.jpg")
     }
 
     private func upload(_ data: Data, name: String) async throws -> String {
@@ -436,8 +442,14 @@ final class AtlasChat: ObservableObject {
             throw ChatError.refused(notConfigured)
         }
         let (data, response) = try await session.data(from: url)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200:
+            break
+        case 401, 403:
             throw ChatError.refused(String(localized: "Refused: check the key and your Tailscale login"))
+        default:
+            // A stopped server (502) or one without its vault (500): nothing wrong with the key
+            throw ChatError.unreachable
         }
 
         let page: Page? = await Task.detached(priority: .userInitiated) {
