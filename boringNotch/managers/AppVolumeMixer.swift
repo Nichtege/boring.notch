@@ -360,7 +360,9 @@ final class AppVolumeMixer: ObservableObject {
                     continue
                 }
                 let tap = AppVolumeTap(gain: Self.gain(volumes[bundleID] ?? 1), equalizer: bandsToPlay(of: bundleID)) { [weak self] tap, status in
-                    DispatchQueue.main.async { self?.tapFailed(tap, for: bundleID, status: status) }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.tapFailed(tap, for: bundleID, status: status)
+                    }
                 }
                 active[bundleID] = ActiveTap(tap: tap, processes: Set(own))
                 appVolumeQueue.async { tap.build(processes: own) }

@@ -187,7 +187,7 @@ final class ImageProcessingService {
             let options: [CIImageRepresentationOption: Any] = [
                 CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): quality
             ]
-            return try? context.heifRepresentation(of: ciImage, format: .RGBA8, colorSpace: colorSpace, options: options)
+            return context.heifRepresentation(of: ciImage, format: .RGBA8, colorSpace: colorSpace, options: options)
         }
     }
     

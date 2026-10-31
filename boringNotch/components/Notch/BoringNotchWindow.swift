@@ -65,7 +65,7 @@ class BoringNotchWindow: NSPanel {
         if Defaults[.hideFromScreenRecording] {
             sharingType = .none
         } else {
-            sharingType = .readWrite
+            sharingType = .readOnly
         }
     }
     

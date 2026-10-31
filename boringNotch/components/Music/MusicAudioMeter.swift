@@ -112,7 +112,7 @@ final class MusicAudioMeter {
 
 /// Taps the sound of one app. Not ScreenCaptureKit: macOS takes any of its streams for sharing the screen and
 /// silences every notification for as long as it runs.
-private final class MusicAudioTap {
+private final class MusicAudioTap: @unchecked Sendable {
     private let description: CATapDescription
     private let analyzer: MusicAudioAnalyzer
     private var tapID = AudioObjectID(kAudioObjectUnknown)
