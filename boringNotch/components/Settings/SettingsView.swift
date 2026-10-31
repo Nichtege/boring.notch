@@ -667,7 +667,7 @@ struct Media: View {
             } header: {
                 Text("Media controls")
             }  footer: {
-                Text("Customize which controls appear in the music player. Volume expands when active.")
+                Text("Customize which controls appear in the music player.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

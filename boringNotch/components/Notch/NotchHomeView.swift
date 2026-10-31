@@ -216,7 +216,9 @@ struct MusicControlsView: View {
                 MusicManager.shared.toggleRepeat()
             }
         case .volume:
+            // Takes the room of an empty slot, so the middle stays in the middle
             VolumeControlView()
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .favorite:
             FavoriteControlButton()
         case .goBackward:
@@ -404,63 +406,41 @@ struct VolumeControlView: View {
     @ObservedObject var musicManager = MusicManager.shared
     @State private var volumeSliderValue: Double = 0.5
     @State private var dragging: Bool = false
-    @State private var showVolumeSlider: Bool = false
-    @State private var lastVolumeUpdateTime: Date = Date.distantPast
-    private let volumeUpdateThrottle: TimeInterval = 0.1
-    
+
+    private var isVisible: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+    }
+
     var body: some View {
         HStack(spacing: 4) {
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    showVolumeSlider.toggle()
-                }
-            }) {
-                Image(systemName: volumeIcon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .frame(width: 24)
+            Image(systemName: volumeIcon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+                .frame(width: 24)
 
-            if showVolumeSlider {
-                CustomSlider(
-                    value: $volumeSliderValue,
-                    range: 0.0...1.0,
-                    color: .white,
-                    dragging: $dragging,
-                    lastDragged: .constant(Date.distantPast),
-                    onValueChange: { newValue in
-                        MusicManager.shared.setVolume(to: newValue)
-                    },
-                    onDragChange: { newValue in
-                        let now = Date()
-                        if now.timeIntervalSince(lastVolumeUpdateTime) > volumeUpdateThrottle {
-                            MusicManager.shared.setVolume(to: newValue)
-                            lastVolumeUpdateTime = now
-                        }
-                    }
-                )
-                .frame(width: 48, height: 8)
-                .transition(.scale.combined(with: .opacity))
-            }
+            CustomSlider(
+                value: $volumeSliderValue,
+                range: 0.0...1.0,
+                color: .white,
+                dragging: $dragging,
+                lastDragged: .constant(Date.distantPast),
+                onValueChange: MusicManager.shared.setVolume(to:),
+                onDragChange: MusicManager.shared.setVolume(to:)
+            )
+            .frame(width: 80, height: 8)
         }
-        .clipped()
+        .opacity(isVisible ? 1 : 0)
+        .disabled(!isVisible)
         .onReceive(musicManager.$volume) { volume in
             if !dragging {
                 volumeSliderValue = volume
             }
         }
-        .onChange(of: showVolumeSlider) { _, isShowing in
-            if isShowing {
-                // Sync volume from app when slider appears
-                Task {
-                    await MusicManager.shared.syncVolumeFromActiveApp()
-                }
-            }
+        .task {
+            await MusicManager.shared.syncVolumeFromActiveApp()
         }
     }
-    
-    
+
     private var volumeIcon: String {
         if volumeSliderValue == 0 {
             return "speaker.slash.fill"
