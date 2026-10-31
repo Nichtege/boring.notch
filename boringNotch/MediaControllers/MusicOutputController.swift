@@ -52,11 +52,19 @@ enum LocalAudioRoute {
     }
 
     static var systemOutput: Route? {
-        var device = AudioObjectID(0)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        var address = propertyAddress(kAudioHardwarePropertyDefaultOutputDevice)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return nil }
-        return route(of: device)
+        route(of: defaultOutputDevice)
+    }
+
+    static var defaultOutputDevice: AudioObjectID {
+        number(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)
+    }
+
+    static func sampleRate(of device: AudioObjectID) -> Float64 {
+        var address = propertyAddress(kAudioDevicePropertyNominalSampleRate)
+        var rate: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &rate)
+        return rate
     }
 
     private static func route(of device: AudioObjectID) -> Route? {
@@ -64,12 +72,20 @@ enum LocalAudioRoute {
         return Route(name: name, transport: number(device, kAudioDevicePropertyTransportType))
     }
 
-    private static func propertyAddress(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    static func propertyAddress(
+        _ selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+        element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain
+    ) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
     }
 
-    private static func objects(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> [AudioObjectID] {
-        var address = propertyAddress(selector)
+    static func objects(
+        _ object: AudioObjectID,
+        _ selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal
+    ) -> [AudioObjectID] {
+        var address = propertyAddress(selector, scope: scope)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(object, &address, 0, nil, &size) == noErr, size > 0 else { return [] }
         var result = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
@@ -77,7 +93,7 @@ enum LocalAudioRoute {
         return result
     }
 
-    private static func number(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32 {
+    static func number(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32 {
         var address = propertyAddress(selector)
         var value: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
@@ -85,7 +101,7 @@ enum LocalAudioRoute {
         return value
     }
 
-    private static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+    static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
         var address = propertyAddress(selector)
         var value: Unmanaged<CFString>?
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)

@@ -81,6 +81,7 @@
 		A1EE0003A1EE0003A1EE0003 /* StarlaneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */; };
 		A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */; };
 		A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */; };
+		A1EE0019A1EE0019A1EE0019 /* AppVolumeRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */; };
 		A1EE0009A1EE0009A1EE0009 /* MusicAudioMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */; };
 		A1EE000BA1EE000BA1EE000B /* FocusTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */; };
 		A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000EA1EE000EA1EE000E /* FocusView.swift */; };
@@ -208,6 +209,7 @@
 		A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneManager.swift; sourceTree = "<group>"; };
 		A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneView.swift; sourceTree = "<group>"; };
 		A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasPrompt.swift; sourceTree = "<group>"; };
+		A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeRender.swift; sourceTree = "<group>"; };
 		A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAudioMeter.swift; sourceTree = "<group>"; };
 		A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimer.swift; sourceTree = "<group>"; };
 		A1EE000EA1EE000EA1EE000E /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
@@ -388,6 +390,7 @@
 				A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */,
 				B1F0A0012E60000100000001 /* BrightnessManager.swift */,
 				59D8C23B2E589FAA00147B33 /* VolumeManager.swift */,
+				A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */,
 			);
 			path = managers;
 			sourceTree = "<group>";
@@ -736,6 +739,7 @@
 				1194E9402EACC652009C82D6 /* Color+AccentColor.swift in Sources */,
 				B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */,
 				59D8C23C2E589FAA00147B33 /* VolumeManager.swift in Sources */,
+				A1EE0019A1EE0019A1EE0019 /* AppVolumeRender.swift in Sources */,
 				14D570B92C5E98A20011E668 /* drop.swift in Sources */,
 				11EFCD702E8E92D600D0B974 /* ShelfItemViewModel.swift in Sources */,
 				A1EE0001A1EE0001A1EE0001 /* MusicOutputController.swift in Sources */,
