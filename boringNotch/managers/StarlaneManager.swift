@@ -288,13 +288,15 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
         }
 
         let needs = Set(newSummary.needsNames)
-        if let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
+        let holding = FocusTimer.shared.holdsBanners
+        if !holding, let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
             newlyNeedingName = name
-            if Defaults[.starlaneBanner] && !FocusTimer.shared.holdsBanners {
+            if Defaults[.starlaneBanner] {
                 BoringViewCoordinator.shared.toggleExpandingView(status: true, type: .starlane)
             }
         }
-        knownNeeds = needs
+        // While holding, a new name stays unknown, so its banner comes with the first poll after the session
+        knownNeeds = holding ? (knownNeeds ?? needs).intersection(needs) : needs
 
         if summary != newSummary {
             withAnimation(.smooth) {
