@@ -87,6 +87,11 @@ struct ContentView: View {
             && coordinator.expandingView.show && vm.notchState == .closed && !vm.hideOnClosed
     }
 
+    /// The banner is the only sign that a focus session is over, so it waits until it can be seen.
+    private var focusEndCanShow: Bool {
+        focusTimer.endBannerPending && vm.notchState == .closed && !vm.hideOnClosed && !coordinator.expandingView.show
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
@@ -230,6 +235,12 @@ struct ContentView: View {
         .background(dragDetector)
         .preferredColorScheme(.dark)
         .environmentObject(vm)
+        .onChange(of: focusEndCanShow, initial: true) { _, canShow in
+            if canShow {
+                focusTimer.endBannerPending = false
+                coordinator.toggleExpandingView(status: true, type: .focus)
+            }
+        }
         .onChange(of: vm.anyDropZoneTargeting) { _, isTargeted in
             anyDropDebounceTask?.cancel()
 

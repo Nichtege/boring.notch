@@ -15,6 +15,8 @@ final class FocusTimer: ObservableObject {
 
     @Published private(set) var endDate: Date?
     @Published private(set) var duration: TimeInterval = 0
+    /// The session is over and the notch hasn't been able to say so yet.
+    @Published var endBannerPending = false
 
     private var task: Task<Void, Never>?
 
@@ -31,6 +33,7 @@ final class FocusTimer: ObservableObject {
 
     func start(seconds: TimeInterval) {
         let end = Date().addingTimeInterval(seconds)
+        endBannerPending = false
         duration = seconds
         endDate = end
 
@@ -55,7 +58,7 @@ final class FocusTimer: ObservableObject {
     private func finish() {
         task = nil
         endDate = nil
-        BoringViewCoordinator.shared.toggleExpandingView(status: true, type: .focus)
+        endBannerPending = true
     }
 
     func remaining(at date: Date) -> TimeInterval {
