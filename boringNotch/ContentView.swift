@@ -318,6 +318,7 @@ struct ContentView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                             .frame(width: starlaneBannerSideWidth, alignment: .trailing)
 

@@ -17,6 +17,11 @@ struct StarlaneSummary: Decodable, Equatable {
         let id: String?
         let name: String
         let state: String
+
+        /// Names can repeat: the server's numbering starts over with it, while restored terminals keep theirs.
+        var identity: String {
+            id ?? name
+        }
     }
 
     struct LimitWindow: Decodable, Equatable {
@@ -71,8 +76,8 @@ struct StarlaneSummary: Decodable, Equatable {
         limit = try? container.decode([LimitWindow].self, forKey: .limit)
     }
 
-    var needsNames: [String] {
-        terminals.filter { $0.state == "needs" }.map(\.name)
+    var needing: [Terminal] {
+        terminals.filter { $0.state == "needs" }
     }
 }
 
@@ -301,16 +306,17 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
             status = .connected
         }
 
-        let needs = Set(newSummary.needsNames)
-        let holding = FocusTimer.shared.holdsBanners
-        if !holding, let known = knownNeeds, let name = newSummary.needsNames.first(where: { !known.contains($0) }) {
-            newlyNeedingName = name
+        // Known means it had its banner. So one held by a focus session, or a second new one in this poll, comes with a later poll
+        let needs = Set(newSummary.needing.map(\.identity))
+        var known = (knownNeeds ?? needs).intersection(needs)
+        if !FocusTimer.shared.holdsBanners, let new = newSummary.needing.first(where: { !known.contains($0.identity) }) {
+            known.insert(new.identity)
+            newlyNeedingName = new.name
             if Defaults[.starlaneBanner] {
                 BoringViewCoordinator.shared.toggleExpandingView(status: true, type: .starlane)
             }
         }
-        // While holding, a new name stays unknown, so its banner comes with the first poll after the session
-        knownNeeds = holding ? (knownNeeds ?? needs).intersection(needs) : needs
+        knownNeeds = known
 
         if summary != newSummary {
             withAnimation(.smooth) {
