@@ -248,8 +248,8 @@ final class AtlasChat: ObservableObject {
 
     // MARK: - Talking to Starlane
     private func deliver(_ text: String, withScreen: Bool, files: [AtlasAttachment]) async {
-        func failed(_ message: String) {
-            fail(message, restoring: text, withScreen: withScreen, files: files)
+        func failed(_ message: String, comesBack: Bool = true) {
+            fail(message, comesBack: comesBack, restoring: text, withScreen: withScreen, files: files)
         }
 
         do {
@@ -272,11 +272,12 @@ final class AtlasChat: ObservableObject {
         } catch is ScreenSnapshot.Failure {
             failed(String(localized: "The screenshot couldn't be taken."))
         } catch {
-            failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"))
+            // Said in the line, for when it's open or next opened. No network never brings anything up by itself
+            failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"), comesBack: false)
         }
     }
 
-    private func fail(_ message: String, restoring text: String, withScreen: Bool, files: [AtlasAttachment]) {
+    private func fail(_ message: String, comesBack: Bool, restoring text: String, withScreen: Bool, files: [AtlasAttachment]) {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
@@ -284,6 +285,9 @@ final class AtlasChat: ObservableObject {
             attachments = files
         }
         phase = .failed(message)
+        if comesBack {
+            AtlasPromptController.shared.showAnswer()
+        }
     }
 
     private func uploadScreen() async throws -> String {
@@ -404,8 +408,11 @@ final class AtlasChat: ObservableObject {
             token = nil
             throw ChatError.expiredToken
         default:
-            let error = (try? JSONDecoder().decode(Reply.self, from: data))?.error
-            throw ChatError.refused(error ?? String(localized: "Starlane refused this (\(status))."))
+            if let error = (try? JSONDecoder().decode(Reply.self, from: data))?.error {
+                throw ChatError.refused(error)
+            }
+            // Without the server's own words, a 5xx is the proxy saying that the server is gone (a 502 when it's stopped)
+            throw status >= 500 ? ChatError.unreachable : ChatError.refused(String(localized: "Starlane refused this (\(status))."))
         }
     }
 
@@ -460,8 +467,18 @@ final class AtlasPromptController {
     private let width: CGFloat = 560
     private var panel: AtlasPromptPanel?
     private var placedFrame: NSRect = .zero
+    private var pendingAnswer = false
+    private var fullscreenCancellable: AnyCancellable?
 
-    private init() {}
+    private init() {
+        fullscreenCancellable = FullscreenMediaDetector.shared.$fullscreenStatus
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                if self?.pendingAnswer == true {
+                    self?.showAnswer()
+                }
+            }
+    }
 
     /// Where the line is, while it's up. The notification card sits below it.
     var lineFrame: NSRect? {
@@ -480,9 +497,13 @@ final class AtlasPromptController {
         }
     }
 
-    /// A running answer that finishes behind a closed line comes back, except over a video.
+    /// A running answer that finishes behind a closed line comes back. Over a video it waits until the video is gone.
     func showAnswer() {
-        guard panel?.isVisible != true, !FullscreenMediaDetector.shared.fullscreenStatus.values.contains(true) else { return }
+        guard panel?.isVisible != true, AtlasChat.shared.hasConversation else { return }
+        guard !FullscreenMediaDetector.shared.hidesClosedNotch else {
+            pendingAnswer = true
+            return
+        }
         show(focus: false)
     }
 
@@ -501,6 +522,7 @@ final class AtlasPromptController {
     }
 
     private func show(focus: Bool) {
+        pendingAnswer = false
         let panel = panel ?? makePanel()
         self.panel = panel
         place(panel, height: panel.frame.height)
