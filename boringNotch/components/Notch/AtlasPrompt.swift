@@ -104,8 +104,8 @@ final class AtlasChat: ObservableObject {
     private let maxAttachments = 10
     private let maxAttachmentSize = 20 * 1024 * 1024
     private let pollInterval: Duration = .milliseconds(1500)
-    // About half a minute without an answer from the server
-    private let failuresBeforeGivingUp = 20
+    // How long the server may stay silent during a job. Time the Mac sleeps doesn't count
+    private let silenceBeforeGivingUp: Duration = .seconds(120)
     private var token: String?
     private var thread: String?
     private var task: Task<Void, Never>?
@@ -308,7 +308,8 @@ final class AtlasChat: ObservableObject {
     }
 
     private func follow(_ id: String) async {
-        var failures = 0
+        let clock = SuspendingClock()
+        var lastAnswer = clock.now
         var tick = 0
 
         while !Task.isCancelled {
@@ -331,12 +332,12 @@ final class AtlasChat: ObservableObject {
                     finish(job)
                     return
                 }
-                failures = 0
+                lastAnswer = clock.now
             } catch {
-                failures += 1
-                if failures >= failuresBeforeGivingUp {
+                guard !Task.isCancelled else { return }
+                // Said in the line, for when it's open or next opened. No network never brings anything up by itself
+                if clock.now - lastAnswer > silenceBeforeGivingUp {
                     phase = .failed(String(localized: "Lost the connection. The answer will still appear in Starlane."))
-                    AtlasPromptController.shared.showAnswer()
                     return
                 }
             }
@@ -376,6 +377,10 @@ final class AtlasChat: ObservableObject {
 
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
         request.httpMethod = method
+        // The GETs are the polls of a job: a dead peer shouldn't hold one for the session's 30 s
+        if method == "GET" {
+            request.timeoutInterval = 10
+        }
         request.setValue(currentToken, forHTTPHeaderField: "X-AOS-Token")
         if let body {
             request.httpBody = body
