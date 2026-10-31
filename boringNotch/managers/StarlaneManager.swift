@@ -57,6 +57,20 @@ struct StarlaneSummary: Decodable, Equatable {
         case nextDeadline = "next_deadline"
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        live = try container.decode(Int.self, forKey: .live)
+        busy = try container.decode(Int.self, forKey: .busy)
+        needs = try container.decode(Int.self, forKey: .needs)
+        done = try container.decode(Int.self, forKey: .done)
+        paused = try container.decode(Int.self, forKey: .paused)
+        limited = try container.decode(Int.self, forKey: .limited)
+        terminals = try container.decode([Terminal].self, forKey: .terminals)
+        nextDeadline = try container.decodeIfPresent(Deadline.self, forKey: .nextDeadline)
+        // A limit that can't be read shouldn't cost the whole tab
+        limit = try? container.decode([LimitWindow].self, forKey: .limit)
+    }
+
     var needsNames: [String] {
         terminals.filter { $0.state == "needs" }.map(\.name)
     }

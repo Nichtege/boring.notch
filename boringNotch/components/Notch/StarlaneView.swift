@@ -292,7 +292,7 @@ private struct StarlaneLimitBar: View {
                 }
             }
             .frame(height: 4)
-            Text("\(Int(window.usedPercent.rounded())) %")
+            Text("\(Int(min(max(window.usedPercent, 0), 1000).rounded())) %")
                 .foregroundStyle(color == .white ? .gray : color)
                 .frame(width: 32, alignment: .trailing)
         }
