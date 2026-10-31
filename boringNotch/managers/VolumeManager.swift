@@ -23,6 +23,7 @@ final class VolumeManager {
 
     /// What the output is set to right now.
     var rawVolume: Float32 { readVolumeInternal() ?? lastSetVolume }
+    var isMuted: Bool { isMutedInternal() }
 
     // MARK: - Public Control API
     @MainActor func increase(stepDivisor: Float = 1.0) {

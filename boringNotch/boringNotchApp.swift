@@ -199,6 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = StarlaneManager.shared
         SystemNotificationManager.shared.start()
         MicLock.start()
+        _ = AppVolumeMixer.shared
 
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
