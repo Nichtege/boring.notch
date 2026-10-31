@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>This app measures the sound of the music app for the bars in the notch. Nothing is recorded or kept.</string>
+	<string>This app plays apps you turned down at their own volume and measures the music app for the bars in the notch. The sound only passes through: nothing is recorded or kept.</string>
 </dict>
 </plist>
