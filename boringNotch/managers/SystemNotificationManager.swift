@@ -151,6 +151,10 @@ final class SystemNotificationManager {
         guard activeNotification == nil || !isCardHovered else {
             // Its banner comes back until its card comes, so nothing is lost if this one gets dropped
             XPCHelperClient.shared.restoreNotification(token)
+            // Most likely the same one read again, with more of its text this time
+            if notification.title != nil {
+                queuedNotifications.removeAll { $0.appName == notification.appName && $0.title == notification.title }
+            }
             queuedNotifications.append(notification)
             if queuedNotifications.count > queueLimit {
                 queuedNotifications.removeFirst()
