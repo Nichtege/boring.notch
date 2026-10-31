@@ -256,7 +256,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutzungslimit, zurückgesetzt um %@"
+            "value" : "Nutzungslimit, zurückgesetzt: %@"
           }
         }
       }
@@ -15408,6 +15408,16 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Your macOS system accent color"
+          }
+        }
+      }
+    },
+    "Stop waiting here. What Atlas already has still gets its answer in Starlane." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier nicht mehr warten. Was Atlas schon hat, beantwortet es trotzdem in Starlane."
           }
         }
       }
