@@ -344,7 +344,9 @@ struct MusicOutputButton: View {
                     HStack(spacing: 8) {
                         Image(systemName: device.iconName)
                             .frame(width: 18)
+                        // Several AirPods start with the same words, so the whole name has to fit
                         Text(device.displayName)
+                            .fixedSize()
                         Spacer(minLength: 16)
                         Image(systemName: "checkmark")
                             .opacity(device.isSelected ? 1 : 0)
