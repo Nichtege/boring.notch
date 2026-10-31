@@ -88,8 +88,12 @@ class MusicManager: ObservableObject {
     // MARK: - Update Methods
     @MainActor
     private func musicChanged(_ state: PlaybackState) {
+        let started = state.isPlaying && musicState?.isPlaying != true
         musicState = state
-        if remoteDevice == nil {
+        // What comes from this Mac goes first, until someone picks something else again
+        if started {
+            RemoteMediaManager.shared.select(nil)
+        } else if remoteDevice == nil {
             updateFromPlaybackState(state)
         }
     }
