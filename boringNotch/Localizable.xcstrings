@@ -3817,8 +3817,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Closed Notch"
+            "state" : "translated",
+            "value" : "Geschlossene Notch"
           }
         },
         "en" : {
@@ -9927,8 +9927,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Open Notch"
+            "state" : "translated",
+            "value" : "Offene Notch"
           }
         },
         "en" : {
@@ -10627,8 +10627,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Progress bar style"
+            "state" : "translated",
+            "value" : "Stil der Fortschrittsleiste"
           }
         },
         "en" : {
@@ -11527,8 +11527,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Replaces the standard macOS volume, display brightness, and keyboard brightness HUDs with a custom design."
+            "state" : "translated",
+            "value" : "Ersetzt die macOS-Anzeigen für Lautstärke, Bildschirm- und Tastaturhelligkeit durch ein eigenes Design."
           }
         },
         "en" : {
@@ -12528,8 +12528,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Show HUD in open notch"
+            "state" : "translated",
+            "value" : "HUD in offener Notch anzeigen"
           }
         },
         "en" : {
@@ -12928,8 +12928,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Show percentage"
+            "state" : "translated",
+            "value" : "Prozent anzeigen"
           }
         },
         "en" : {
