@@ -31,6 +31,7 @@ final class AppVolumeMixer: ObservableObject {
         let tap: AppVolumeTap
         var processes: Set<AudioObjectID>
         var removal: DispatchWorkItem?
+        var rebuild: DispatchWorkItem?
     }
 
     // Kept up to date only while the tab is on screen
@@ -46,12 +47,18 @@ final class AppVolumeMixer: ObservableObject {
     private let lingerAfterSound: TimeInterval = 3
     private let removalAfterRamp: TimeInterval = 0.1
     private let outputSettleTime: TimeInterval = 0.4
+    private let rebuildSettleTime: TimeInterval = 0.1
+    private let rowLinger: TimeInterval = 4
+    private let retryDelay: TimeInterval = 2
+    private let triesAfterFailure = 2
 
     private var volumes = Defaults[.appVolumes]
     private var viewers = 0
     private var active: [String: ActiveTap] = [:]
     private var failed: Set<String> = []
+    private var retries: [String: Int] = [:]
     private var movedSliders: Set<String> = []
+    private var lastHeard: [String: Date] = [:]
 
     private var isListeningToProcesses = false
     private var watchedProcesses: Set<AudioObjectID> = []
@@ -128,6 +135,7 @@ final class AppVolumeMixer: ObservableObject {
         }
         movedSliders.removeAll()
         failed.removeAll()
+        retries.removeAll()
         refresh()
     }
 
@@ -192,6 +200,7 @@ final class AppVolumeMixer: ObservableObject {
         var processes: [String: [AudioObjectID]] = [:]
         var apps: [String: NSRunningApplication] = [:]
         var playing: Set<String> = []
+        var playingProcesses: [String: Set<AudioObjectID>] = [:]
         for object in objects {
             let isPlaying = LocalAudioRoute.number(object, kAudioProcessPropertyIsRunningOutput) != 0
             // Asked again once it plays, as an app still launching may not be registered yet
@@ -203,10 +212,11 @@ final class AppVolumeMixer: ObservableObject {
             apps[bundleID] = app
             if isPlaying {
                 playing.insert(bundleID)
+                playingProcesses[bundleID, default: []].insert(object)
             }
         }
 
-        syncTaps(processes: processes, playing: playing)
+        syncTaps(processes: processes, playing: playingProcesses)
         publishRows(apps: apps, playing: playing)
         updateListening()
     }
@@ -215,6 +225,8 @@ final class AppVolumeMixer: ObservableObject {
     /// links those to their app is what they're called: com.hnc.Discord.something, "Safari Graphics and Media".
     private func owner(of object: AudioObjectID) -> NSRunningApplication? {
         let ownPID = pid_t(bitPattern: LocalAudioRoute.number(object, kAudioProcessPropertyPID))
+        // Started from a terminal this would be the terminal's, and tapping ourselves feeds back
+        guard ownPID != getpid() else { return nil }
         var pid = ownPID
         while pid > 1 {
             if let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular {
@@ -243,25 +255,37 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     // MARK: - Taps
-    private func syncTaps(processes: [String: [AudioObjectID]], playing: Set<String>) {
+    private func syncTaps(processes: [String: [AudioObjectID]], playing: [String: Set<AudioObjectID>]) {
         for (bundleID, volume) in volumes {
             let own = processes[bundleID] ?? []
 
-            if !playing.contains(bundleID) {
+            guard let playingNow = playing[bundleID] else {
                 failed.remove(bundleID)
+                retries[bundleID] = nil
                 if active[bundleID]?.removal == nil {
                     scheduleRemoval(of: bundleID, after: lingerAfterSound)
                 }
-            } else if let entry = active[bundleID] {
+                continue
+            }
+
+            if let entry = active[bundleID] {
                 entry.removal?.cancel()
                 active[bundleID]?.removal = nil
-                // One that went away does no harm in the tap, but a new one would play at full volume
-                if !entry.processes.isSuperset(of: own) {
-                    active[bundleID]?.processes = Set(own)
+                // One that went away does no harm in the tap, and one that stays quiet doesn't need it yet.
+                // One that plays and isn't in there plays at full volume.
+                if !entry.processes.isSuperset(of: playingNow) {
+                    scheduleRebuild(of: bundleID, processes: own)
+                } else {
                     let tap = entry.tap
-                    appVolumeQueue.async { tap.build(processes: own) }
+                    appVolumeQueue.async { tap.update(processes: own) }
                 }
             } else if !failed.contains(bundleID) {
+                // A tap would pull an app playing somewhere else over to the default output
+                guard playsOnDefaultOutput(playingNow) else {
+                    failed.insert(bundleID)
+                    updateListening()
+                    continue
+                }
                 let tap = AppVolumeTap(gain: Self.gain(volume)) { [weak self] tap, status in
                     DispatchQueue.main.async { self?.tapFailed(tap, for: bundleID, status: status) }
                 }
@@ -269,6 +293,29 @@ final class AppVolumeMixer: ObservableObject {
                 appVolumeQueue.async { tap.build(processes: own) }
             }
         }
+    }
+
+    private func playsOnDefaultOutput(_ processes: Set<AudioObjectID>) -> Bool {
+        let output = LocalAudioRoute.defaultOutputDevice
+        return processes.contains { process in
+            let devices = LocalAudioRoute.objects(process, kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput)
+            return devices.isEmpty || devices.contains(output)
+        }
+    }
+
+    /// New helpers tend to come in bursts, and each new tap is a short gap in the sound.
+    private func scheduleRebuild(of bundleID: String, processes: [AudioObjectID]) {
+        guard let tap = active[bundleID]?.tap else { return }
+        active[bundleID]?.rebuild?.cancel()
+        let rebuild = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.active[bundleID]?.processes = Set(processes)
+                self?.active[bundleID]?.rebuild = nil
+                appVolumeQueue.async { tap.build(processes: processes) }
+            }
+        }
+        active[bundleID]?.rebuild = rebuild
+        DispatchQueue.main.asyncAfter(deadline: .now() + rebuildSettleTime, execute: rebuild)
     }
 
     private func scheduleRemoval(of bundleID: String, after delay: TimeInterval) {
@@ -282,21 +329,32 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     private func removeTap(of bundleID: String) {
-        guard let tap = active.removeValue(forKey: bundleID)?.tap else { return }
+        guard let entry = active.removeValue(forKey: bundleID) else { return }
+        entry.removal?.cancel()
+        entry.rebuild?.cancel()
+        let tap = entry.tap
         appVolumeQueue.async { tap.stop() }
         updateListening()
     }
 
-    /// The app keeps its normal volume then. Tried again only for a new reason, so this says it once.
+    /// The app keeps its normal volume then, and gets another try or two: AirPods just connecting can take
+    /// a while. After those it says so once, and only something new brings another try.
     private func tapFailed(_ tap: AppVolumeTap, for bundleID: String, status: OSStatus) {
-        guard active[bundleID]?.tap === tap else { return }
-        active[bundleID]?.removal?.cancel()
+        guard let entry = active[bundleID], entry.tap === tap else { return }
+        entry.removal?.cancel()
+        entry.rebuild?.cancel()
         active[bundleID] = nil
-        if failed.insert(bundleID).inserted {
+
+        let tries = retries[bundleID, default: 0]
+        if tries < triesAfterFailure {
+            retries[bundleID] = tries + 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in self?.refresh() }
+        } else {
+            failed.insert(bundleID)
             NSLog("Mixer: no tap for %@ (%d)", bundleID, status)
+            refresh()
         }
         updateListening()
-        refresh()
     }
 
     // MARK: - The output
@@ -312,8 +370,14 @@ final class AppVolumeMixer: ObservableObject {
 
     private func followOutput() {
         failed.removeAll()
-        for tap in active.values.map(\.tap) {
-            appVolumeQueue.async { tap.followOutput() }
+        for (bundleID, entry) in active {
+            // On its way out anyway, and a new aggregate would wait for a sound that isn't coming
+            if entry.removal != nil {
+                removeTap(of: bundleID)
+            } else {
+                let tap = entry.tap
+                appVolumeQueue.async { tap.followOutput() }
+            }
         }
         updateListening()
         refreshMacRow()
@@ -396,6 +460,7 @@ private final class AppVolumeTap: @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
+    private var outputDevice = AudioObjectID(kAudioObjectUnknown)
     private var outputUID: String?
     private var outputSampleRate: Float64 = 0
     private var connection = 0
@@ -435,10 +500,16 @@ private final class AppVolumeTap: @unchecked Sendable {
         }
     }
 
+    /// For the next build. A process that's gone may not be accepted anymore.
+    func update(processes: [AudioObjectID]) {
+        self.processes = processes
+    }
+
     func followOutput() {
         guard !isStopped else { return }
         let device = LocalAudioRoute.defaultOutputDevice
-        guard LocalAudioRoute.string(device, kAudioDevicePropertyDeviceUID) != outputUID
+        guard device != outputDevice
+                || LocalAudioRoute.string(device, kAudioDevicePropertyDeviceUID) != outputUID
                 || LocalAudioRoute.sampleRate(of: device) != outputSampleRate else { return }
         build(processes: processes)
     }
