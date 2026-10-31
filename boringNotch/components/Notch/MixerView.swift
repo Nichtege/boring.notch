@@ -58,12 +58,6 @@ struct MixerView: View {
             Task { await musicManager.syncVolumeFromActiveApp() }
         }
         .onDisappear(perform: mixer.tabDisappeared)
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in
-            mixer.refresh()
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in
-            mixer.refresh()
-        }
     }
 
     private func appIcon(_ icon: NSImage?) -> some View {

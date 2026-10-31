@@ -57,6 +57,7 @@ final class AppVolumeMixer: ObservableObject {
     private var watchedProcesses: Set<AudioObjectID> = []
     private var owners: [AudioObjectID: NSRunningApplication] = [:]
     private var isRefreshScheduled = false
+    private var appObservers: [NSObjectProtocol] = []
 
     private var isWatchingOutput = false
     private var watchedDevice = AudioObjectID(kAudioObjectUnknown)
@@ -176,14 +177,15 @@ final class AppVolumeMixer: ObservableObject {
 
         let objects = LocalAudioRoute.objects(Self.system, kAudioHardwarePropertyProcessObjectList)
         let current = Set(objects)
-        let isRunningOutput = LocalAudioRoute.propertyAddress(kAudioProcessPropertyIsRunningOutput)
+        // Asked for below, but only this one says when it changes
+        let isRunning = LocalAudioRoute.propertyAddress(kAudioProcessPropertyIsRunning)
         for gone in watchedProcesses.subtracting(current) {
-            setListener(false, on: gone, isRunningOutput, processListener)
+            setListener(false, on: gone, isRunning, processListener)
             owners[gone] = nil
         }
         let new = current.subtracting(watchedProcesses)
         for object in new {
-            setListener(true, on: object, isRunningOutput, processListener)
+            setListener(true, on: object, isRunning, processListener)
         }
         watchedProcesses = current
 
@@ -326,9 +328,10 @@ final class AppVolumeMixer: ObservableObject {
         if shouldListen != isListeningToProcesses {
             isListeningToProcesses = shouldListen
             setListener(shouldListen, on: Self.system, LocalAudioRoute.propertyAddress(kAudioHardwarePropertyProcessObjectList), processListener)
+            setAppObservers(shouldListen)
             if !shouldListen {
-                let isRunningOutput = LocalAudioRoute.propertyAddress(kAudioProcessPropertyIsRunningOutput)
-                watchedProcesses.forEach { setListener(false, on: $0, isRunningOutput, processListener) }
+                let isRunning = LocalAudioRoute.propertyAddress(kAudioProcessPropertyIsRunning)
+                watchedProcesses.forEach { setListener(false, on: $0, isRunning, processListener) }
                 watchedProcesses = []
                 owners = [:]
             }
@@ -345,6 +348,19 @@ final class AppVolumeMixer: ObservableObject {
             setDeviceListeners(false, on: watchedDevice)
             setDeviceListeners(true, on: device)
             watchedDevice = device
+        }
+    }
+
+    /// An app that plays while it launches isn't anybody's yet. It's sorted out once it has finished.
+    private func setAppObservers(_ isOn: Bool) {
+        let center = NSWorkspace.shared.notificationCenter
+        appObservers.forEach { center.removeObserver($0) }
+        appObservers = []
+        guard isOn else { return }
+        appObservers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification].map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            }
         }
     }
 
