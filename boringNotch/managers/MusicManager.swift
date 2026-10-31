@@ -21,6 +21,10 @@ class MusicManager: ObservableObject {
     private var debounceIdleTask: Task<Void, Never>?
 
     private let controller = AppleMusicController()
+    private let remote = RemoteNowPlayingController()
+    private var musicState: PlaybackState?
+    private var remoteNowPlaying: RemoteNowPlaying?
+    private var isRemoteShown = false
     private var pendingVolume: Double?
     private var volumeTask: Task<Void, Never>?
 
@@ -43,6 +47,12 @@ class MusicManager: ObservableObject {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
     @Published var isFavoriteTrack: Bool = false
+    /// The other device's name while what shows comes from there
+    @Published private(set) var remoteName: String? = nil
+
+    var isRemoteSource: Bool {
+        remoteName != nil
+    }
 
     private var artworkData: Data? = nil
 
@@ -60,7 +70,14 @@ class MusicManager: ObservableObject {
         controller.playbackStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.updateFromPlaybackState(state)
+                self?.musicChanged(state)
+            }
+            .store(in: &cancellables)
+
+        remote.$nowPlaying
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] nowPlaying in
+                self?.remoteChanged(nowPlaying)
             }
             .store(in: &cancellables)
     }
@@ -71,6 +88,47 @@ class MusicManager: ObservableObject {
     }
 
     // MARK: - Update Methods
+    /// What started last is what shows. When that stops, whatever else still plays takes over.
+    @MainActor
+    private func musicChanged(_ state: PlaybackState) {
+        let started = state.isPlaying && musicState?.isPlaying != true
+        musicState = state
+        if started {
+            isRemoteShown = false
+        } else if !state.isPlaying && remoteNowPlaying?.state.isPlaying == true {
+            isRemoteShown = true
+        }
+        showCurrentSource()
+    }
+
+    @MainActor
+    private func remoteChanged(_ nowPlaying: RemoteNowPlaying?) {
+        let isPlaying = nowPlaying?.state.isPlaying == true
+        let started = isPlaying && remoteNowPlaying?.state.isPlaying != true
+        let isOtherDevice = nowPlaying?.deviceName != remoteNowPlaying?.deviceName
+        remoteNowPlaying = nowPlaying
+        // A device that's left behind a speaker's song from hours ago isn't what anyone was listening to
+        if nowPlaying == nil || (!isPlaying && isOtherDevice) {
+            isRemoteShown = false
+        } else if started {
+            isRemoteShown = true
+        } else if !isPlaying && musicState?.isPlaying == true {
+            isRemoteShown = false
+        }
+        showCurrentSource()
+    }
+
+    @MainActor
+    private func showCurrentSource() {
+        let shown = isRemoteShown ? remoteNowPlaying : nil
+        if remoteName != shown?.deviceName {
+            remoteName = shown?.deviceName
+        }
+        if let state = shown?.state ?? musicState {
+            updateFromPlaybackState(state)
+        }
+    }
+
     @MainActor
     private func updateFromPlaybackState(_ state: PlaybackState) {
         // Check for playback state changes (playing/paused)
@@ -105,6 +163,10 @@ class MusicManager: ObservableObject {
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
                     self.usingAppIconForArtwork = true
                     self.updateAlbumArt(newAlbumArt: appIconImage)
+                } else {
+                    // An app that's only on another device. The cover of the song before would be wrong
+                    self.usingAppIconForArtwork = false
+                    self.updateAlbumArt(newAlbumArt: defaultImage)
                 }
             }
             self.artworkData = state.artwork
@@ -181,6 +243,7 @@ class MusicManager: ObservableObject {
     }
 
     func setFavorite(_ favorite: Bool) {
+        guard !isRemoteSource else { return }
         Task { @MainActor in
             await controller.setFavorite(favorite)
             try? await Task.sleep(for: .milliseconds(150))
@@ -257,18 +320,24 @@ class MusicManager: ObservableObject {
 
     // MARK: - Public Methods for controlling playback
     func toggleShuffle() {
+        guard !isRemoteSource else { return }
         Task {
             await controller.toggleShuffle()
         }
     }
 
     func toggleRepeat() {
+        guard !isRemoteSource else { return }
         Task {
             await controller.toggleRepeat()
         }
     }
-    
+
     func togglePlay() {
+        guard !isRemoteSource else {
+            remote.send(.toggle)
+            return
+        }
         Task {
             if !isPlaying && bundleIdentifier == "com.apple.Music" {
                 await MusicOutputController.shared.restoreLastOutput()
@@ -278,23 +347,36 @@ class MusicManager: ObservableObject {
     }
 
     func nextTrack() {
+        guard !isRemoteSource else {
+            remote.send(.next)
+            return
+        }
         Task {
             await controller.nextTrack()
         }
     }
 
     func previousTrack() {
+        guard !isRemoteSource else {
+            remote.send(.previous)
+            return
+        }
         Task {
             await controller.previousTrack()
         }
     }
 
     func seek(to position: TimeInterval) {
+        guard !isRemoteSource else { return }
         Task {
             await controller.seek(to: position)
         }
     }
     func skip(seconds: TimeInterval) {
+        guard !isRemoteSource else {
+            remote.send(.skip(seconds: Int(seconds)))
+            return
+        }
         let newPos = min(max(0, estimatedPlaybackPosition() + seconds), songDuration)
         seek(to: newPos)
     }
@@ -302,6 +384,7 @@ class MusicManager: ObservableObject {
     /// Only the newest level. One script runs at a time and each can take 2 s, so a dragged slider would pile them up.
     @MainActor
     func setVolume(to level: Double) {
+        guard !isRemoteSource else { return }
         pendingVolume = level
         guard volumeTask == nil else { return }
         volumeTask = Task { @MainActor [weak self] in
@@ -314,7 +397,7 @@ class MusicManager: ObservableObject {
     }
 
     func openMusicApp() {
-        guard let bundleID = bundleIdentifier,
+        guard !isRemoteSource, let bundleID = bundleIdentifier,
               let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }
