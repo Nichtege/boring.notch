@@ -181,8 +181,13 @@ class AppleMusicController {
         var artwork = self.playbackState.artwork
         var answeredKey = artworkKey
         if key == nil || key != artworkKey {
-            artwork = await askedTwice { await self.fetchArtwork() }
-            answeredKey = artwork?.isEmpty == false ? key : nil
+            // No answer is nil and no art is empty. Either way this track has no cover yet, not the last one's
+            let answer = await askedTwice { await self.fetchArtwork() }
+            artwork = answer?.isEmpty == false ? answer : nil
+            answeredKey = artwork == nil ? nil : key
+            if answer == nil && !isRetry {
+                retryUpdate()
+            }
         }
 
         // Music has said something newer since this was read, and that update comes next
@@ -289,12 +294,14 @@ class AppleMusicController {
             if it is not running then return ""
             try
                 return data of artwork 1 of current track
-            on error
+            on error errorText number errorNumber
+                -- No answer says nothing about the art
+                if errorNumber is -1712 then error errorText number errorNumber
                 return ""
             end try
         end tell
         """
-        
+
         return try? await AppleScriptHelper.execute(script)?.data
     }
     
