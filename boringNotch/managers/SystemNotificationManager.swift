@@ -153,7 +153,10 @@ final class SystemNotificationManager {
             XPCHelperClient.shared.restoreNotification(token)
             // Most likely the same one read again, with more of its text this time
             if notification.title != nil {
-                queuedNotifications.removeAll { $0.appName == notification.appName && $0.title == notification.title }
+                queuedNotifications.removeAll { queued in
+                    queued.appName == notification.appName && queued.title == notification.title
+                        && notification.body?.hasPrefix(queued.body ?? "") ?? (queued.body == nil)
+                }
             }
             queuedNotifications.append(notification)
             if queuedNotifications.count > queueLimit {
