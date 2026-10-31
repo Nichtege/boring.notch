@@ -198,6 +198,8 @@ class AppleMusicController: NSObject {
             }
             return
         }
+        // What the bar counts from, not when the slower art got here
+        let readAt = Date()
         guard descriptor.numberOfItems >= 11 else {
             // Only a script that found Music gone has nothing to say
             publishNotPlaying()
@@ -241,7 +243,7 @@ class AppleMusicController: NSObject {
         updatedState.artwork = artwork
         let lovedState = descriptor.atIndex(11)?.booleanValue ?? false
         updatedState.isFavorite = lovedState
-        updatedState.lastUpdated = Date()
+        updatedState.lastUpdated = readAt
         self.playbackState = updatedState
     }
     

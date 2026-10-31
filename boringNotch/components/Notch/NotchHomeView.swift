@@ -543,7 +543,10 @@ struct MusicSliderView: View {
     }
 
     private func syncWithPlayback() {
-        guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
+        // After a drag it waits for news of the seek, but not for good: that news may never come
+        guard !dragging,
+              timestampDate.timeIntervalSince(lastDragged) > -1 || currentDate.timeIntervalSince(lastDragged) > 3
+        else { return }
         sliderValue = MusicManager.shared.estimatedPlaybackPosition()
     }
 
