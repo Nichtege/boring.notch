@@ -21,7 +21,6 @@ class MusicManager: ObservableObject {
     private var debounceIdleTask: Task<Void, Never>?
 
     private let controller = AppleMusicController()
-    private var musicState: PlaybackState?
     private var pendingVolume: Double?
     private var volumeTask: Task<Void, Never>?
 
@@ -44,6 +43,8 @@ class MusicManager: ObservableObject {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
     @Published var isFavoriteTrack: Bool = false
+    /// Music's own, also while something else shows here
+    @Published private(set) var musicState: PlaybackState?
     /// Set while a device picked in the Devices tab shows instead of Music
     @Published private(set) var remoteDevice: RemoteNowPlaying?
 
@@ -51,8 +52,8 @@ class MusicManager: ObservableObject {
         remoteDevice != nil
     }
 
-    // Music's own, for its row in the Devices tab while something else shows here
     var musicIsPlaying: Bool { musicState?.isPlaying == true }
+    var musicLastUpdated: Date { musicState?.lastUpdated ?? .distantPast }
     var musicTitle: String { musicState?.title ?? "" }
     var musicArtist: String { musicState?.artist ?? "" }
     var musicHasContent: Bool { (musicState?.duration ?? 0) > 0 }

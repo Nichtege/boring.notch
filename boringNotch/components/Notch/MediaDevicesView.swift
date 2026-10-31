@@ -38,8 +38,9 @@ struct MediaDevicesView: View {
 
     private var macRow: Row {
         guard isMusicRunning, music.musicHasContent else { return Row(name: "Mac", icon: "laptopcomputer") }
+        let speaker = music.musicIsPlaying ? media.musicSpeaker : nil
         return Row(
-            name: "Mac",
+            name: speaker.map { "Mac → \($0)" } ?? "Mac",
             icon: "laptopcomputer",
             title: music.musicTitle,
             artist: music.musicArtist,
@@ -55,7 +56,8 @@ struct MediaDevicesView: View {
 
     private var rows: [Row] {
         var rows = [macRow]
-        rows += media.devices.map { device in
+        let listed = media.listedDevices.filter { $0.deviceName != media.musicSpeaker }
+        rows += listed.map { device in
             let speaker = media.speaker(of: device)
             return Row(
                 name: speaker.map { "\(device.deviceName) → \($0.name)" } ?? device.deviceName,
@@ -72,7 +74,7 @@ struct MediaDevicesView: View {
             )
         }
         // Speakers Music can reach, of which macOS hasn't told anything. Headphones play only what this Mac sends them
-        let usedSpeakers = media.devices.compactMap { media.speaker(of: $0)?.name }
+        let usedSpeakers = listed.compactMap { media.speaker(of: $0)?.name } + [music.musicIsPlaying ? media.musicSpeaker : nil].compactMap { $0 }
         rows += outputs.devices
             .filter { device in
                 device.kind != "computer" && device.kind != "Bluetooth device"
