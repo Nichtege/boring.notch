@@ -221,6 +221,8 @@ final class SystemNotificationManager {
             if previous == nil {
                 isCardHovered = false
                 queuedNotifications.removeAll()
+                // The card before it may still be up, and nothing could dismiss it any more
+                NotificationCardController.shared.hide()
             }
             return
         }
