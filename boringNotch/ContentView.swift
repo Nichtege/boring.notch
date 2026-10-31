@@ -234,7 +234,7 @@ struct ContentView: View {
             anyDropDebounceTask?.cancel()
 
             if isTargeted {
-                if vm.notchState == .closed {
+                if vm.notchState == .closed && Defaults[.boringShelf] {
                     coordinator.currentView = .shelf
                     doOpen()
                 }
@@ -530,6 +530,8 @@ struct ContentView: View {
     }
 
     private func doOpen() {
+        // Empty until onboarding is over, as hovering knows too
+        guard !coordinator.firstLaunch else { return }
         withAnimation(animationSpring) {
             vm.open()
         }
