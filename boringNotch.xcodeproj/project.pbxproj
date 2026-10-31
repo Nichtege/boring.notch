@@ -82,6 +82,7 @@
 		A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */; };
 		A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */; };
 		A1EE001BA1EE001BA1EE001B /* AppVolumeMixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE001CA1EE001CA1EE001C /* AppVolumeMixer.swift */; };
+		A1EE0031A1EE0031A1EE0031 /* AppEqualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0032A1EE0032A1EE0032 /* AppEqualizer.swift */; };
 		A1EE0019A1EE0019A1EE0019 /* AppVolumeRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */; };
 		A1EE0009A1EE0009A1EE0009 /* MusicAudioMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */; };
 		A1EE000BA1EE000BA1EE000B /* FocusTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */; };
@@ -212,6 +213,7 @@
 		A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarlaneView.swift; sourceTree = "<group>"; };
 		A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasPrompt.swift; sourceTree = "<group>"; };
 		A1EE001CA1EE001CA1EE001C /* AppVolumeMixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeMixer.swift; sourceTree = "<group>"; };
+		A1EE0032A1EE0032A1EE0032 /* AppEqualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEqualizer.swift; sourceTree = "<group>"; };
 		A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeRender.swift; sourceTree = "<group>"; };
 		A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAudioMeter.swift; sourceTree = "<group>"; };
 		A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimer.swift; sourceTree = "<group>"; };
@@ -395,6 +397,7 @@
 				B1F0A0012E60000100000001 /* BrightnessManager.swift */,
 				59D8C23B2E589FAA00147B33 /* VolumeManager.swift */,
 				A1EE001CA1EE001CA1EE001C /* AppVolumeMixer.swift */,
+				A1EE0032A1EE0032A1EE0032 /* AppEqualizer.swift */,
 				A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */,
 			);
 			path = managers;
@@ -746,6 +749,7 @@
 				B141C2412CA5F53F00AC8CC8 /* SparkleView.swift in Sources */,
 				59D8C23C2E589FAA00147B33 /* VolumeManager.swift in Sources */,
 				A1EE001BA1EE001BA1EE001B /* AppVolumeMixer.swift in Sources */,
+				A1EE0031A1EE0031A1EE0031 /* AppEqualizer.swift in Sources */,
 				A1EE0019A1EE0019A1EE0019 /* AppVolumeRender.swift in Sources */,
 				14D570B92C5E98A20011E668 /* drop.swift in Sources */,
 				11EFCD702E8E92D600D0B974 /* ShelfItemViewModel.swift in Sources */,

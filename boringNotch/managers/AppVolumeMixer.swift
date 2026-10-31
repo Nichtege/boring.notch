@@ -2,9 +2,10 @@
 //  AppVolumeMixer.swift
 //  boringNotch
 //
-//  One volume per app, for the Mixer tab. An app at 100% gets nothing at all. Only an app that is turned down and
-//  really plays gets a tap and an aggregate device, as a running one holds the output: AirPods held like that
-//  no longer switch or pause by themselves. The sound only passes through, nothing of it is kept.
+//  One volume and one equalizer per app, for the Mixer tab. An app at 100% with a flat equalizer gets nothing at
+//  all. Only an app that is changed and really plays gets a tap and an aggregate device, as a running one holds the
+//  output: AirPods held like that no longer switch or pause by themselves. The sound only passes through, nothing
+//  of it is kept. Music keeps its own volume, so it gets a tap for its equalizer alone.
 //
 //  How the tap and the aggregate are put together is derived from FineTune, see THIRD_PARTY_LICENSES.
 //
@@ -37,12 +38,15 @@ final class AppVolumeMixer: ObservableObject {
     // Kept up to date only while the tab is on screen
     @Published private(set) var rows: [Row] = []
     @Published private(set) var music: NSRunningApplication?
+    @Published private(set) var musicIsFailing = false
+    @Published private(set) var equalizers = Defaults[.appEqualizers]
     @Published private(set) var macVolume: Double = 0
     @Published private(set) var macHasVolume = true
     @Published private(set) var macIcon = "hifispeaker.fill"
 
-    // Never in the list: this app, Music with a volume of its own, and FineTune with taps of its own
-    private static let notMixed: Set<String> = [Bundle.main.bundleIdentifier ?? "", "com.apple.Music", "com.finetuneapp.FineTune"]
+    // Never in the list: this app, and Music with a row of its own
+    private static let musicID = "com.apple.Music"
+    private static let notMixed: Set<String> = [Bundle.main.bundleIdentifier ?? "", musicID]
     private static let system = AudioObjectID(kAudioObjectSystemObject)
 
     private let lingerAfterSound: TimeInterval = 3
@@ -111,6 +115,49 @@ final class AppVolumeMixer: ObservableObject {
         VolumeManager.shared.setAbsolute(Float32(volume))
     }
 
+    func equalizer(for bundleID: String) -> AppEqualizer {
+        equalizers[bundleID] ?? AppEqualizer()
+    }
+
+    func setEqualizer(_ equalizer: AppEqualizer, for bundleID: String) {
+        let wasTapped = needsTap(bundleID)
+        equalizers[bundleID] = equalizer == AppEqualizer() ? nil : equalizer
+        if let tap = active[bundleID]?.tap {
+            let bands = bandsToPlay(of: bundleID)
+            appVolumeQueue.async { tap.setEqualizer(bands) }
+        }
+
+        let isTapped = needsTap(bundleID)
+        if !isTapped {
+            failed.remove(bundleID)
+            scheduleRemoval(of: bundleID, after: removalAfterRamp)
+        }
+        if isTapped != wasTapped {
+            updateListening()
+            refresh()
+        }
+    }
+
+    /// At the end of a drag, as there's no need for every step of one on disk.
+    func saveEqualizers() {
+        if equalizers != Defaults[.appEqualizers] {
+            Defaults[.appEqualizers] = equalizers
+        }
+    }
+
+    private var tappedApps: Set<String> {
+        Set(volumes.keys).union(equalizers.filter(\.value.isActive).keys)
+    }
+
+    private func needsTap(_ bundleID: String) -> Bool {
+        volumes[bundleID] != nil || equalizers[bundleID]?.isActive == true
+    }
+
+    private func bandsToPlay(of bundleID: String) -> [Float] {
+        let equalizer = equalizer(for: bundleID)
+        return equalizer.isOn ? equalizer.bands : []
+    }
+
     func setVolume(_ volume: Double, for bundleID: String) {
         // What shows as 100% is 100%, with nothing tapped
         let isFull = volume >= 0.995
@@ -119,7 +166,7 @@ final class AppVolumeMixer: ObservableObject {
         movedSliders.insert(bundleID)
         active[bundleID]?.tap.setGain(Self.gain(isFull ? 1 : volume))
 
-        if isFull {
+        if !needsTap(bundleID) {
             failed.remove(bundleID)
             scheduleRemoval(of: bundleID, after: removalAfterRamp)
         }
@@ -167,9 +214,13 @@ final class AppVolumeMixer: ObservableObject {
     private func publishRows(apps: [String: NSRunningApplication], playing: Set<String>) {
         guard viewers > 0 else { return }
 
-        let runningMusic = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first
+        let runningMusic = NSRunningApplication.runningApplications(withBundleIdentifier: Self.musicID).first
         if runningMusic != music {
             music = runningMusic
+        }
+        let musicFails = failed.contains(Self.musicID)
+        if musicFails != musicIsFailing {
+            musicIsFailing = musicFails
         }
 
         // A short sound shouldn't pull the rows from under the pointer, so a row stays for a moment
@@ -180,7 +231,7 @@ final class AppVolumeMixer: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + rowLinger) { [weak self] in self?.setNeedsRefresh() }
         }
 
-        let listed = Set(lastHeard.keys).union(volumes.keys).union(movedSliders).subtracting(Self.notMixed)
+        let listed = Set(lastHeard.keys).union(tappedApps).union(movedSliders).subtracting(Self.notMixed)
         let newRows = listed.compactMap { bundleID -> Row? in
             let app = apps[bundleID] ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
             guard let app, let name = app.localizedName else { return nil }
@@ -278,7 +329,7 @@ final class AppVolumeMixer: ObservableObject {
 
     // MARK: - Taps
     private func syncTaps(processes: [String: [AudioObjectID]], playing: [String: Set<AudioObjectID>]) {
-        for (bundleID, volume) in volumes {
+        for bundleID in tappedApps {
             let own = processes[bundleID] ?? []
 
             guard let playingNow = playing[bundleID] else {
@@ -308,7 +359,7 @@ final class AppVolumeMixer: ObservableObject {
                     updateListening()
                     continue
                 }
-                let tap = AppVolumeTap(gain: Self.gain(volume)) { [weak self] tap, status in
+                let tap = AppVolumeTap(gain: Self.gain(volumes[bundleID] ?? 1), equalizer: bandsToPlay(of: bundleID)) { [weak self] tap, status in
                     DispatchQueue.main.async { self?.tapFailed(tap, for: bundleID, status: status) }
                 }
                 active[bundleID] = ActiveTap(tap: tap, processes: Set(own))
@@ -412,10 +463,10 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     // MARK: - Listening
-    /// Nothing at all unless an app is turned down or the tab is on screen, and nothing about the output
+    /// Nothing at all unless an app is changed or the tab is on screen, and nothing about the output
     /// unless a tap runs or the tab shows it.
     private func updateListening() {
-        let shouldListen = !volumes.isEmpty || !active.isEmpty || viewers > 0
+        let shouldListen = !tappedApps.isEmpty || !active.isEmpty || viewers > 0
         if shouldListen != isListeningToProcesses {
             isListeningToProcesses = shouldListen
             setListener(shouldListen, on: Self.system, LocalAudioRoute.propertyAddress(kAudioHardwarePropertyProcessObjectList), processListener)
@@ -475,12 +526,14 @@ final class AppVolumeMixer: ObservableObject {
     }
 }
 
-/// One app's sound, muted where it was and played again at its own volume. All of this runs on one queue, as
-/// setting it up can take a moment with Bluetooth. Only setGain comes from elsewhere.
+/// One app's sound, muted where it was and played again at its own volume, through its own equalizer. All of this
+/// runs on one queue, as setting it up can take a moment with Bluetooth. Only setGain comes from elsewhere.
 private final class AppVolumeTap: @unchecked Sendable {
     private let checkInterval: TimeInterval = 2
     private let checksBeforeStall = 2
     private let state = UnsafeMutablePointer<AppVolumeRenderState>.allocate(capacity: 1)
+    private let equalizerMemory = UnsafeMutablePointer<Double>.allocate(capacity: EqualizerLayout.size)
+    private var equalizerBands: [Float]
     private let onFailure: @Sendable (AppVolumeTap, OSStatus) -> Void
 
     private var processes: [AudioObjectID] = []
@@ -496,8 +549,10 @@ private final class AppVolumeTap: @unchecked Sendable {
     private var checksWithoutPass = 0
     private var didRebuildForStall = false
 
-    init(gain: Float, onFailure: @escaping @Sendable (AppVolumeTap, OSStatus) -> Void) {
-        state.initialize(to: AppVolumeRenderState(target: gain))
+    init(gain: Float, equalizer: [Float], onFailure: @escaping @Sendable (AppVolumeTap, OSStatus) -> Void) {
+        equalizerMemory.initialize(repeating: 0, count: EqualizerLayout.size)
+        state.initialize(to: AppVolumeRenderState(target: gain, equalizer: equalizerMemory))
+        equalizerBands = equalizer
         self.onFailure = onFailure
     }
 
@@ -505,10 +560,21 @@ private final class AppVolumeTap: @unchecked Sendable {
     deinit {
         state.deinitialize(count: 1)
         state.deallocate()
+        equalizerMemory.deinitialize(count: EqualizerLayout.size)
+        equalizerMemory.deallocate()
     }
 
     func setGain(_ gain: Float) {
         state.pointee.target = gain
+    }
+
+    /// The audio thread keeps using the set it's on, and only moves to this one once it's complete.
+    func setEqualizer(_ bands: [Float]) {
+        equalizerBands = bands
+        guard outputSampleRate > 0 else { return }
+        let next = 1 - state.pointee.equalizerTargets
+        fillEqualizerCoefficients(equalizerMemory + next * EqualizerLayout.perSet, bands: bands, sampleRate: outputSampleRate)
+        state.pointee.equalizerTargets = next
     }
 
     /// The old tap stays until the new one is in place, so the app can't get loud in between.
@@ -615,6 +681,11 @@ private final class AppVolumeTap: @unchecked Sendable {
         state.pointee.maxStepPerFrame = Float(1 / (sampleRate * 0.005))
         state.pointee.current = 0
         state.pointee.deviceInputs = LocalAudioRoute.objects(device, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput).count
+        // Nothing runs yet, and a new sample rate needs new filters from the first sound on
+        state.pointee.equalizerTargets = 0
+        fillEqualizerCoefficients(equalizerMemory, bands: equalizerBands, sampleRate: sampleRate)
+        (equalizerMemory + EqualizerLayout.current).update(from: equalizerMemory, count: EqualizerLayout.perSet)
+        (equalizerMemory + EqualizerLayout.memory).update(repeating: 0, count: EqualizerLayout.memoryPerChannel * 2)
         // A plain function and plain memory, so the audio thread touches nothing Swift would count or lock
         status = AudioDeviceCreateIOProcID(aggregateID, { _, _, input, _, output, _, state in
             if let state {

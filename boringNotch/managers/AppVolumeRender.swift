@@ -2,11 +2,53 @@
 //  AppVolumeRender.swift
 //  boringNotch
 //
-//  What the audio thread does for the per-app volumes: the tap's sound to the output, times the gain.
+//  What the audio thread does for the per-app volumes and equalizers: the tap's sound to the output, times the
+//  gain, through the filters.
 //  This runs in real time, so no allocation, locks, Swift concurrency, logging or Objective-C in here.
 //
 
 import CoreAudio
+import Foundation
+
+let equalizerFrequencies: [Double] = [32, 64, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000]
+
+/// Where everything of the equalizer sits in its one block of memory: two sets of where the filters are headed,
+/// where they are, and what they remember per channel. In Double, as a Float can't hold a filter this low steady.
+enum EqualizerLayout {
+    @inline(__always) static var bands: Int { 10 }
+    @inline(__always) static var coefficientsPerBand: Int { 5 }
+    @inline(__always) static var perSet: Int { bands * coefficientsPerBand }
+    @inline(__always) static var current: Int { perSet * 2 }
+    @inline(__always) static var memory: Int { current + perSet }
+    @inline(__always) static var memoryPerChannel: Int { bands * 2 }
+    @inline(__always) static var size: Int { memory + memoryPerChannel * 2 }
+}
+
+/// A filter per band that leaves the sound as it is when there's nothing to do. Not for the audio thread.
+/// The filters are the peaking ones of the Audio EQ Cookbook, an octave wide like the bands are apart.
+func fillEqualizerCoefficients(_ destination: UnsafeMutablePointer<Double>, bands: [Float], sampleRate: Double) {
+    let q = 1.41
+    for band in 0..<EqualizerLayout.bands {
+        let coefficients = destination + band * EqualizerLayout.coefficientsPerBand
+        let gain = band < bands.count ? Double(bands[band]) : 0
+        let frequency = equalizerFrequencies[band]
+        // AirPods in a call run so low that the highest bands don't exist
+        guard gain.magnitude >= 0.05, frequency < sampleRate * 0.45 else {
+            coefficients.update(repeating: 0, count: EqualizerLayout.coefficientsPerBand)
+            coefficients[0] = 1
+            continue
+        }
+        let level = pow(10, gain / 40)
+        let omega = 2 * Double.pi * frequency / sampleRate
+        let alpha = sin(omega) / (2 * q)
+        let a0 = 1 + alpha / level
+        coefficients[0] = (1 + alpha * level) / a0
+        coefficients[1] = -2 * cos(omega) / a0
+        coefficients[2] = (1 - alpha * level) / a0
+        coefficients[3] = coefficients[1]
+        coefficients[4] = (1 - alpha / level) / a0
+    }
+}
 
 /// Plain memory the audio thread can read without a lock or a retain.
 struct AppVolumeRenderState {
@@ -20,6 +62,10 @@ struct AppVolumeRenderState {
     var deviceInputs = 0
     /// Goes up with every pass, so whoever watches can tell it still runs.
     var passes: UInt32 = 0
+    /// Laid out as in EqualizerLayout. Without it the sound only gets the gain.
+    var equalizer: UnsafeMutablePointer<Double>?
+    /// Which of the two sets the filters are headed for. The other one is free to be filled, then this switches.
+    var equalizerTargets = 0
 }
 
 /// An AudioBufferList by hand, as Swift's wrapper for it goes through the Swift runtime on every access.
@@ -57,6 +103,52 @@ private func channel(_ wanted: Int, of list: RenderBuffers, from first: Int) -> 
     return nil
 }
 
+/// A step towards where the filters are headed, as a jump would click. Says whether they do anything at all.
+@inline(__always)
+private func settleEqualizer(_ memory: UnsafeMutablePointer<Double>, targets: Int) -> Bool {
+    let headed = memory + targets * EqualizerLayout.perSet
+    let current = memory + EqualizerLayout.current
+    var isActive = false
+    for index in 0..<EqualizerLayout.perSet {
+        let distance = headed[index] - current[index]
+        current[index] = distance.magnitude < 1e-6 ? headed[index] : current[index] + distance * 0.3
+        if current[index] != (index % EqualizerLayout.coefficientsPerBand == 0 ? 1 : 0) {
+            isActive = true
+        }
+    }
+    if !isActive {
+        (memory + EqualizerLayout.memory).update(repeating: 0, count: EqualizerLayout.memoryPerChannel * 2)
+    }
+    return isActive
+}
+
+/// Peaks a boost took over the top are bent back under it instead of being cut off.
+@inline(__always)
+private func limited(_ sample: Double) -> Float {
+    let knee = 0.9
+    let size = sample.magnitude
+    guard size > knee else { return Float(sample) }
+    let over = (size - knee) / (1 - knee)
+    let bent = knee + (1 - knee) * over / (1 + over)
+    return Float(sample < 0 ? -bent : bent)
+}
+
+@inline(__always)
+private func equalize(_ samples: UnsafeMutablePointer<Float>, stride: Int, frames: Int, coefficients: UnsafePointer<Double>, memory: UnsafeMutablePointer<Double>) {
+    for frame in 0..<frames {
+        var sample = Double(samples[frame * stride])
+        for band in 0..<EqualizerLayout.bands {
+            let filter = coefficients + band * EqualizerLayout.coefficientsPerBand
+            let state = memory + band * 2
+            let filtered = filter[0] * sample + state[0]
+            state[0] = filter[1] * sample - filter[3] * filtered + state[1]
+            state[1] = filter[2] * sample - filter[4] * filtered
+            sample = filtered
+        }
+        samples[frame * stride] = limited(sample)
+    }
+}
+
 func renderAppVolume(
     input: UnsafePointer<AudioBufferList>,
     output: UnsafeMutablePointer<AudioBufferList>,
@@ -92,6 +184,11 @@ func renderAppVolume(
     let end = distance.magnitude <= reach ? target : start + (distance > 0 ? reach : -reach)
     let step = frames > 0 ? (end - start) / Float(frames) : 0
 
+    var isEqualizing = false
+    if let equalizer = state.pointee.equalizer {
+        isEqualizing = settleEqualizer(equalizer, targets: state.pointee.equalizerTargets)
+    }
+
     var outputChannel = 0
     for index in 0..<outputs.count {
         let buffer = outputs.buffers[index]
@@ -120,6 +217,14 @@ func renderAppVolume(
                 for frame in 0..<written {
                     destination[frame * channels] = source.samples[frame * source.stride] * (start + step * Float(frame + 1))
                 }
+            }
+
+            if isEqualizing, written > 0, outputChannel < 2, let equalizer = state.pointee.equalizer {
+                equalize(
+                    destination, stride: channels, frames: written,
+                    coefficients: equalizer + EqualizerLayout.current,
+                    memory: equalizer + EqualizerLayout.memory + outputChannel * EqualizerLayout.memoryPerChannel
+                )
             }
 
             var frame = written

@@ -127,6 +127,7 @@ extension Defaults.Keys {
     static let micStaysOnMacBook = Key<Bool>("micStaysOnMacBook", default: true)
     /// Only apps below 100%, by bundle ID.
     static let appVolumes = Key<[String: Double]>("appVolumes", default: [:])
+    static let appEqualizers = Key<[String: AppEqualizer]>("appEqualizers", default: [:])
     
     // MARK: Advanced Settings
     static let useCustomAccentColor = Key<Bool>("useCustomAccentColor", default: false)
