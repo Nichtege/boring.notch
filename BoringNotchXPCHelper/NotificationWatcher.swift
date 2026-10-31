@@ -630,7 +630,7 @@ final class NotificationWatcher {
         return true
     }
 
-    /// Everything in the window has to be a banner, and either this one or one whose card has been up.
+    /// Everything in the window has to be a banner, and either this one or one whose card is up.
     private func canPark(_ banners: [Banner], for identity: Int) -> Bool {
         var containsBanner = false
         for banner in banners {
@@ -646,12 +646,24 @@ final class NotificationWatcher {
         return containsBanner
     }
 
-    /// The card for this banner is gone. The window comes back unless another card still needs it away.
+    /// The card for this banner is gone, or it never came. A banner that's still there has nothing standing
+    /// in for it now, so its window comes back even if another card would like it away, and canPark keeps
+    /// it here. This can't wait for the app's next call: a restore and a park can reach this in either order.
+    /// A banner that's gone only lets go of the window.
     func restore(token: String) {
-        guard let key = parkedWindows.first(where: { $0.value.tokens.contains(token) })?.key else { return }
-        parkedWindows[key]?.tokens.remove(token)
-        if parkedWindows[key]?.tokens.isEmpty == true {
-            restoreWindow(forKey: key)
+        let identity = liveBanners.first(where: { $0.value.token == token })?.key
+
+        // A repeat with the same identity can have the token in a second window as well
+        for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
+            parkedWindows[key]?.tokens.remove(token)
+            if identity != nil || parkedWindows[key]?.tokens.isEmpty == true {
+                restoreWindow(forKey: key)
+            }
+        }
+
+        if let identity, let window = liveBanners[identity]?.window {
+            liveBanners[identity]?.hasCard = false
+            restoreWindow(forKey: key(for: window))
         }
     }
 
@@ -696,13 +708,14 @@ final class NotificationWatcher {
     }
 
     private func releaseAfterSlideOut(token: String) {
-        guard let key = parkedWindows.first(where: { $0.value.tokens.contains(token) })?.key else { return }
-        parkedWindows[key]?.tokens.remove(token)
-        guard parkedWindows[key]?.tokens.isEmpty == true else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) { [weak self] in
-            // A newer card may have taken the window in the meantime
-            guard let self, self.parkedWindows[key]?.tokens.isEmpty == true else { return }
-            self.restoreWindow(forKey: key)
+        for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
+            parkedWindows[key]?.tokens.remove(token)
+            guard parkedWindows[key]?.tokens.isEmpty == true else { continue }
+            DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) { [weak self] in
+                // A newer card may have taken the window in the meantime
+                guard let self, self.parkedWindows[key]?.tokens.isEmpty == true else { return }
+                self.restoreWindow(forKey: key)
+            }
         }
     }
 
