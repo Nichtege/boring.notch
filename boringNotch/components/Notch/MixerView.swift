@@ -131,7 +131,7 @@ private struct MixerRow<Icon: View>: View {
                     onRelease()
                 },
                 onDragChange: onChange,
-                detentCount: SliderDetents.volumeCount
+                detentCount: SliderDetents.mixerVolumeCount
             )
             .frame(height: 10)
             Text(verbatim: "\(Int((value * 100).rounded())) %")

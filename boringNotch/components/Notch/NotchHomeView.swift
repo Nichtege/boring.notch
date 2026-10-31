@@ -594,6 +594,8 @@ struct MusicSliderView: View {
 struct SliderDetents {
     /// Every 5%
     static let volumeCount = 20
+    /// Every 2%, as the Mixer's sliders are long enough for it
+    static let mixerVolumeCount = 50
 
     private let minimumGap: TimeInterval = 0.03
     private var current: Int?
