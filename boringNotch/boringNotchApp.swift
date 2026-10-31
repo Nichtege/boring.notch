@@ -48,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindowController: NSWindowController?
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
+    private var appBeforeLaunch: NSRunningApplication?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -394,9 +395,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showOnboardingWindow()
             }
             playWelcomeSound()
+        } else {
+            armHover()
         }
 
         previousScreens = NSScreen.screens
+    }
+
+    /// Hover doesn't reach the notch until the app has been active once, and a launch at login isn't.
+    /// So it's active for a moment, and the app the user is in gets its focus back.
+    private func armHover() {
+        appBeforeLaunch = NSWorkspace.shared.frontmostApplication
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(hoverArmed), name: NSApplication.didBecomeActiveNotification, object: nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func hoverArmed() {
+        NotificationCenter.default.removeObserver(self, name: NSApplication.didBecomeActiveNotification, object: nil)
+        appBeforeLaunch?.activate(options: [])
+        appBeforeLaunch = nil
     }
 
     func playWelcomeSound() {
