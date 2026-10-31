@@ -137,6 +137,8 @@ class AppleMusicController {
         await updatePlaybackInfo()
     }
     
+    /// On the main actor as it writes the state that updates work on.
+    @MainActor
     func setVolume(_ level: Double) async {
         let clampedLevel = max(0.0, min(1.0, level))
         let volumePercentage = Int(clampedLevel * 100)
