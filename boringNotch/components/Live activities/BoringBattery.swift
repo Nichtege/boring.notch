@@ -206,6 +206,8 @@ struct BoringBatteryView: View {
                     isForNotification: isForNotification
                 )
             }
+            // Between the number and the icon counts too
+            .contentShape(Rectangle())
         }
         .buttonStyle(ScaleButtonStyle())
         .onHover { hovering in
