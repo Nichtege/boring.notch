@@ -317,7 +317,7 @@ class AppleMusicController: NSObject {
             on error errorText number errorNumber
                 -- No answer says nothing about what's playing
                 if errorNumber is -1712 then error errorText number errorNumber
-                return {false, "", "", "", 0, 0, false, 0, 50, "", false}
+                return {false, "", "", "", 0, 0, false, 0, sound volume, "", false}
             end try
         end tell
         """
