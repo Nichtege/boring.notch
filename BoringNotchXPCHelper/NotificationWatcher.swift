@@ -643,6 +643,8 @@ final class NotificationWatcher {
                   window.position().map(isParked) == true
             else {
                 _ = window.move(to: origin)
+                // That can fail too, and then only a later scan finds it
+                retryRestoreLater()
                 return false
             }
         }
