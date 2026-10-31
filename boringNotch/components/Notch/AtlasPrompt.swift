@@ -174,7 +174,13 @@ final class AtlasChat: ObservableObject {
                 url.stopAccessingSecurityScopedResource()
             }
         }
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+        // Read whole, not mapped: a file that gets shorter before it's sent would crash the app. So look at the size first
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= maxAttachmentSize else {
+            attachmentProblem = String(localized: "\(url.lastPathComponent) is too large.")
+            return
+        }
+        guard let data = try? Data(contentsOf: url) else {
             attachmentProblem = String(localized: "\(url.lastPathComponent) can't be read.")
             return
         }
