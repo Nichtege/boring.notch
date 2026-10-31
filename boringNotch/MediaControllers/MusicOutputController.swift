@@ -119,6 +119,11 @@ struct MusicOutputDevice: Identifiable, Equatable {
 
     var id: String { localRoute?.name ?? name }
 
+    /// Something in the room that can play by itself, unlike this Mac and headphones.
+    var isSpeaker: Bool {
+        kind != "computer" && kind != "Bluetooth device"
+    }
+
     var displayName: String {
         localRoute?.name ?? (kind == "computer" ? "MacBook" : name)
     }

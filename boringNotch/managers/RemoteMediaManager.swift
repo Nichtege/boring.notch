@@ -58,31 +58,36 @@ final class RemoteMediaManager: ObservableObject {
     }
 
     private var speakersInReach: [MusicOutputDevice] {
-        MusicOutputController.shared.devices.filter { $0.kind != "computer" && $0.kind != "Bluetooth device" }
-    }
-
-    private func isSpeaker(_ device: RemoteNowPlaying) -> Bool {
-        RemoteNowPlaying.iconName(for: device.deviceName) == RemoteNowPlaying.iconName(for: "")
+        MusicOutputController.shared.devices.filter(\.isSpeaker)
     }
 
     /// Where an iPhone's sound comes out. macOS won't say to this app, but it only knows an iPhone at all while that
     /// plays to a speaker: its own name for the connection is "iPhone → speaker". So with one speaker in reach it's
     /// that one. With more it can't be told, and then this is nil.
     func speaker(of device: RemoteNowPlaying) -> MusicOutputDevice? {
-        guard !isSpeaker(device) else { return nil }
+        guard device.isPhone else { return nil }
         let speakers = speakersInReach
         return speakers.count == 1 ? speakers.first : nil
+    }
+
+    /// The name to show for where a device plays.
+    func outputName(of device: RemoteNowPlaying) -> String {
+        speaker(of: device)?.name ?? device.deviceName
+    }
+
+    func outputIconName(of device: RemoteNowPlaying) -> String {
+        speaker(of: device)?.iconName ?? device.iconName
     }
 
     /// The speaker Music plays on. What it sends there comes back as that speaker's own entry, as the same song,
     /// and that can be there before Music says it has switched.
     var musicSpeaker: String? {
-        if let selected = MusicOutputController.shared.selectedDevices.first(where: { $0.kind != "computer" && $0.kind != "Bluetooth device" }) {
+        if let selected = MusicOutputController.shared.selectedDevices.first(where: \.isSpeaker) {
             return selected.name
         }
         let music = MusicManager.shared
         guard music.musicHasContent else { return nil }
-        return devices.first { isSpeaker($0) && $0.state.title == music.musicTitle && $0.state.artist == music.musicArtist }?.deviceName
+        return devices.first { !$0.isPhone && $0.state.title == music.musicTitle && $0.state.artist == music.musicArtist }?.deviceName
     }
 
     /// What the Devices tab lists. A speaker plays one thing at a time, but when the sound moves to another source
@@ -95,7 +100,7 @@ final class RemoteMediaManager: ObservableObject {
             return one.state.lastUpdated < other.state.lastUpdated
         }
         // Music on the speaker takes it from an iPhone, unless that has started since
-        if let current, !isSpeaker(current), music.musicIsPlaying, musicSpeaker != nil, current.state.lastUpdated < music.musicLastUpdated {
+        if let current, current.isPhone, music.musicIsPlaying, musicSpeaker != nil, current.state.lastUpdated < music.musicLastUpdated {
             return []
         }
         return current.map { [$0] } ?? []
@@ -143,12 +148,7 @@ final class RemoteMediaManager: ObservableObject {
         if music.musicIsPlaying {
             tile = [music.musicTitle, musicSpeaker ?? "Mac", musicSpeaker == nil ? "laptopcomputer" : "homepod.fill"]
         } else if let playing = listedDevices.first(where: \.state.isPlaying) {
-            let speaker = speaker(of: playing)
-            tile = [
-                playing.state.title,
-                speaker?.name ?? playing.deviceName,
-                speaker?.iconName ?? RemoteNowPlaying.iconName(for: playing.deviceName),
-            ]
+            tile = [playing.state.title, outputName(of: playing), outputIconName(of: playing)]
         }
         guard tile != lastControlTile else { return }
         lastControlTile = tile

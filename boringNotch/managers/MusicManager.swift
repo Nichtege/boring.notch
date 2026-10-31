@@ -21,6 +21,7 @@ class MusicManager: ObservableObject {
     private var debounceIdleTask: Task<Void, Never>?
 
     private let controller = AppleMusicController()
+    private var musicCoverCache: (artwork: Data, image: NSImage)?
     private var pendingVolume: Double?
     private var volumeTask: Task<Void, Never>?
 
@@ -57,7 +58,13 @@ class MusicManager: ObservableObject {
     var musicTitle: String { musicState?.title ?? "" }
     var musicArtist: String { musicState?.artist ?? "" }
     var musicHasContent: Bool { (musicState?.duration ?? 0) > 0 }
-    var musicCover: NSImage? { musicState?.artwork.flatMap(NSImage.init(data:)) }
+    var musicCover: NSImage? {
+        guard let artwork = musicState?.artwork else { return nil }
+        if musicCoverCache?.artwork != artwork {
+            musicCoverCache = (artwork, NSImage(data: artwork) ?? defaultImage)
+        }
+        return musicCoverCache?.image
+    }
 
     private var artworkData: Data? = nil
 

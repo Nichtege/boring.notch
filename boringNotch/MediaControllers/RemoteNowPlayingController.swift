@@ -13,10 +13,14 @@ struct RemoteNowPlaying {
     let deviceName: String
     let cover: NSImage?
 
-    static func iconName(for deviceName: String) -> String {
-        if deviceName.localizedCaseInsensitiveContains("iPhone") { return "iphone" }
-        if deviceName.localizedCaseInsensitiveContains("iPad") { return "ipad" }
-        return "homepod.fill"
+    /// Otherwise it's a speaker playing by itself.
+    var isPhone: Bool {
+        deviceName.localizedCaseInsensitiveContains("iPhone") || deviceName.localizedCaseInsensitiveContains("iPad")
+    }
+
+    var iconName: String {
+        guard isPhone else { return "homepod.fill" }
+        return deviceName.localizedCaseInsensitiveContains("iPad") ? "ipad" : "iphone"
     }
 }
 
