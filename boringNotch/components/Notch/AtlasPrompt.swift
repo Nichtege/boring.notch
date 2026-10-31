@@ -78,7 +78,7 @@ final class AtlasChat: ObservableObject {
     @Published var input = ""
     @Published var includeScreen = false
     @Published private(set) var attachments: [AtlasAttachment] = []
-    @Published private(set) var attachmentProblem = ""
+    @Published var attachmentProblem = ""
     @Published private(set) var questionHasScreen = false
     @Published private(set) var questionFileCount = 0
     @Published private(set) var question = ""
@@ -104,7 +104,6 @@ final class AtlasChat: ObservableObject {
 
     // The server's own limits; it checks them again, along with the kinds of files it takes
     private let maxAttachments = 10
-    private let maxAttachmentSize = 20 * 1024 * 1024
     private let pollInterval: Duration = .milliseconds(1500)
     // How long the server may stay silent during a job. Time the Mac sleeps doesn't count
     private let silenceBeforeGivingUp: Duration = .seconds(120)
@@ -155,6 +154,7 @@ final class AtlasChat: ObservableObject {
 
     // MARK: - Actions
     func attachClipboard() {
+        attachmentProblem = ""
         let board = NSPasteboard.general
         let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !files.isEmpty {
@@ -178,7 +178,7 @@ final class AtlasChat: ObservableObject {
         }
         // Read whole, not mapped: a file that gets shorter before it's sent would crash the app. So look at the size first
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard size <= maxAttachmentSize else {
+        guard size <= maxSize(of: url.lastPathComponent) else {
             attachmentProblem = String(localized: "\(url.lastPathComponent) is too large.")
             return
         }
@@ -199,12 +199,20 @@ final class AtlasChat: ObservableObject {
             attachmentProblem = String(localized: "At most \(maxAttachments) files per message.")
             return
         }
-        guard data.count <= maxAttachmentSize else {
+        guard data.count <= maxSize(of: name) else {
             attachmentProblem = String(localized: "\(name) is too large.")
             return
         }
-        attachmentProblem = ""
         attachments.append(AtlasAttachment(name: name, data: data))
+    }
+
+    /// What the server takes per file. Besides images and PDFs it only takes text.
+    private func maxSize(of name: String) -> Int {
+        let kind = (name as NSString).pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "gif", "webp"].contains(kind) {
+            return 5 * 1024 * 1024
+        }
+        return kind == "pdf" ? 20 * 1024 * 1024 : 1024 * 1024
     }
 
     func send() {
@@ -630,6 +638,7 @@ struct AtlasPromptView: View {
                     }
                 }
                 .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+                    chat.attachmentProblem = ""
                     for provider in providers {
                         _ = provider.loadObject(ofClass: URL.self) { url, _ in
                             guard let url else { return }
