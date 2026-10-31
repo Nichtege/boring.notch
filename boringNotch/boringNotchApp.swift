@@ -69,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     @objc func onScreenUnlocked(_ notification: Notification) {
         adjustWindowPosition()
+        MusicManager.shared.forceUpdate()
     }
 
     private func cleanupWindows(shouldInvert: Bool = false) {

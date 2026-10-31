@@ -45,6 +45,33 @@ class AppleMusicController: NSObject {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        // Music doesn't tell about sleep, and the time asleep would count as played
+        workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                await self?.updatePlaybackInfo()
+            }
+        }
+        workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            guard AppleMusicController.isMusic(notification) else { return }
+            Task { @MainActor in
+                await self?.updatePlaybackInfo()
+            }
+        }
+        // A crash or force quit says nothing. No script here: it would start Music again
+        workspace.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            guard AppleMusicController.isMusic(notification) else { return }
+            Task { @MainActor in
+                self?.retryTask?.cancel()
+                self?.publishNotPlaying()
+            }
+        }
+    }
+
+    private static func isMusic(_ notification: Notification) -> Bool {
+        let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        return app?.bundleIdentifier == "com.apple.Music"
     }
 
     deinit {
