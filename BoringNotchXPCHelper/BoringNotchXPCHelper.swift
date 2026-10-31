@@ -10,7 +10,6 @@ import ApplicationServices
 import IOKit
 import CoreAudio
 import CoreGraphics
-import IOBluetooth
 import XPC
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
@@ -199,32 +198,6 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
             mElement: kAudioObjectPropertyElementMain
         )
         AudioObjectSetPropertyData(system, &defaultOutput, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &target)
-    }
-
-    // MARK: - AirPods
-
-    /// "… - Find My" entries are the Find My network's, not pairings anything can connect to.
-    private static var pairedAirPods: [IOBluetoothDevice] {
-        (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []).filter { device in
-            device.name?.contains("AirPods") == true && device.name?.hasSuffix("Find My") == false
-        }
-    }
-
-    @objc func pairedAirPods(with reply: @escaping ([[String: String]]) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            reply(Self.pairedAirPods.compactMap { device in
-                guard let name = device.name, let address = device.addressString else { return nil }
-                return ["name": name, "address": address]
-            })
-        }
-    }
-
-    /// Blocks until connected or failed, so it's kept away from the queues that park and restore banners.
-    @objc func connectAirPods(_ address: String, with reply: @escaping (Bool) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let device = Self.pairedAirPods.first { $0.addressString == address }
-            reply(device?.openConnection() == kIOReturnSuccess)
-        }
     }
 
     // MARK: - Keyboard Brightness

@@ -209,14 +209,6 @@ extension XPCHelperClient {
     nonisolated func setDefaultOutput(named name: String?) {
         send { $0.setDefaultOutput(named: name) }
     }
-
-    nonisolated func pairedAirPods() async -> [[String: String]] {
-        await ask { $0.pairedAirPods(with: $1) } ?? []
-    }
-    
-    nonisolated func connectAirPods(_ address: String) async -> Bool {
-        await ask { $0.connectAirPods(address, with: $1) } ?? false
-    }
 }
 
 extension Notification.Name {
