@@ -146,7 +146,7 @@ struct MusicOutputDevice: Identifiable, Equatable {
     }
 }
 
-final class MusicOutputController: ObservableObject {
+final class MusicOutputController: NSObject, ObservableObject {
     static let shared = MusicOutputController()
 
     @Published private(set) var devices: [MusicOutputDevice] = []
@@ -155,7 +155,6 @@ final class MusicOutputController: ObservableObject {
     // Music keeps the old device selected for a few seconds after a switch
     private let switchSettleTime: TimeInterval = 15
     private var ignoreSelectionUntil: Date = .distantPast
-    private var notificationTask: Task<Void, Never>?
 
     var selectedDevices: [MusicOutputDevice] {
         devices.filter(\.isSelected)
@@ -172,16 +171,22 @@ final class MusicOutputController: ObservableObject {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
     }
 
-    private init() {
-        notificationTask = Task { @Sendable [weak self] in
-            let notifications = DistributedNotificationCenter.default().notifications(
-                named: NSNotification.Name("com.apple.Music.playerInfo")
-            )
+    private override init() {
+        super.init()
+        // Also while this app isn't active, as macOS holds back the rest once it has been
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(playerInfoChanged(_:)),
+            name: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
 
-            for await notification in notifications {
-                guard notification.userInfo?["Player State"] as? String == "Paused" else { continue }
-                await self?.rememberCurrentOutput()
-            }
+    @objc private func playerInfoChanged(_ notification: Notification) {
+        guard notification.userInfo?["Player State"] as? String == "Paused" else { return }
+        Task { @MainActor in
+            await rememberCurrentOutput()
         }
     }
 

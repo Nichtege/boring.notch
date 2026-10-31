@@ -9,7 +9,7 @@ import Foundation
 import Combine
 import SwiftUI
 
-class AppleMusicController {
+class AppleMusicController: NSObject {
     // MARK: - Properties
     @Published private var playbackState: PlaybackState = PlaybackState(
         bundleIdentifier: "com.apple.Music",
@@ -20,7 +20,6 @@ class AppleMusicController {
         $playbackState.eraseToAnyPublisher()
     }
 
-    private var notificationTask: Task<Void, Never>?
     private var artworkKey: String?
     private var updateTask: Task<Void, Never>?
     private var isUpdateDue = false
@@ -28,7 +27,8 @@ class AppleMusicController {
     private var retryTask: Task<Void, Never>?
 
     // MARK: - Initialization
-    init() {
+    override init() {
+        super.init()
         setupPlaybackStateChangeObserver()
         Task {
             await updatePlaybackInfo()
@@ -36,27 +36,29 @@ class AppleMusicController {
     }
     
     private func setupPlaybackStateChangeObserver() {
-        notificationTask = Task { @Sendable [weak self] in
-            let notifications = DistributedNotificationCenter.default().notifications(
-                named: NSNotification.Name("com.apple.Music.playerInfo")
-            )
-            
-            for await notification in notifications {
-                await self?.playerInfoChanged(notification.userInfo)
-            }
-        }
+        // macOS holds back the rest once this app has been active and isn't any more, which only
+        // happens through Settings: after a visit there the closed notch would stop hearing of songs
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(playerInfoChanged(_:)),
+            name: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
     }
 
     deinit {
-        notificationTask?.cancel()
+        DistributedNotificationCenter.default().removeObserver(self)
         updateTask?.cancel()
         retryTask?.cancel()
     }
 
     /// What Music says here holds even when it's too busy for the script that follows, which would
     /// leave the old state showing. A key it doesn't send keeps the old value until the script answers.
+    /// Distributed notifications always arrive on the main thread.
     @MainActor
-    private func playerInfoChanged(_ info: [AnyHashable: Any]?) {
+    @objc private func playerInfoChanged(_ notification: Notification) {
+        let info = notification.userInfo
         let playerState = info?["Player State"] as? String
         var updatedState = playbackState
 

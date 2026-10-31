@@ -61,13 +61,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    func onScreenLocked(_ notification: Notification) {
+    @objc func onScreenLocked(_ notification: Notification) {
         SystemNotificationManager.shared.dismissAll()
         cleanupWindows()
     }
 
     @MainActor
-    func onScreenUnlocked(_ notification: Notification) {
+    @objc func onScreenUnlocked(_ notification: Notification) {
         adjustWindowPosition()
     }
 
@@ -260,21 +260,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Also while this app isn't active, as macOS holds back the rest once it has been
         DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name(rawValue: "com.apple.screenIsLocked"),
-            object: nil, queue: .main) { [weak self] notification in
-                Task { @MainActor in
-                    self?.onScreenLocked(notification)
-                }
-        }
+            self,
+            selector: #selector(onScreenLocked(_:)),
+            name: NSNotification.Name(rawValue: "com.apple.screenIsLocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         DistributedNotificationCenter.default().addObserver(
-            forName: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
-            object: nil, queue: .main) { [weak self] notification in
-                Task { @MainActor in
-                    self?.onScreenUnlocked(notification)
-                }
-        }
+            self,
+            selector: #selector(onScreenUnlocked(_:)),
+            name: NSNotification.Name(rawValue: "com.apple.screenIsUnlocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in
             guard let self = self else { return }
