@@ -230,9 +230,13 @@ class AppleMusicController: NSObject {
         var updatedState = self.playbackState
         
         updatedState.isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
-        updatedState.title = descriptor.atIndex(2)?.stringValue ?? "Unknown"
-        updatedState.artist = descriptor.atIndex(3)?.stringValue ?? "Unknown"
-        updatedState.album = descriptor.atIndex(4)?.stringValue ?? "Unknown"
+        // The script leaves these empty when there's no current track, as the wording is the app's language
+        let title = descriptor.atIndex(2)?.stringValue
+        let hasNoTrack = title?.isEmpty == true
+        let unknown = String(localized: "Unknown")
+        updatedState.title = hasNoTrack ? String(localized: "Not Playing") : title ?? unknown
+        updatedState.artist = hasNoTrack ? unknown : descriptor.atIndex(3)?.stringValue ?? unknown
+        updatedState.album = hasNoTrack ? unknown : descriptor.atIndex(4)?.stringValue ?? unknown
         updatedState.currentTime = descriptor.atIndex(5)?.doubleValue ?? 0
         updatedState.duration = descriptor.atIndex(6)?.doubleValue ?? 0
         updatedState.isShuffled = descriptor.atIndex(7)?.booleanValue ?? false
@@ -313,7 +317,7 @@ class AppleMusicController: NSObject {
             on error errorText number errorNumber
                 -- No answer says nothing about what's playing
                 if errorNumber is -1712 then error errorText number errorNumber
-                return {false, "Not Playing", "Unknown", "Unknown", 0, 0, false, 0, 50, "", false}
+                return {false, "", "", "", 0, 0, false, 0, 50, "", false}
             end try
         end tell
         """
