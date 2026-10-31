@@ -167,7 +167,8 @@ class MusicManager: ObservableObject {
             self.isFavoriteTrack = state.isFavorite
         }
         
-        if volumeChanged {
+        // With a newer volume on its way this is old news, and the slider would snap back to it
+        if volumeChanged && volumeTask == nil {
             self.volume = state.volume
         }
         
@@ -345,7 +346,7 @@ class MusicManager: ObservableObject {
             let currentVolume = Double(volumeValue) / 100.0
             
             await MainActor.run {
-                if abs(currentVolume - self.volume) > 0.01 {
+                if self.volumeTask == nil && abs(currentVolume - self.volume) > 0.01 {
                     self.volume = currentVolume
                 }
             }

@@ -170,9 +170,11 @@ class AppleMusicController: NSObject {
     @MainActor
     func setVolume(_ level: Double) async {
         let clampedLevel = max(0.0, min(1.0, level))
-        let volumePercentage = Int(clampedLevel * 100)
-        await executeCommand("set sound volume to \(volumePercentage)")
-        playbackState.volume = clampedLevel
+        let volumePercentage = Int((clampedLevel * 100).rounded())
+        // If that didn't reach Music, its old volume is still the true one
+        if await executeCommand("set sound volume to \(volumePercentage)") {
+            playbackState.volume = clampedLevel
+        }
     }
     
     private func isActive() -> Bool {
@@ -279,10 +281,11 @@ class AppleMusicController: NSObject {
         return await ask()
     }
 
-    private func executeCommand(_ command: String) async {
-        guard isActive() else { return }
+    @discardableResult
+    private func executeCommand(_ command: String) async -> Bool {
+        guard isActive() else { return false }
         let script = "tell application \"Music\" to \(command)"
-        try? await AppleScriptHelper.executeVoid(script)
+        return (try? await AppleScriptHelper.executeVoid(script)) != nil
     }
     
     private func fetchPlaybackInfoAsync() async throws -> NSAppleEventDescriptor? {
