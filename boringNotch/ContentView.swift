@@ -87,6 +87,10 @@ struct ContentView: View {
             && coordinator.expandingView.show && vm.notchState == .closed && !vm.hideOnClosed
     }
 
+    private var isSneakPeekFixedSize: Bool {
+        (coordinator.sneakPeek.show && (coordinator.sneakPeek.type == .music) && vm.notchState == .closed && !vm.hideOnClosed && Defaults[.sneakPeekStyles] == .standard) || (coordinator.sneakPeek.show && (coordinator.sneakPeek.type != .music) && (vm.notchState == .closed))
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
@@ -376,10 +380,8 @@ struct ContentView: View {
                       }
                   }
               }
-              .conditionalModifier((coordinator.sneakPeek.show && (coordinator.sneakPeek.type == .music) && vm.notchState == .closed && !vm.hideOnClosed && Defaults[.sneakPeekStyles] == .standard) || (coordinator.sneakPeek.show && (coordinator.sneakPeek.type != .music) && (vm.notchState == .closed))) { view in
-                  view
-                      .fixedSize()
-              }
+              // Not through conditionalModifier: a new identity would rebuild the live activity and restart its bars
+              .fixedSize(horizontal: isSneakPeekFixedSize, vertical: isSneakPeekFixedSize)
               .zIndex(2)
             if vm.notchState == .open {
                 VStack {
