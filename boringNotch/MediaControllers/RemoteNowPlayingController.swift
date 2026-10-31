@@ -5,12 +5,13 @@
 //  What other devices play: the iPhone on whichever speaker that is, or a HomePod by itself.
 //
 
+import AppKit
 import Combine
-import Foundation
 
-struct RemoteNowPlaying: Equatable {
+struct RemoteNowPlaying {
     let state: PlaybackState
     let deviceName: String
+    let cover: NSImage?
 
     static func iconName(for deviceName: String) -> String {
         if deviceName.localizedCaseInsensitiveContains("iPhone") { return "iphone" }
@@ -24,15 +25,12 @@ struct RemoteNowPlaying: Equatable {
 final class RemoteNowPlayingController {
     enum Command {
         case toggle, next, previous
-        case skip(seconds: Int)
 
         fileprivate func line(for device: String) -> String {
             switch self {
             case .toggle: return "toggle\t\(device)"
             case .next: return "next\t\(device)"
             case .previous: return "previous\t\(device)"
-            case .skip(let seconds):
-                return seconds < 0 ? "backward\t\(device)\t\(-seconds)" : "forward\t\(device)\t\(seconds)"
             }
         }
     }
@@ -64,7 +62,7 @@ final class RemoteNowPlayingController {
     private var input: FileHandle?
     private var failures = 0
     private var buffer = Data()
-    private var artworks: [String: (item: String?, data: Data?)] = [:]
+    private var covers: [String: (item: String?, image: NSImage?)] = [:]
 
     init() {
         start()
@@ -75,8 +73,7 @@ final class RemoteNowPlayingController {
         process?.terminate()
     }
 
-    func send(_ command: Command, to device: String?) {
-        guard let device else { return }
+    func send(_ command: Command, to device: String) {
         write(command.line(for: device))
     }
 
@@ -140,7 +137,7 @@ final class RemoteNowPlayingController {
     private func stopped() {
         devices = []
         buffer.removeAll()
-        artworks = [:]
+        covers = [:]
         failures += 1
         guard failures < triesBeforeGivingUp else { return }
         Task { @MainActor [weak self, restartDelay] in
@@ -166,11 +163,11 @@ final class RemoteNowPlayingController {
         let deviceName = update.device ?? ""
 
         // The cover comes once and can be a moment late, so it stays until the item changes
-        var artwork = artworks[deviceName]?.item == update.item ? artworks[deviceName]?.data : nil
-        if let encoded = update.artwork, let data = Data(base64Encoded: encoded) {
-            artwork = data
+        var cover = covers[deviceName]?.item == update.item ? covers[deviceName]?.image : nil
+        if let encoded = update.artwork, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+            cover = image
         }
-        artworks[deviceName] = (update.item, artwork)
+        covers[deviceName] = (update.item, cover)
 
         let rate = update.rate ?? 0
         var state = PlaybackState(bundleIdentifier: update.app ?? "")
@@ -182,7 +179,6 @@ final class RemoteNowPlayingController {
         state.duration = update.duration ?? 0
         state.playbackRate = rate > 0 ? rate : 1
         state.lastUpdated = update.stamp.map(Date.init(timeIntervalSince1970:)) ?? Date()
-        state.artwork = artwork
-        return RemoteNowPlaying(state: state, deviceName: deviceName)
+        return RemoteNowPlaying(state: state, deviceName: deviceName, cover: cover)
     }
 }

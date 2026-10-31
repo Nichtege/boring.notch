@@ -114,6 +114,7 @@
 		A1F00015A1F00015A1F00015 /* libRemoteNowPlayingAdapter.dylib in Embed Now Playing Adapter */ = {isa = PBXBuildFile; fileRef = A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A1F00027A1F00027A1F00027 /* BoringControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1F00021A1F00021A1F00021 /* BoringControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1F0002EA1F0002EA1F0002E /* MediaDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */; };
+		A1F00030A1F00030A1F00030 /* RemoteMediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F00031A1F00031A1F00031 /* RemoteMediaManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -284,6 +285,7 @@
 		A1F00011A1F00011A1F00011 /* libRemoteNowPlayingAdapter.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libRemoteNowPlayingAdapter.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1F00021A1F00021A1F00021 /* BoringControls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BoringControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDevicesView.swift; sourceTree = "<group>"; };
+		A1F00031A1F00031A1F00031 /* RemoteMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMediaManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -460,6 +462,7 @@
 				F38DE6472D8243E2008B5C6D /* BatteryActivityManager.swift */,
 				112FB7342CCF16F70015238C /* NotchSpaceManager.swift */,
 				147163992C5D35FF0068B555 /* MusicManager.swift */,
+				A1F00031A1F00031A1F00031 /* RemoteMediaManager.swift */,
 				A1EE0004A1EE0004A1EE0004 /* StarlaneManager.swift */,
 				A1EE0016A1EE0016A1EE0016 /* SystemNotificationManager.swift */,
 				A1EE0018A1EE0018A1EE0018 /* MicLock.swift */,
@@ -913,6 +916,7 @@
 				5917FD112E57891600E87F1C /* MediaKeyInterceptor.swift in Sources */,
 				14C08BC12C8E03AD000F8AA0 /* NSImage+Extensions.swift in Sources */,
 				1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,
+				A1F00030A1F00030A1F00030 /* RemoteMediaManager.swift in Sources */,
 				118EBE312E9717DB00D54B5A /* URL+SecurityScoped.swift in Sources */,
 				14A7E5882C64A89C008C1BE9 /* HelloAnimation.swift in Sources */,
 				111BEA612ED09B1B0079DD4E /* NSScreen+UUID.swift in Sources */,
@@ -1009,7 +1013,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect your AirPods from the notch";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.7.3;
@@ -1034,7 +1037,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect your AirPods from the notch";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 2.7.3;
@@ -1198,7 +1200,6 @@
 				INFOPLIST_KEY_LSBackgroundOnly = NO;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "This app uses AppleEvents to control music";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect your AirPods from the notch";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1245,7 +1246,6 @@
 				INFOPLIST_KEY_LSBackgroundOnly = NO;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "This app uses AppleEvents to control music";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app uses Bluetooth to connect your AirPods from the notch";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

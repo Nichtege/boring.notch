@@ -2,127 +2,151 @@
 //  MediaDevicesView.swift
 //  boringNotch
 //
-//  All devices and what plays on them, like the media list in Control Center on an iPhone.
+//  The Devices tab: everything in reach and what plays on it, like the media list in Control Center on an iPhone.
 //
 
 import SwiftUI
 
 struct MediaDevicesView: View {
-    @ObservedObject var musicManager = MusicManager.shared
-    @ObservedObject var outputController = MusicOutputController.shared
+    @ObservedObject var media = RemoteMediaManager.shared
+    @ObservedObject var music = MusicManager.shared
+    @ObservedObject var outputs = MusicOutputController.shared
 
     private let refreshInterval: Duration = .seconds(3)
+    private let rowsThatFit = 3
 
     private struct Row: Identifiable {
         let name: String
         let icon: String
-        let state: PlaybackState?
-        let isShown: Bool
-        /// nil for this Mac
-        let remoteName: String?
+        var title: String?
+        var artist = ""
+        var cover: NSImage?
+        var isPlaying = false
+        var toggle: (() -> Void)?
+        var next: (() -> Void)?
+        var previous: (() -> Void)?
 
         var id: String { name }
     }
 
-    private var rows: [Row] {
-        var rows = [Row(
+    private var isMusicRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+    }
+
+    private var macRow: Row {
+        guard isMusicRunning, music.songDuration > 0 else { return Row(name: "Mac", icon: "laptopcomputer") }
+        return Row(
             name: "Mac",
             icon: "laptopcomputer",
-            state: musicManager.musicState,
-            isShown: !musicManager.isRemoteSource,
-            remoteName: nil
-        )]
-        rows += musicManager.remoteDevices.map { device in
+            title: music.songTitle,
+            artist: music.artistName,
+            cover: music.albumArt,
+            isPlaying: music.isPlaying,
+            toggle: { music.togglePlay() },
+            next: { music.nextTrack() },
+            previous: { music.previousTrack() }
+        )
+    }
+
+    private var rows: [Row] {
+        var rows = [macRow]
+        rows += media.devices.map { device in
             Row(
                 name: device.deviceName,
                 icon: RemoteNowPlaying.iconName(for: device.deviceName),
-                state: device.state,
-                isShown: musicManager.remoteName == device.deviceName,
-                remoteName: device.deviceName
+                title: device.state.title,
+                artist: device.state.artist,
+                cover: device.cover,
+                isPlaying: device.state.isPlaying,
+                toggle: { media.send(.toggle, to: device.deviceName) },
+                next: { media.send(.next, to: device.deviceName) },
+                previous: { media.send(.previous, to: device.deviceName) }
             )
         }
-        // Speakers Music can reach, of which macOS hasn't told anything yet
-        rows += outputController.devices
-            .filter { device in device.kind != "computer" && !rows.contains { $0.name == device.name } }
-            .map { Row(name: $0.name, icon: $0.iconName, state: nil, isShown: false, remoteName: $0.name) }
+        // Speakers Music can reach, of which macOS hasn't told anything. Headphones play only what this Mac sends them
+        rows += outputs.devices
+            .filter { device in
+                device.kind != "computer" && device.kind != "Bluetooth device" && !rows.contains { $0.name == device.name }
+            }
+            .map { Row(name: $0.name, icon: $0.iconName) }
         return rows
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text("Media on your devices")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Spacer()
-                HoverButton(icon: "xmark", scale: .small) {
-                    musicManager.isDeviceListShown = false
+        let rows = rows
+        ScrollView {
+            VStack(spacing: 4) {
+                ForEach(rows) { row in
+                    rowView(row)
                 }
             }
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(rows) { row in
-                        rowView(row)
-                    }
-                }
-            }
-            .scrollIndicators(.never)
         }
-        .padding(.horizontal, 5)
+        .scrollDisabled(rows.count <= rowsThatFit)
+        .scrollIndicators(.never)
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: rows.count, initial: true) {
+            media.scrolls = rows.count > rowsThatFit
+        }
         .task {
             // Asking Music for its speakers is also what makes macOS connect to them
             while !Task.isCancelled {
-                await outputController.refresh()
-                musicManager.refreshRemoteDevices()
+                await outputs.refresh()
+                media.refresh()
                 try? await Task.sleep(for: refreshInterval)
             }
         }
     }
 
     private func rowView(_ row: Row) -> some View {
-        HStack(spacing: 4) {
-            Button {
-                musicManager.show(row.remoteName)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 15))
-                        .foregroundColor(row.state?.isPlaying == true ? .white : .gray)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(row.name)
-                            .font(.subheadline.weight(.medium))
+        HStack(spacing: 10) {
+            coverView(row)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: row.name)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+                Group {
+                    if let title = row.title {
+                        Text(verbatim: row.artist.isEmpty ? title : "\(title) – \(row.artist)")
                             .foregroundColor(.white)
-                            .lineLimit(1)
-                        subtitle(of: row)
-                            .font(.caption)
+                    } else {
+                        Text("Nothing to show")
                             .foregroundColor(.gray)
-                            .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(height: 32)
-                .contentShape(Rectangle())
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
             }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(row.state == nil)
-
-            if let state = row.state {
-                HoverButton(icon: state.isPlaying ? "pause.fill" : "play.fill", scale: .small) {
-                    musicManager.togglePlay(on: row.remoteName)
+            Spacer(minLength: 0)
+            if let toggle = row.toggle, let next = row.next, let previous = row.previous {
+                HStack(spacing: 2) {
+                    HoverButton(icon: "backward.fill", scale: .small, action: previous)
+                    HoverButton(icon: row.isPlaying ? "pause.fill" : "play.fill", scale: .small, action: toggle)
+                    HoverButton(icon: "forward.fill", scale: .small, action: next)
                 }
             }
         }
-        .padding(.horizontal, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(row.isShown ? 0.08 : 0))
-        )
+        .frame(height: 40)
     }
 
-    private func subtitle(of row: Row) -> Text {
-        guard let state = row.state else { return Text("Nothing to show") }
-        return Text(verbatim: state.artist.isEmpty ? state.title : "\(state.title) – \(state.artist)")
+    private func coverView(_ row: Row) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.08))
+            if let cover = row.cover {
+                Image(nsImage: cover)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                Image(systemName: row.icon)
+                    .font(.system(size: 15))
+                    .foregroundColor(.gray)
+            }
+        }
+        .frame(width: 36, height: 36)
     }
 }

@@ -20,6 +20,7 @@ public enum NotchState {
 
 public enum NotchViews {
     case home
+    case devices
     case shelf
     case starlane
     case focus

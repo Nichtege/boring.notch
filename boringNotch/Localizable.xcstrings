@@ -16072,16 +16072,6 @@
         }
       }
     },
-    "All devices" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Geräte"
-          }
-        }
-      }
-    },
     "Nothing to show" : {
       "localizations" : {
         "de" : {
@@ -16092,12 +16082,12 @@
         }
       }
     },
-    "Media on your devices" : {
+    "Devices" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Medien"
+            "value" : "Geräte"
           }
         }
       }

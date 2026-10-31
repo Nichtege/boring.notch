@@ -400,6 +400,8 @@ struct ContentView: View {
                     switch coordinator.currentView {
                     case .home:
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
+                    case .devices:
+                        MediaDevicesView()
                     case .shelf:
                         ShelfView()
                     case .starlane:
@@ -637,6 +639,7 @@ struct ContentView: View {
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
         guard vm.notchState == .open else { return }
         if coordinator.currentView == .mixer && AppVolumeMixer.shared.scrolls { return }
+        if coordinator.currentView == .devices && RemoteMediaManager.shared.scrolls { return }
 
         withAnimation(animationSpring) {
             gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20

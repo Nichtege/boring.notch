@@ -180,8 +180,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             let viewModel = self.viewModelUnderPointer()
             self.closeNotchTask?.cancel()
-            self.coordinator.currentView = .home
-            MusicManager.shared.isDeviceListShown = true
+            self.coordinator.currentView = .devices
             viewModel.open()
             self.closeNotchTask = Task { [weak viewModel] in
                 do {
@@ -263,6 +262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SystemNotificationManager.shared.start()
         MicLock.start()
         _ = AppVolumeMixer.shared
+        _ = RemoteMediaManager.shared
 
         // Once installed, this build takes over from the upstream app at login. Only once, so the setting stays yours.
         if !Defaults[.didEnableLaunchAtLogin] && Bundle.main.bundlePath.hasPrefix("/Applications/") {
