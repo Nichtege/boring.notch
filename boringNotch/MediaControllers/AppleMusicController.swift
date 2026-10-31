@@ -22,7 +22,11 @@ class AppleMusicController {
 
     private var notificationTask: Task<Void, Never>?
     private var artworkKey: String?
-    
+    private var updateTask: Task<Void, Never>?
+    private var isUpdateDue = false
+    private var mayBeQuitting = false
+    private var retryTask: Task<Void, Never>?
+
     // MARK: - Initialization
     init() {
         setupPlaybackStateChangeObserver()
@@ -38,18 +42,60 @@ class AppleMusicController {
             )
             
             for await notification in notifications {
-                if notification.userInfo?["Player State"] as? String == "Stopped" {
-                    // Music may be quitting, and asking it right now could start it again
-                    await self?.publishNotPlaying()
-                    try? await Task.sleep(for: .seconds(2))
-                }
-                await self?.updatePlaybackInfo()
+                await self?.playerInfoChanged(notification.userInfo)
             }
         }
     }
-    
+
     deinit {
         notificationTask?.cancel()
+        updateTask?.cancel()
+        retryTask?.cancel()
+    }
+
+    /// What Music says here holds even when it's too busy for the script that follows, which would
+    /// leave the old state showing. A key it doesn't send keeps the old value until the script answers.
+    @MainActor
+    private func playerInfoChanged(_ info: [AnyHashable: Any]?) {
+        let playerState = info?["Player State"] as? String
+        var updatedState = playbackState
+
+        if let playerState, (playerState == "Playing") != updatedState.isPlaying {
+            // The bar counts on from the last known position, so that has to be right from here on
+            if updatedState.isPlaying {
+                updatedState.currentTime += Date().timeIntervalSince(updatedState.lastUpdated) * updatedState.playbackRate
+            }
+            updatedState.isPlaying = playerState == "Playing"
+            updatedState.lastUpdated = Date()
+        }
+        if let title = info?["Name"] as? String, title != updatedState.title {
+            updatedState.title = title
+            updatedState.currentTime = 0
+            updatedState.lastUpdated = Date()
+        }
+        if let artist = info?["Artist"] as? String {
+            updatedState.artist = artist
+        }
+        if let album = info?["Album"] as? String {
+            updatedState.album = album
+        }
+        playbackState = updatedState
+
+        retryTask?.cancel()
+        mayBeQuitting = playerState == "Stopped"
+        isUpdateDue = true
+        guard updateTask == nil else { return }
+        updateTask = Task { @MainActor [weak self] in
+            while let self, self.isUpdateDue {
+                self.isUpdateDue = false
+                if self.mayBeQuitting {
+                    // Music may be quitting, and asking it right now could start it again
+                    try? await Task.sleep(for: .seconds(2))
+                }
+                await self.updatePlaybackInfo()
+            }
+            self?.updateTask = nil
+        }
     }
     
     // MARK: - Protocol Implementation
@@ -110,12 +156,17 @@ class AppleMusicController {
     
     /// On the main actor since updates can overlap. The scripts themselves run detached.
     @MainActor
-    func updatePlaybackInfo() async {
+    func updatePlaybackInfo(isRetry: Bool = false) async {
         guard isActive() else {
             publishNotPlaying()
             return
         }
-        guard let descriptor = await askedTwice({ try? await self.fetchPlaybackInfoAsync() }) else { return }
+        guard let descriptor = await askedTwice({ try? await self.fetchPlaybackInfoAsync() }) else {
+            if !isRetry {
+                retryUpdate()
+            }
+            return
+        }
         guard descriptor.numberOfItems >= 11 else {
             // Only a script that found Music gone has nothing to say
             publishNotPlaying()
@@ -128,10 +179,15 @@ class AppleMusicController {
         let trackID = descriptor.atIndex(10)?.stringValue ?? ""
         let key = trackID.isEmpty ? nil : "\(trackID) \(descriptor.atIndex(2)?.stringValue ?? "")"
         var artwork = self.playbackState.artwork
+        var answeredKey = artworkKey
         if key == nil || key != artworkKey {
             artwork = await askedTwice { await self.fetchArtwork() }
-            artworkKey = artwork?.isEmpty == false ? key : nil
+            answeredKey = artwork?.isEmpty == false ? key : nil
         }
+
+        // Music has said something newer since this was read, and that update comes next
+        guard !isUpdateDue else { return }
+        artworkKey = answeredKey
 
         var updatedState = self.playbackState
         
@@ -163,6 +219,17 @@ class AppleMusicController {
         }
     }
     
+    /// Whatever asked won't ask again, and Music's busy moments pass. Only once, as it can also hang for good.
+    @MainActor
+    private func retryUpdate() {
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await self?.updatePlaybackInfo(isRetry: true)
+        }
+    }
+
     /// Music sometimes doesn't answer one script and does answer the next, and a track's first
     /// update may be the only one it gets.
     private func askedTwice<T>(_ ask: () async -> T?) async -> T? {
