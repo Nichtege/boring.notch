@@ -109,6 +109,8 @@ final class AtlasChat: ObservableObject {
     private let silenceBeforeGivingUp: Duration = .seconds(120)
     private var token: String?
     private var thread: String?
+    // On their way, until the server has the message. Then they're gone: a job can run for many minutes
+    private var sendingFiles: [AtlasAttachment] = []
     private var task: Task<Void, Never>?
     private lazy var session = StarlaneManager.shared.makeSession(requestTimeout: 30, resourceTimeout: 60)
 
@@ -224,19 +226,19 @@ final class AtlasChat: ObservableObject {
 
         // Asked for one message at a time: nothing stays attached
         let withScreen = includeScreen
-        let files = attachments
+        sendingFiles = attachments
         includeScreen = false
         attachments = []
         attachmentProblem = ""
         questionHasScreen = withScreen
-        questionFileCount = files.count
+        questionFileCount = sendingFiles.count
 
         input = ""
         question = text
         answer = ""
         step = ""
         phase = .sending
-        task = Task { await deliver(text, withScreen: withScreen, files: files) }
+        task = Task { await deliver(text, withScreen: withScreen) }
     }
 
     /// Forgets the conversation here. Atlas keeps it, so it stays readable in Starlane.
@@ -246,6 +248,7 @@ final class AtlasChat: ObservableObject {
         input = ""
         includeScreen = false
         attachments = []
+        sendingFiles = []
         attachmentProblem = ""
         questionHasScreen = false
         questionFileCount = 0
@@ -257,24 +260,25 @@ final class AtlasChat: ObservableObject {
     }
 
     // MARK: - Talking to Starlane
-    private func deliver(_ text: String, withScreen: Bool, files: [AtlasAttachment]) async {
+    private func deliver(_ text: String, withScreen: Bool) async {
         func failed(_ message: String, comesBack: Bool = true) {
-            fail(message, comesBack: comesBack, restoring: text, withScreen: withScreen, files: files)
+            fail(message, comesBack: comesBack, restoring: text, withScreen: withScreen)
         }
 
         do {
             // The server answers a stale token without reading the upload, and through the proxy that 401 can get lost.
             // So an upload starts with a fresh token, for the price of one more look at the page
-            if withScreen || !files.isEmpty {
+            if withScreen || !sendingFiles.isEmpty {
                 token = nil
             }
             var ids = withScreen ? [try await uploadScreen()] : []
-            for file in files {
+            for file in sendingFiles {
                 ids.append(try await upload(file.data, name: file.name))
             }
             let job = try await post(text, files: ids)
             // Stopped while this was on its way: the conversation is already forgotten here
             try Task.checkCancellation()
+            sendingFiles = []
             thread = job.thread ?? job.id
             phase = .running
             await follow(job.id)
@@ -294,13 +298,14 @@ final class AtlasChat: ObservableObject {
         }
     }
 
-    private func fail(_ message: String, comesBack: Bool, restoring text: String, withScreen: Bool, files: [AtlasAttachment]) {
+    private func fail(_ message: String, comesBack: Bool, restoring text: String, withScreen: Bool) {
         guard !Task.isCancelled else { return }
         if input.isEmpty {
             input = text
         }
         includeScreen = includeScreen || withScreen
-        attachments = files + attachments
+        attachments = sendingFiles + attachments
+        sendingFiles = []
         phase = .failed(message)
         if comesBack {
             AtlasPromptController.shared.showAnswer()
