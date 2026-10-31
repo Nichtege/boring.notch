@@ -259,6 +259,12 @@ final class AtlasChat: ObservableObject {
         phase = .idle
     }
 
+    /// The address or key changed: the token and the conversation belong to the old server.
+    func forgetServer() {
+        reset()
+        token = nil
+    }
+
     // MARK: - Talking to Starlane
     private func deliver(_ text: String, withScreen: Bool) async {
         func failed(_ message: String, comesBack: Bool = true) {

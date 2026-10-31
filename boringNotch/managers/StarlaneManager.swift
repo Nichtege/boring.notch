@@ -208,6 +208,7 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     func save(host: String, key: String) -> Bool {
         guard StarlaneKeychain.write(host, account: "address"),
               StarlaneKeychain.write(key, account: "key") else { return false }
+        AtlasChat.shared.forgetServer()
         restart()
         return true
     }
@@ -215,6 +216,7 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     func removeCredentials() {
         StarlaneKeychain.delete("address")
         StarlaneKeychain.delete("key")
+        AtlasChat.shared.forgetServer()
         restart()
     }
 
