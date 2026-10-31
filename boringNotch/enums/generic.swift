@@ -23,6 +23,7 @@ public enum NotchViews {
     case shelf
     case starlane
     case focus
+    case mixer
 }
 
 enum WindowHeightMode: String, Defaults.Serializable {

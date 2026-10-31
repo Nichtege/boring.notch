@@ -392,6 +392,8 @@ struct ContentView: View {
                         StarlaneView()
                     case .focus:
                         FocusView()
+                    case .mixer:
+                        MixerView()
                     }
                 }
                 .transition(
@@ -618,6 +620,7 @@ struct ContentView: View {
 
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
         guard vm.notchState == .open else { return }
+        if coordinator.currentView == .mixer && AppVolumeMixer.shared.scrolls { return }
 
         withAnimation(animationSpring) {
             gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20

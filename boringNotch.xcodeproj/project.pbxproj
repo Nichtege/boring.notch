@@ -85,6 +85,7 @@
 		A1EE0019A1EE0019A1EE0019 /* AppVolumeRender.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */; };
 		A1EE0009A1EE0009A1EE0009 /* MusicAudioMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */; };
 		A1EE000BA1EE000BA1EE000B /* FocusTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */; };
+		A1EE001DA1EE001DA1EE001D /* MixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE001EA1EE001EA1EE001E /* MixerView.swift */; };
 		A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE000EA1EE000EA1EE000E /* FocusView.swift */; };
 		A1EE000FA1EE000FA1EE000F /* NotchSideBall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */; };
 		A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */; };
@@ -214,6 +215,7 @@
 		A1EE001AA1EE001AA1EE001A /* AppVolumeRender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVolumeRender.swift; sourceTree = "<group>"; };
 		A1EE000AA1EE000AA1EE000A /* MusicAudioMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAudioMeter.swift; sourceTree = "<group>"; };
 		A1EE000CA1EE000CA1EE000C /* FocusTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimer.swift; sourceTree = "<group>"; };
+		A1EE001EA1EE001EA1EE001E /* MixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerView.swift; sourceTree = "<group>"; };
 		A1EE000EA1EE000EA1EE000E /* FocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusView.swift; sourceTree = "<group>"; };
 		A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchSideBall.swift; sourceTree = "<group>"; };
 		A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPanels.swift; sourceTree = "<group>"; };
@@ -557,6 +559,7 @@
 				A1EE0006A1EE0006A1EE0006 /* StarlaneView.swift */,
 				A1EE0010A1EE0010A1EE0010 /* NotchSideBall.swift */,
 				A1EE000EA1EE000EA1EE000E /* FocusView.swift */,
+				A1EE001EA1EE001EA1EE001E /* MixerView.swift */,
 				A1EE0008A1EE0008A1EE0008 /* AtlasPrompt.swift */,
 				A1EE0012A1EE0012A1EE0012 /* NotchPanels.swift */,
 				A1EE0014A1EE0014A1EE0014 /* NotificationCard.swift */,
@@ -750,6 +753,7 @@
 				A1EE0005A1EE0005A1EE0005 /* StarlaneView.swift in Sources */,
 				A1EE000FA1EE000FA1EE000F /* NotchSideBall.swift in Sources */,
 				A1EE000DA1EE000DA1EE000D /* FocusView.swift in Sources */,
+				A1EE001DA1EE001DA1EE001D /* MixerView.swift in Sources */,
 				A1EE0007A1EE0007A1EE0007 /* AtlasPrompt.swift in Sources */,
 				A1EE0011A1EE0011A1EE0011 /* NotchPanels.swift in Sources */,
 				A1EE0013A1EE0013A1EE0013 /* NotificationCard.swift in Sources */,

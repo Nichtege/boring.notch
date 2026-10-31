@@ -19,7 +19,8 @@ let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
     TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
     TabModel(label: "Starlane", icon: "sparkles", view: .starlane),
-    TabModel(label: "Focus", icon: "timer", view: .focus)
+    TabModel(label: "Focus", icon: "timer", view: .focus),
+    TabModel(label: "Mixer", icon: "slider.horizontal.3", view: .mixer)
 ]
 
 struct TabSelectionView: View {
@@ -33,15 +34,17 @@ struct TabSelectionView: View {
             switch tab.view {
             case .shelf: return Defaults[.boringShelf] && (!shelf.isEmpty || coordinator.alwaysShowTabs)
             case .starlane: return starlane.summary != nil
-            case .home, .focus: return true
+            case .home, .focus, .mixer: return true
             }
         }
     }
 
     var body: some View {
+        // All five only fit beside the notch closer together
+        let padding: CGFloat = visibleTabs.count > 4 ? 10 : 15
         HStack(spacing: 0) {
             ForEach(visibleTabs) { tab in
-                    TabButton(label: tab.label, icon: tab.icon) {
+                    TabButton(label: tab.label, icon: tab.icon, horizontalPadding: padding) {
                         withAnimation(.smooth) {
                             coordinator.currentView = tab.view
                         }
