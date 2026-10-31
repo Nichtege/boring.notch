@@ -252,6 +252,8 @@ final class AtlasChat: ObservableObject {
                 ids.append(try await upload(file.data, name: file.name))
             }
             let job = try await post(text, files: ids)
+            // Stopped while this was on its way: the conversation is already forgotten here
+            try Task.checkCancellation()
             thread = job.thread ?? job.id
             phase = .running
             await follow(job.id)
@@ -631,6 +633,14 @@ struct AtlasPromptView: View {
                 if chat.isBusy {
                     ProgressView()
                         .controlSize(.small)
+                    Button {
+                        chat.reset()
+                    } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundStyle(.gray)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help(Text("Stop waiting here. What Atlas already has still gets its answer in Starlane."))
                 }
                 if chat.hasConversation {
                     Button {
