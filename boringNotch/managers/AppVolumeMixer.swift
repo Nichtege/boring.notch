@@ -303,7 +303,7 @@ final class AppVolumeMixer: ObservableObject {
                 }
             } else if !failed.contains(bundleID) {
                 // A tap would pull an app playing somewhere else over to the default output
-                guard playsOnDefaultOutput(playingNow) else {
+                guard playsOnDefaultOutput(playingNow), !AudioCapturePermission.isDenied else {
                     failed.insert(bundleID)
                     updateListening()
                     continue
@@ -321,7 +321,10 @@ final class AppVolumeMixer: ObservableObject {
         let output = LocalAudioRoute.defaultOutputDevice
         return processes.contains { process in
             let devices = LocalAudioRoute.objects(process, kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput)
-            return devices.isEmpty || devices.contains(output)
+            // Some apps play through an aggregate of their own, and no one can say where that ends up
+            return devices.isEmpty || devices.contains { device in
+                device == output || LocalAudioRoute.number(device, kAudioDevicePropertyTransportType) == kAudioDeviceTransportTypeAggregate
+            }
         }
     }
 
@@ -367,8 +370,10 @@ final class AppVolumeMixer: ObservableObject {
         entry.rebuild?.cancel()
         active[bundleID] = nil
 
+        // A tap that stalled has already had its second chance, and no permission won't get better in seconds
+        let isWorthAnotherTry = status != kAudioHardwareNotRunningError && status != kAudioHardwareIllegalOperationError
         let tries = retries[bundleID, default: 0]
-        if tries < triesAfterFailure {
+        if isWorthAnotherTry, tries < triesAfterFailure {
             retries[bundleID] = tries + 1
             DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in self?.refresh() }
         } else {
