@@ -16091,6 +16091,16 @@
           }
         }
       }
+    },
+    "Movie" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Film"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

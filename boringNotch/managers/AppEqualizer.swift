@@ -51,6 +51,8 @@ struct AppEqualizer: Codable, Equatable, Defaults.Serializable {
         Preset(name: "Latin", bands: [4.5, 3, 0, 0, -1.5, -1.5, -1.5, 0, 3, 4.5]),
         Preset(name: "Loudness", bands: [6, 4, 0, 0, -2, 0, -1, -5, 5, 1]),
         Preset(name: "Lounge", bands: [-3, -1.5, -0.5, 1.5, 4, 2.5, 0, -1.5, 2, 1]),
+        // Voices forward at 2-4 kHz above all, some weight for explosions and scores, and less of the boom around them
+        Preset(name: "Movie", bands: [2.5, 4, 2, -1.5, -1.5, 0.5, 3, 3.5, 1.5, 0.5]),
         Preset(name: "Piano", bands: [3, 2, 0, 2.5, 3, 1.5, 3.5, 4.5, 3, 3.5]),
         Preset(name: "Pop", bands: [-1.5, -1, 0, 2, 4, 4, 2, 0, -1, -1.5]),
         Preset(name: "R&B", bands: [2.62, 6.92, 5.65, 1.33, -2.19, -1.5, 2.32, 2.65, 3, 3.75]),
