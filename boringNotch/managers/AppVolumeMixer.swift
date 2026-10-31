@@ -187,7 +187,7 @@ final class AppVolumeMixer: ObservableObject {
         refresh()
     }
 
-    /// In case a tap could outlast this app, which would leave its app muted. It's a moment at most.
+    /// Its app gets its sound back by itself once nothing reads the tap, but nothing should stay behind. A moment at most.
     func stopTaps() {
         let taps = active.values.map(\.tap)
         active.removeAll()
@@ -526,8 +526,9 @@ final class AppVolumeMixer: ObservableObject {
     }
 }
 
-/// One app's sound, muted where it was and played again at its own volume, through its own equalizer. All of this
-/// runs on one queue, as setting it up can take a moment with Bluetooth. Only setGain comes from elsewhere.
+/// One app's sound, muted where it was and played again at its own volume, through its own equalizer. Muted only
+/// while this reads the tap, so if this app crashes the other one simply plays on. All of this runs on one queue,
+/// as setting it up can take a moment with Bluetooth. Only setGain comes from elsewhere.
 private final class AppVolumeTap: @unchecked Sendable {
     private let checkInterval: TimeInterval = 2
     private let checksBeforeStall = 2
@@ -538,6 +539,7 @@ private final class AppVolumeTap: @unchecked Sendable {
 
     private var processes: [AudioObjectID] = []
     private var tapID = AudioObjectID(kAudioObjectUnknown)
+    private var tapDescription: CATapDescription?
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
     private var outputDevice = AudioObjectID(kAudioObjectUnknown)
@@ -577,17 +579,38 @@ private final class AppVolumeTap: @unchecked Sendable {
         state.pointee.equalizerTargets = next
     }
 
-    /// The old tap stays until the new one is in place, so the app can't get loud in between.
+    /// The old tap stays until the new one is being read, so the app can't get loud in between. Nothing reads
+    /// either of them for that moment, which is why both mute regardless of that until it's over.
     func build(processes: [AudioObjectID]) {
         guard !isStopped else { return }
         self.processes = processes
+        setMuteBehavior(.muted)
         disconnect()
         let oldTap = tapID
         tapID = AudioObjectID(kAudioObjectUnknown)
+        let passes = state.pointee.passes
         let status = connect()
-        destroyTap(oldTap)
-        if status != noErr {
+        guard status == noErr else {
+            destroyTap(oldTap)
             fail(status)
+            return
+        }
+        // If it doesn't start in time the watch takes over, and the app is better off playing as it is
+        for _ in 0..<50 where state.pointee.passes == passes {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        destroyTap(oldTap)
+        setMuteBehavior(.mutedWhenTapped)
+    }
+
+    private func setMuteBehavior(_ behavior: CATapMuteBehavior) {
+        guard tapID != AudioObjectID(kAudioObjectUnknown), let tapDescription else { return }
+        tapDescription.muteBehavior = behavior
+        var address = LocalAudioRoute.propertyAddress(kAudioTapPropertyDescription)
+        var description: Unmanaged<CATapDescription>? = .passUnretained(tapDescription)
+        let status = AudioObjectSetPropertyData(tapID, &address, 0, nil, UInt32(MemoryLayout.size(ofValue: description)), &description)
+        if status != noErr {
+            NSLog("Mixer: mute behavior stays (%d)", status)
         }
     }
 
@@ -655,6 +678,7 @@ private final class AppVolumeTap: @unchecked Sendable {
         description.isPrivate = true
         var status = AudioHardwareCreateProcessTap(description, &tapID)
         guard status == noErr else { return status }
+        tapDescription = description
 
         // Tap and Bluetooth output follow the same clock. Compensating anyway makes it crackle.
         let isBluetooth = transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
@@ -741,8 +765,8 @@ private final class AppVolumeTap: @unchecked Sendable {
         }
     }
 
-    /// The tap mutes the app, so an aggregate that stops running would leave it silent, and without the permission
-    /// everything would. A new build gets one chance, after that it's better back to its normal volume.
+    /// An aggregate that stops running leaves the app without its volume and equalizer, and without the permission
+    /// everything would be silent. A new build gets one chance, after that it's better back to its normal volume.
     private func watch() {
         connection += 1
         lastPasses = state.pointee.passes
