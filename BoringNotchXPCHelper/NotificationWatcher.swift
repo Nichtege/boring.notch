@@ -39,8 +39,7 @@ private let centerClosingDelay: TimeInterval = 1
 private let restoreAttempts = 3
 private let maxRestoreRetries = 10
 private let reattachAttempts = 30
-/// How long an app name that can't be found isn't searched for again. The search reads every installed
-/// app on the main queue, where windows also get put back.
+/// How long an app name that can't be found isn't searched for again. The search reads every installed app.
 private let bundleIDMissLifetime: TimeInterval = 60
 
 private func isParked(_ position: CGPoint) -> Bool {
@@ -186,6 +185,9 @@ final class NotificationWatcher {
     private var lastOrigin: CGPoint?
     private var restoreRetries = 0
     private var centerLastOpen: Date?
+    /// Finding an app can take long, and the main queue has windows to put back. Both caches are only
+    /// used on this queue.
+    private let bundleIDQueue = DispatchQueue(label: "com.nichtege.boringnotch.bundleID", qos: .userInitiated)
     private var bundleIDCache: [String: String] = [:]
     private var bundleIDMisses: [String: Date] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
@@ -491,7 +493,7 @@ final class NotificationWatcher {
                 }
                 // Its text may only come a moment later, as a banner of its own to the next scan
                 if !reading.text.isEmpty {
-                    onBanner?(capture(reading.banner.element, text: reading.text, token: token))
+                    report(reading.banner.element, text: reading.text, token: token)
                 }
             }
 
@@ -796,7 +798,9 @@ final class NotificationWatcher {
 
     // MARK: - Reading
 
-    private func capture(_ banner: AXUIElement, text: BannerText, token: String) -> CapturedNotification {
+    /// The banner is read here and the rest happens on the other queue. If that takes too long, the banner
+    /// comes back by itself in the meantime and the card follows when it's ready.
+    private func report(_ banner: AXUIElement, text: BannerText, token: String) {
         let description = (banner["AXAttributedDescription"] as? NSAttributedString)?.string
             ?? banner["AXAttributedDescription"] as? String
         let appName = description.flatMap { value in
@@ -805,14 +809,18 @@ final class NotificationWatcher {
                 .map { Self.cleanedAppName(String($0)) }
         }
 
-        return CapturedNotification(
-            token: token,
-            appName: appName,
-            bundleID: appName.flatMap(bundleID(forAppNamed:)),
-            title: text.title,
-            subtitle: text.subtitle,
-            body: text.body
-        )
+        // The helper sets this again on the main queue with every start
+        let onBanner = self.onBanner
+        bundleIDQueue.async { [weak self] in
+            onBanner?(CapturedNotification(
+                token: token,
+                appName: appName,
+                bundleID: appName.flatMap { self?.bundleID(forAppNamed: $0) },
+                title: text.title,
+                subtitle: text.subtitle,
+                body: text.body
+            ))
+        }
     }
 
     /// Only what the banner displays: with previews hidden that's all there is to read.
