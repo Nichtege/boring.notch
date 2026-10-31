@@ -2,9 +2,9 @@
 //  SystemNotificationManager.swift
 //  boringNotch
 //
-//  Shows the notification banners of other apps as a card under the notch. A banner only moves off
-//  screen once its card is really up, and when in doubt it stays where it is. What a banner says stays
-//  in memory on this Mac.
+//  Shows the notification banners of other apps as a card under the notch. The helper takes a banner off
+//  screen as soon as it finds it, but it only stays away while its card is really up, and when in doubt
+//  it comes back. What a banner says stays in memory on this Mac.
 //
 
 import AppKit

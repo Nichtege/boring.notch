@@ -117,7 +117,7 @@ final class NotificationCardController {
     }
 
     /// Waits for the card to be on screen for real: ordered in, on its way, and not covered or on a
-    /// screen that's off. A banner only leaves when this says yes.
+    /// screen that's off. A banner only stays away when this says yes.
     func waitUntilOnScreen(_ notification: SystemNotification) async -> Bool {
         for _ in 0..<10 {
             if model.notification?.id == notification.id, model.isPresented,

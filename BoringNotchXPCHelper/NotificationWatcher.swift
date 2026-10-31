@@ -2,10 +2,10 @@
 //  NotificationWatcher.swift
 //  BoringNotchXPCHelper
 //
-//  Reads the banners Notification Center shows. A banner's window only leaves the screen when the app
-//  says its card is up, and every way out of here puts the window back, as far as Accessibility still
-//  allows that. What a banner says stays in memory: tokens are made up here, so they hold none of it,
-//  and nothing logs it.
+//  Reads the banners Notification Center shows. A banner's window leaves the screen as soon as it's found
+//  and comes back unless the app says in time that its card is up. Every way out of here puts the window
+//  back, as far as Accessibility still allows that. What a banner says stays in memory: tokens are made up
+//  here, so they hold none of it, and nothing logs it.
 //
 
 import AppKit
