@@ -43,6 +43,15 @@ final class RemoteMediaManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        MusicManager.shared.$remoteDevice
+            .map { $0 != nil }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { isShown in
+                PlayKeyInterceptor.shared.setActive(isShown)
+            }
+            .store(in: &cancellables)
+
         Task { @MainActor in
             await MusicOutputController.shared.refresh()
         }

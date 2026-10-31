@@ -115,6 +115,7 @@
 		A1F00027A1F00027A1F00027 /* BoringControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1F00021A1F00021A1F00021 /* BoringControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1F0002EA1F0002EA1F0002E /* MediaDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */; };
 		A1F00030A1F00030A1F00030 /* RemoteMediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F00031A1F00031A1F00031 /* RemoteMediaManager.swift */; };
+		A1F00032A1F00032A1F00032 /* PlayKeyInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F00033A1F00033A1F00033 /* PlayKeyInterceptor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -286,6 +287,7 @@
 		A1F00021A1F00021A1F00021 /* BoringControls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BoringControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1F0002FA1F0002FA1F0002F /* MediaDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDevicesView.swift; sourceTree = "<group>"; };
 		A1F00031A1F00031A1F00031 /* RemoteMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteMediaManager.swift; sourceTree = "<group>"; };
+		A1F00033A1F00033A1F00033 /* PlayKeyInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayKeyInterceptor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -427,6 +429,7 @@
 			isa = PBXGroup;
 			children = (
 				111BE9942ECF2DEF0079DD4E /* DragDetector.swift */,
+				A1F00033A1F00033A1F00033 /* PlayKeyInterceptor.swift */,
 				B1A78C812C8BA08100BD51B0 /* FullscreenMediaDetection.swift */,
 				5917FD102E57891600E87F1C /* MediaKeyInterceptor.swift */,
 			);
@@ -875,6 +878,7 @@
 				1113ABD02E80E6BB00EC13B2 /* ThumbnailService.swift in Sources */,
 				11CFC65B2E097E9D00748C80 /* WelcomeView.swift in Sources */,
 				111BE9952ECF2DF40079DD4E /* DragDetector.swift in Sources */,
+				A1F00032A1F00032A1F00032 /* PlayKeyInterceptor.swift in Sources */,
 				B1D365D02C6A9A6C0047BDBC /* SystemEventIndicatorModifier.swift in Sources */,
 				1194E87C2EA19E09009C82D6 /* ImageProcessingService.swift in Sources */,
 				1194E8872EA6DDA7009C82D6 /* BoringNotchWindow.swift in Sources */,
