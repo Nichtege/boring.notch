@@ -97,7 +97,17 @@ struct AlbumArtView: View {
 
     @ViewBuilder
     private var appIconOverlay: some View {
-        if vm.notchState == .open && !musicManager.usingAppIconForArtwork {
+        if vm.notchState == .open, let device = musicManager.remoteDevice {
+            // Its app is on that device, so this Mac may have no icon for it
+            Image(systemName: RemoteNowPlaying.iconName(for: device.deviceName))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.white)
+                .frame(width: 26, height: 26)
+                .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+                .offset(x: 8, y: 8)
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(2)
+        } else if vm.notchState == .open && !musicManager.usingAppIconForArtwork {
             AppIcon(for: musicManager.bundleIdentifier ?? "com.apple.Music")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -169,6 +179,8 @@ struct MusicControlsView: View {
             .padding(.top, 5)
             .frame(height: 36)
         }
+        // Other devices only take play, pause and skips from here
+        .allowsHitTesting(!musicManager.isRemoteSource)
     }
 
     private var slotToolbar: some View {
@@ -182,9 +194,39 @@ struct MusicControlsView: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .overlay(alignment: .trailing) {
             // The name only fits when the last slot is empty
-            MusicOutputButton(showsName: slots.last == MusicControlButton.none)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            Group {
+                if let device = musicManager.remoteDevice {
+                    remoteLabel(device, showsName: slots.last == MusicControlButton.none)
+                } else {
+                    MusicOutputButton(showsName: slots.last == MusicControlButton.none)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
+    }
+
+    /// Where another device plays can't be changed from here, so this leads to the list of them.
+    private func remoteLabel(_ device: RemoteNowPlaying, showsName: Bool) -> some View {
+        Button {
+            withAnimation(.smooth) {
+                BoringViewCoordinator.shared.currentView = .devices
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: RemoteNowPlaying.iconName(for: device.deviceName))
+                if showsName {
+                    Text(verbatim: device.deviceName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .font(.caption)
+            .foregroundColor(.gray)
+            .frame(maxWidth: 84, alignment: .trailing)
+            .frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private var activeSlots: [MusicControlButton] {
@@ -195,6 +237,9 @@ struct MusicControlsView: View {
     @ViewBuilder
     private func slotView(for slot: MusicControlButton) -> some View {
         switch slot {
+        case .shuffle where musicManager.isRemoteSource, .repeatMode where musicManager.isRemoteSource, .favorite where musicManager.isRemoteSource:
+            // Only Music has these
+            Color.clear.frame(height: 1)
         case .shuffle:
             HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? .red : .primary, scale: .medium) {
                 MusicManager.shared.toggleShuffle()
@@ -403,7 +448,8 @@ struct VolumeControlView: View {
     @State private var dragging: Bool = false
 
     private var isVisible: Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+        !musicManager.isRemoteSource
+            && !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
     }
 
     var body: some View {

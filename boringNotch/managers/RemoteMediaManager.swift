@@ -13,6 +13,9 @@ final class RemoteMediaManager: ObservableObject {
     static let shared = RemoteMediaManager()
 
     @Published private(set) var devices: [RemoteNowPlaying] = []
+    /// What was picked in the Devices tab, nil for this Mac. Stays while the device is away, as an iPhone that
+    /// pauses goes away for a while, and it should show again when it's back.
+    @Published private(set) var selected: String?
     /// Says the notch's close gesture should leave a scroll in the list alone
     var scrolls = false
 
@@ -25,6 +28,7 @@ final class RemoteMediaManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] devices in
                 self?.devices = devices
+                self?.showSelected()
                 self?.updateControlTile()
             }
             .store(in: &cancellables)
@@ -36,6 +40,19 @@ final class RemoteMediaManager: ObservableObject {
                 self?.updateControlTile()
             }
             .store(in: &cancellables)
+    }
+
+    func select(_ deviceName: String?) {
+        selected = deviceName
+        showSelected()
+    }
+
+    /// Only ever from the main thread: the list, or the updates above that are delivered there.
+    private func showSelected() {
+        let device = devices.first { $0.deviceName == selected }
+        MainActor.assumeIsolated {
+            MusicManager.shared.show(remote: device)
+        }
     }
 
     func send(_ command: RemoteNowPlayingController.Command, to device: String) {

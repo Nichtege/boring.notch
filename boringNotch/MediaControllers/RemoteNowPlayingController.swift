@@ -25,12 +25,15 @@ struct RemoteNowPlaying {
 final class RemoteNowPlayingController {
     enum Command {
         case toggle, next, previous
+        case skip(seconds: Int)
 
         fileprivate func line(for device: String) -> String {
             switch self {
             case .toggle: return "toggle\t\(device)"
             case .next: return "next\t\(device)"
             case .previous: return "previous\t\(device)"
+            case .skip(let seconds):
+                return seconds < 0 ? "backward\t\(device)\t\(-seconds)" : "forward\t\(device)\t\(seconds)"
             }
         }
     }
@@ -62,7 +65,7 @@ final class RemoteNowPlayingController {
     private var input: FileHandle?
     private var failures = 0
     private var buffer = Data()
-    private var covers: [String: (item: String?, image: NSImage?)] = [:]
+    private var covers: [String: (item: String?, data: Data?, image: NSImage?)] = [:]
 
     init() {
         start()
@@ -163,11 +166,14 @@ final class RemoteNowPlayingController {
         let deviceName = update.device ?? ""
 
         // The cover comes once and can be a moment late, so it stays until the item changes
-        var cover = covers[deviceName]?.item == update.item ? covers[deviceName]?.image : nil
+        let known = covers[deviceName]?.item == update.item ? covers[deviceName] : nil
+        var artwork = known?.data
+        var cover = known?.image
         if let encoded = update.artwork, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+            artwork = data
             cover = image
         }
-        covers[deviceName] = (update.item, cover)
+        covers[deviceName] = (update.item, artwork, cover)
 
         let rate = update.rate ?? 0
         var state = PlaybackState(bundleIdentifier: update.app ?? "")
@@ -179,6 +185,7 @@ final class RemoteNowPlayingController {
         state.duration = update.duration ?? 0
         state.playbackRate = rate > 0 ? rate : 1
         state.lastUpdated = update.stamp.map(Date.init(timeIntervalSince1970:)) ?? Date()
+        state.artwork = artwork
         return RemoteNowPlaying(state: state, deviceName: deviceName, cover: cover)
     }
 }

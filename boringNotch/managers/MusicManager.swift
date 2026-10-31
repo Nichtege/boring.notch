@@ -21,6 +21,7 @@ class MusicManager: ObservableObject {
     private var debounceIdleTask: Task<Void, Never>?
 
     private let controller = AppleMusicController()
+    private var musicState: PlaybackState?
     private var pendingVolume: Double?
     private var volumeTask: Task<Void, Never>?
 
@@ -43,6 +44,19 @@ class MusicManager: ObservableObject {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
     @Published var isFavoriteTrack: Bool = false
+    /// Set while a device picked in the Devices tab shows instead of Music
+    @Published private(set) var remoteDevice: RemoteNowPlaying?
+
+    var isRemoteSource: Bool {
+        remoteDevice != nil
+    }
+
+    // Music's own, for its row in the Devices tab while something else shows here
+    var musicIsPlaying: Bool { musicState?.isPlaying == true }
+    var musicTitle: String { musicState?.title ?? "" }
+    var musicArtist: String { musicState?.artist ?? "" }
+    var musicHasContent: Bool { (musicState?.duration ?? 0) > 0 }
+    var musicCover: NSImage? { musicState?.artwork.flatMap(NSImage.init(data:)) }
 
     private var artworkData: Data? = nil
 
@@ -60,7 +74,7 @@ class MusicManager: ObservableObject {
         controller.playbackStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.updateFromPlaybackState(state)
+                self?.musicChanged(state)
             }
             .store(in: &cancellables)
     }
@@ -71,6 +85,23 @@ class MusicManager: ObservableObject {
     }
 
     // MARK: - Update Methods
+    @MainActor
+    private func musicChanged(_ state: PlaybackState) {
+        musicState = state
+        if remoteDevice == nil {
+            updateFromPlaybackState(state)
+        }
+    }
+
+    /// nil goes back to Music.
+    @MainActor
+    func show(remote device: RemoteNowPlaying?) {
+        remoteDevice = device
+        if let state = device?.state ?? musicState {
+            updateFromPlaybackState(state)
+        }
+    }
+
     @MainActor
     private func updateFromPlaybackState(_ state: PlaybackState) {
         // Check for playback state changes (playing/paused)
@@ -105,6 +136,10 @@ class MusicManager: ObservableObject {
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
                     self.usingAppIconForArtwork = true
                     self.updateAlbumArt(newAlbumArt: appIconImage)
+                } else {
+                    // An app that's only on another device. The cover of the song before would be wrong
+                    self.usingAppIconForArtwork = false
+                    self.updateAlbumArt(newAlbumArt: defaultImage)
                 }
             }
             self.artworkData = state.artwork
@@ -181,6 +216,7 @@ class MusicManager: ObservableObject {
     }
 
     func setFavorite(_ favorite: Bool) {
+        guard !isRemoteSource else { return }
         Task { @MainActor in
             await controller.setFavorite(favorite)
             try? await Task.sleep(for: .milliseconds(150))
@@ -257,20 +293,31 @@ class MusicManager: ObservableObject {
 
     // MARK: - Public Methods for controlling playback
     func toggleShuffle() {
+        guard !isRemoteSource else { return }
         Task {
             await controller.toggleShuffle()
         }
     }
 
     func toggleRepeat() {
+        guard !isRemoteSource else { return }
         Task {
             await controller.toggleRepeat()
         }
     }
     
     func togglePlay() {
+        if let remoteDevice {
+            RemoteMediaManager.shared.send(.toggle, to: remoteDevice.deviceName)
+            return
+        }
+        toggleMusicPlay()
+    }
+
+    /// Also while something else shows, for Music's own row in the Devices tab.
+    func toggleMusicPlay() {
         Task {
-            if !isPlaying && bundleIdentifier == "com.apple.Music" {
+            if musicState?.isPlaying != true {
                 await MusicOutputController.shared.restoreLastOutput()
             }
             await controller.togglePlay()
@@ -278,23 +325,44 @@ class MusicManager: ObservableObject {
     }
 
     func nextTrack() {
+        if let remoteDevice {
+            RemoteMediaManager.shared.send(.next, to: remoteDevice.deviceName)
+            return
+        }
+        nextMusicTrack()
+    }
+
+    func nextMusicTrack() {
         Task {
             await controller.nextTrack()
         }
     }
 
     func previousTrack() {
+        if let remoteDevice {
+            RemoteMediaManager.shared.send(.previous, to: remoteDevice.deviceName)
+            return
+        }
+        previousMusicTrack()
+    }
+
+    func previousMusicTrack() {
         Task {
             await controller.previousTrack()
         }
     }
 
     func seek(to position: TimeInterval) {
+        guard !isRemoteSource else { return }
         Task {
             await controller.seek(to: position)
         }
     }
     func skip(seconds: TimeInterval) {
+        if let remoteDevice {
+            RemoteMediaManager.shared.send(.skip(seconds: Int(seconds)), to: remoteDevice.deviceName)
+            return
+        }
         let newPos = min(max(0, estimatedPlaybackPosition() + seconds), songDuration)
         seek(to: newPos)
     }
@@ -302,6 +370,7 @@ class MusicManager: ObservableObject {
     /// Only the newest level. One script runs at a time and each can take 2 s, so a dragged slider would pile them up.
     @MainActor
     func setVolume(to level: Double) {
+        guard !isRemoteSource else { return }
         pendingVolume = level
         guard volumeTask == nil else { return }
         volumeTask = Task { @MainActor [weak self] in
@@ -314,7 +383,7 @@ class MusicManager: ObservableObject {
     }
 
     func openMusicApp() {
-        guard let bundleID = bundleIdentifier,
+        guard !isRemoteSource, let bundleID = bundleIdentifier,
               let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }

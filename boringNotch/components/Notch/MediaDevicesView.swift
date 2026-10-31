@@ -3,6 +3,7 @@
 //  boringNotch
 //
 //  The Devices tab: everything in reach and what plays on it, like the media list in Control Center on an iPhone.
+//  What's picked here is what the notch shows, in the player and while closed.
 //
 
 import SwiftUI
@@ -22,6 +23,8 @@ struct MediaDevicesView: View {
         var artist = ""
         var cover: NSImage?
         var isPlaying = false
+        var isSelected = false
+        var select: (() -> Void)?
         var toggle: (() -> Void)?
         var next: (() -> Void)?
         var previous: (() -> Void)?
@@ -34,17 +37,19 @@ struct MediaDevicesView: View {
     }
 
     private var macRow: Row {
-        guard isMusicRunning, music.songDuration > 0 else { return Row(name: "Mac", icon: "laptopcomputer") }
+        guard isMusicRunning, music.musicHasContent else { return Row(name: "Mac", icon: "laptopcomputer") }
         return Row(
             name: "Mac",
             icon: "laptopcomputer",
-            title: music.songTitle,
-            artist: music.artistName,
-            cover: music.albumArt,
-            isPlaying: music.isPlaying,
-            toggle: { music.togglePlay() },
-            next: { music.nextTrack() },
-            previous: { music.previousTrack() }
+            title: music.musicTitle,
+            artist: music.musicArtist,
+            cover: music.musicCover,
+            isPlaying: music.musicIsPlaying,
+            isSelected: media.selected == nil,
+            select: { pick(nil) },
+            toggle: { music.toggleMusicPlay() },
+            next: { music.nextMusicTrack() },
+            previous: { music.previousMusicTrack() }
         )
     }
 
@@ -58,6 +63,8 @@ struct MediaDevicesView: View {
                 artist: device.state.artist,
                 cover: device.cover,
                 isPlaying: device.state.isPlaying,
+                isSelected: media.selected == device.deviceName,
+                select: { pick(device.deviceName) },
                 toggle: { media.send(.toggle, to: device.deviceName) },
                 next: { media.send(.next, to: device.deviceName) },
                 previous: { media.send(.previous, to: device.deviceName) }
@@ -99,7 +106,41 @@ struct MediaDevicesView: View {
         }
     }
 
+    /// The player is what it's picked for, so that comes up right away.
+    private func pick(_ deviceName: String?) {
+        media.select(deviceName)
+        withAnimation(.smooth) {
+            BoringViewCoordinator.shared.currentView = .home
+        }
+    }
+
     private func rowView(_ row: Row) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                row.select?()
+            } label: {
+                rowLabel(row)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(row.select == nil)
+
+            if let toggle = row.toggle, let next = row.next, let previous = row.previous {
+                HStack(spacing: 2) {
+                    HoverButton(icon: "backward.fill", scale: .small, action: previous)
+                    HoverButton(icon: row.isPlaying ? "pause.fill" : "play.fill", scale: .small, action: toggle)
+                    HoverButton(icon: "forward.fill", scale: .small, action: next)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 40)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(row.isSelected ? 0.08 : 0))
+        )
+    }
+
+    private func rowLabel(_ row: Row) -> some View {
         HStack(spacing: 10) {
             coverView(row)
             VStack(alignment: .leading, spacing: 1) {
@@ -121,15 +162,8 @@ struct MediaDevicesView: View {
                 .truncationMode(.tail)
             }
             Spacer(minLength: 0)
-            if let toggle = row.toggle, let next = row.next, let previous = row.previous {
-                HStack(spacing: 2) {
-                    HoverButton(icon: "backward.fill", scale: .small, action: previous)
-                    HoverButton(icon: row.isPlaying ? "pause.fill" : "play.fill", scale: .small, action: toggle)
-                    HoverButton(icon: "forward.fill", scale: .small, action: next)
-                }
-            }
         }
-        .frame(height: 40)
+        .contentShape(Rectangle())
     }
 
     private func coverView(_ row: Row) -> some View {
