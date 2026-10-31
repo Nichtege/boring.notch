@@ -24,6 +24,21 @@ final class VolumeManager {
     /// What the output is set to right now.
     var rawVolume: Float32 { readVolumeInternal() ?? lastSetVolume }
     var isMuted: Bool { isMutedInternal() }
+    /// HDMI and the like have no volume here at all.
+    var canSetVolume: Bool {
+        let deviceID = systemOutputDeviceID()
+        return [kAudioObjectPropertyElementMain, 1, 2].contains { element in
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyVolumeScalar,
+                mScope: kAudioDevicePropertyScopeOutput,
+                mElement: element
+            )
+            var isSettable: DarwinBoolean = false
+            return AudioObjectHasProperty(deviceID, &address)
+                && AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr
+                && isSettable.boolValue
+        }
+    }
 
     // MARK: - Public Control API
     @MainActor func increase(stepDivisor: Float = 1.0) {

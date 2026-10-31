@@ -15,9 +15,11 @@ struct MixerView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 2) {
-                MixerRow(name: Text("Mac"), volume: mixer.macVolume, onChange: mixer.setMacVolume) {
-                    Image(systemName: mixer.macIcon)
-                        .foregroundStyle(.gray)
+                if mixer.macHasVolume {
+                    MixerRow(name: Text("Mac"), volume: mixer.macVolume, onChange: mixer.setMacVolume) {
+                        Image(systemName: mixer.macIcon)
+                            .foregroundStyle(.gray)
+                    }
                 }
 
                 if let music = mixer.music {

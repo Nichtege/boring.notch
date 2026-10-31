@@ -38,6 +38,7 @@ final class AppVolumeMixer: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var music: NSRunningApplication?
     @Published private(set) var macVolume: Double = 0
+    @Published private(set) var macHasVolume = true
     @Published private(set) var macIcon = "hifispeaker.fill"
 
     // Never in the list: this app, Music with a volume of its own, and FineTune with taps of its own
@@ -158,6 +159,7 @@ final class AppVolumeMixer: ObservableObject {
 
     private func refreshMacRow() {
         guard viewers > 0 else { return }
+        macHasVolume = VolumeManager.shared.canSetVolume
         macVolume = VolumeManager.shared.isMuted ? 0 : Double(VolumeManager.shared.rawVolume)
         macIcon = LocalAudioRoute.systemOutput?.iconName ?? "hifispeaker.fill"
     }
@@ -170,7 +172,15 @@ final class AppVolumeMixer: ObservableObject {
             music = runningMusic
         }
 
-        let listed = playing.union(volumes.keys).union(movedSliders).subtracting(Self.notMixed)
+        // A short sound shouldn't pull the rows from under the pointer, so a row stays for a moment
+        let now = Date()
+        playing.forEach { lastHeard[$0] = now }
+        lastHeard = lastHeard.filter { now.timeIntervalSince($0.value) < rowLinger }
+        if !playing.isSuperset(of: lastHeard.keys) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + rowLinger) { [weak self] in self?.setNeedsRefresh() }
+        }
+
+        let listed = Set(lastHeard.keys).union(volumes.keys).union(movedSliders).subtracting(Self.notMixed)
         let newRows = listed.compactMap { bundleID -> Row? in
             let app = apps[bundleID] ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
             guard let app, let name = app.localizedName else { return nil }
