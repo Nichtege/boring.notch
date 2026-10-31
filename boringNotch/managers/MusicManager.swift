@@ -21,6 +21,8 @@ class MusicManager: ObservableObject {
     private var debounceIdleTask: Task<Void, Never>?
 
     private let controller = AppleMusicController()
+    private var pendingVolume: Double?
+    private var volumeTask: Task<Void, Never>?
 
     // Published properties for UI
     @Published var songTitle: String = "I'm Handsome"
@@ -298,11 +300,20 @@ class MusicManager: ObservableObject {
         seek(to: newPos)
     }
     
+    /// Only the newest level. One script runs at a time and each can take 2 s, so a dragged slider would pile them up.
+    @MainActor
     func setVolume(to level: Double) {
-        Task {
-            await controller.setVolume(level)
+        pendingVolume = level
+        guard volumeTask == nil else { return }
+        volumeTask = Task { @MainActor [weak self] in
+            while let self, let level = self.pendingVolume {
+                self.pendingVolume = nil
+                await self.controller.setVolume(level)
+            }
+            self?.volumeTask = nil
         }
     }
+
     func openMusicApp() {
         guard let bundleID = bundleIdentifier,
               let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
