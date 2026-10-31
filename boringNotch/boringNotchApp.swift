@@ -73,7 +73,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func cleanupWindows(shouldInvert: Bool = false) {
         let shouldCleanupMulti = shouldInvert ? !Defaults[.showOnAllDisplays] : Defaults[.showOnAllDisplays]
-        
+
+        // The single notch only gets a new window, and stays as it is unless the mode changes
+        if shouldCleanupMulti || shouldInvert {
+            NotchPanelLayout.shared.notchesRemoved()
+        }
+
         if shouldCleanupMulti {
             windows.values.forEach { window in
                 window.close()

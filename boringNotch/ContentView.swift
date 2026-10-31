@@ -189,7 +189,7 @@ struct ContentView: View {
                         closeSoonIfIdle()
                     }
                     .onChange(of: vm.notchState) { _, newState in
-                        NotchPanelLayout.shared.notchChanged(isOpen: newState == .open, screenUUID: vm.screenUUID)
+                        NotchPanelLayout.shared.notchChanged(vm, isOpen: newState == .open)
                         if newState == .closed && isHovering {
                             withAnimation {
                                 isHovering = false
