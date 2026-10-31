@@ -2,10 +2,10 @@
 //  NotificationWatcher.swift
 //  BoringNotchXPCHelper
 //
-//  Reads the banners Notification Center shows. A banner's window only leaves the screen when the app
-//  says its card is up, and every way out of here puts the window back, as far as Accessibility still
-//  allows that. What a banner says stays in memory: tokens are made up here, so they hold none of it,
-//  and nothing logs it.
+//  Reads the banners Notification Center shows. A banner's window leaves the screen as soon as it's found
+//  and comes back unless the app says in time that its card is up. Every way out of here puts the window
+//  back, as far as Accessibility still allows that. What a banner says stays in memory: tokens are made up
+//  here, so they hold none of it, and nothing logs it.
 //
 
 import AppKit
@@ -23,10 +23,12 @@ private let structuralIdentifiers: Set<String> = [
     "widgets-overlay-view"
 ]
 private let settleDelay: TimeInterval = 0.15
-/// Children of windows that aren't watched for banners report events too, and a scan isn't cheap. But a
-/// new banner is on screen until a scan finds it, so this can't be long. The first scan after a quiet
-/// moment runs at once.
-private let minScanInterval: TimeInterval = 0.05
+/// Children of windows that aren't watched for banners report events too, and a scan isn't cheap.
+private let minScanInterval: TimeInterval = 0.25
+/// But a new banner is on screen until a scan finds it. So after a new window or a quiet moment the first
+/// scan runs at once, and the next ones follow closely for this long.
+private let fastScanInterval: TimeInterval = 0.05
+private let fastScanTime: TimeInterval = 1
 private let healthCheckInterval: TimeInterval = 5
 private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
@@ -36,11 +38,12 @@ private let restoreDelay: TimeInterval = 0.35
 private let cardConfirmationTime: TimeInterval = 1.5
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
+/// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
+/// would hold up the main queue.
 private let restoreAttempts = 3
-private let maxRestoreRetries = 10
+private let maxRestoreRetries = 15
 private let reattachAttempts = 30
-/// How long an app name that can't be found isn't searched for again. The search reads every installed
-/// app on the main queue, where windows also get put back.
+/// How long an app name that can't be found isn't searched for again. The search reads every installed app.
 private let bundleIDMissLifetime: TimeInterval = 60
 
 private func isParked(_ position: CGPoint) -> Bool {
@@ -177,15 +180,20 @@ final class NotificationWatcher {
     private var axObserver: AXObserver?
     private var observerRunLoop: AXObserverRunLoop?
     private var observerContext: ObserverContext?
-    private var scanScheduled = false
+    private var scanWorkItem: DispatchWorkItem?
     private var lastScan = Date.distantPast
+    private var fastScansUntil = Date.distantPast
     private var settleWorkItem: DispatchWorkItem?
     private var observedWindows: [CFHashCode: AXUIElement] = [:]
     private var liveBanners: [Int: LiveBanner] = [:]
     private var parkedWindows: [Int: ParkedWindow] = [:]
     private var lastOrigin: CGPoint?
     private var restoreRetries = 0
-    private var centerLastOpen: Date?
+    private var centerWasOpen = false
+    private var centerClosedAt: Date?
+    /// Finding an app can take long, and the main queue has windows to put back. Both caches are only
+    /// used on this queue.
+    private let bundleIDQueue = DispatchQueue(label: "com.nichtege.boringnotch.bundleID", qos: .userInitiated)
     private var bundleIDCache: [String: String] = [:]
     private var bundleIDMisses: [String: Date] = [:]
     /// The AX observer is bound to one Notification Center process. When it exits (crash, killall,
@@ -267,7 +275,7 @@ final class NotificationWatcher {
 
     private func detach() {
         // First of all, so nothing further down can get in the way of it
-        restoreAllWindows()
+        restoreAllWindows(attempts: restoreAttempts)
         settleWorkItem?.cancel()
         settleWorkItem = nil
         healthTimer?.cancel()
@@ -285,7 +293,8 @@ final class NotificationWatcher {
         axObserver = nil
         observerRunLoop = nil
         observerContext = nil
-        scanScheduled = false
+        scanWorkItem?.cancel()
+        scanWorkItem = nil
         restoreRetries = 0
         liveBanners.removeAll()
         appElement = nil
@@ -392,6 +401,13 @@ final class NotificationWatcher {
             identifier: identifier
         ) else { return }
 
+        let isQuiet = scanWorkItem == nil && Date().timeIntervalSince(lastScan) >= minScanInterval
+        if notification == "AXWindowCreated" || isQuiet {
+            fastScansUntil = Date().addingTimeInterval(fastScanTime)
+            // A scan already waiting for its turn at the slow pace mustn't hold this one up
+            scanWorkItem?.cancel()
+            scanWorkItem = nil
+        }
         scheduleScan()
         scheduleSettleScan()
     }
@@ -408,14 +424,16 @@ final class NotificationWatcher {
     }
 
     private func scheduleScan() {
-        guard !scanScheduled else { return }
-        scanScheduled = true
-        let wait = max(0, minScanInterval - Date().timeIntervalSince(lastScan))
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+        guard scanWorkItem == nil else { return }
+        let interval = Date() < fastScansUntil ? fastScanInterval : minScanInterval
+        let wait = max(0, interval - Date().timeIntervalSince(lastScan))
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.scanScheduled = false
+            self.scanWorkItem = nil
             self.scan()
         }
+        scanWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: workItem)
     }
 
     private func scan() {
@@ -435,11 +453,16 @@ final class NotificationWatcher {
             // On macOS 27 the open center lays itself out in the window banners use. Nothing it
             // shows may stay off screen, and none of it is news.
             guard !centerMayBeOpen(appElement) else {
-                centerLastOpen = Date()
+                centerWasOpen = true
                 restoreAllWindows()
                 return
             }
-            let centerIsClosing = centerLastOpen.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
+            // An open center can sit there without a single event, so its closing starts with this scan
+            if centerWasOpen {
+                centerWasOpen = false
+                centerClosedAt = Date()
+            }
+            let centerIsClosing = centerClosedAt.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
 
             var seen = Set<Int>()
             for window in windows {
@@ -491,7 +514,7 @@ final class NotificationWatcher {
                 }
                 // Its text may only come a moment later, as a banner of its own to the next scan
                 if !reading.text.isEmpty {
-                    onBanner?(capture(reading.banner.element, text: reading.text, token: token))
+                    report(reading.banner.element, text: reading.text, token: token)
                 }
             }
 
@@ -620,6 +643,8 @@ final class NotificationWatcher {
                   window.position().map(isParked) == true
             else {
                 _ = window.move(to: origin)
+                // That can fail too, and then only a later scan finds it
+                retryRestoreLater()
                 return false
             }
         }
@@ -630,7 +655,7 @@ final class NotificationWatcher {
         return true
     }
 
-    /// Everything in the window has to be a banner, and either this one or one whose card has been up.
+    /// Everything in the window has to be a banner, and either this one or one whose card is up.
     private func canPark(_ banners: [Banner], for identity: Int) -> Bool {
         var containsBanner = false
         for banner in banners {
@@ -646,12 +671,24 @@ final class NotificationWatcher {
         return containsBanner
     }
 
-    /// The card for this banner is gone. The window comes back unless another card still needs it away.
+    /// The card for this banner is gone, or it never came. A banner that's still there has nothing standing
+    /// in for it now, so its window comes back even if another card would like it away, and canPark keeps
+    /// it here. This can't wait for the app's next call: a restore and a park can reach this in either order.
+    /// A banner that's gone only lets go of the window.
     func restore(token: String) {
-        guard let key = parkedWindows.first(where: { $0.value.tokens.contains(token) })?.key else { return }
-        parkedWindows[key]?.tokens.remove(token)
-        if parkedWindows[key]?.tokens.isEmpty == true {
-            restoreWindow(forKey: key)
+        let identity = liveBanners.first(where: { $0.value.token == token })?.key
+
+        // A repeat with the same identity can have the token in a second window as well
+        for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
+            parkedWindows[key]?.tokens.remove(token)
+            if identity != nil || parkedWindows[key]?.tokens.isEmpty == true {
+                restoreWindow(forKey: key)
+            }
+        }
+
+        if let identity, let window = liveBanners[identity]?.window {
+            liveBanners[identity]?.hasCard = false
+            restoreWindow(forKey: key(for: window))
         }
     }
 
@@ -673,17 +710,30 @@ final class NotificationWatcher {
         if let windows = appElement?.windows() {
             restoreStrandedWindows(windows)
         } else if !isRunning, let processIdentifier = notificationCenterProcess() {
-            restoreStrandedWindows(AXUIElementCreateApplication(processIdentifier).windows() ?? [])
+            restoreStrandedWindows(AXUIElementCreateApplication(processIdentifier).windows() ?? [], attempts: restoreAttempts)
         }
     }
 
-    private func restoreStrandedWindows(_ windows: [AXUIElement]) {
-        let stranded = windows.filter { parkedWindows[key(for: $0)] == nil && $0.position().map(isParked) == true }
+    private func restoreStrandedWindows(_ windows: [AXUIElement], attempts: Int = 1) {
+        var couldNotRead = false
+        let stranded = windows.filter { window in
+            guard parkedWindows[key(for: window)] == nil else { return false }
+            guard let position = window.position() else {
+                couldNotRead = true
+                return false
+            }
+            return isParked(position)
+        }
         if stranded.isEmpty {
-            restoreRetries = 0
+            // One that can't be read may well be the one a retry is for
+            if couldNotRead, restoreRetries > 0 {
+                retryRestoreLater()
+            } else {
+                restoreRetries = 0
+            }
         }
         for window in stranded {
-            moveOffParking(window, to: lastOrigin ?? restingOrigin(of: window))
+            moveOffParking(window, to: lastOrigin ?? restingOrigin(of: window), attempts: attempts)
         }
     }
 
@@ -695,37 +745,47 @@ final class NotificationWatcher {
         return CGPoint(x: display.maxX - (window.size()?.width ?? 0), y: display.minY)
     }
 
+    private func hasDisplay(at point: CGPoint) -> Bool {
+        var count: UInt32 = 0
+        return CGGetDisplaysWithPoint(point, 0, nil, &count) != .success || count > 0
+    }
+
     private func releaseAfterSlideOut(token: String) {
-        guard let key = parkedWindows.first(where: { $0.value.tokens.contains(token) })?.key else { return }
-        parkedWindows[key]?.tokens.remove(token)
-        guard parkedWindows[key]?.tokens.isEmpty == true else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) { [weak self] in
-            // A newer card may have taken the window in the meantime
-            guard let self, self.parkedWindows[key]?.tokens.isEmpty == true else { return }
-            self.restoreWindow(forKey: key)
+        for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
+            parkedWindows[key]?.tokens.remove(token)
+            guard parkedWindows[key]?.tokens.isEmpty == true else { continue }
+            DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) { [weak self] in
+                // A newer card may have taken the window in the meantime
+                guard let self, self.parkedWindows[key]?.tokens.isEmpty == true else { return }
+                self.restoreWindow(forKey: key)
+            }
         }
     }
 
-    private func restoreWindow(forKey key: Int) {
+    private func restoreWindow(forKey key: Int, attempts: Int = 1) {
         guard let parked = parkedWindows.removeValue(forKey: key) else { return }
-        moveOffParking(parked.window, to: parked.origin)
+        moveOffParking(parked.window, to: parked.origin, attempts: attempts)
     }
 
     /// Immediate: on stop the helper may be about to exit.
-    private func restoreAllWindows() {
-        Array(parkedWindows.keys).forEach(restoreWindow(forKey:))
+    private func restoreAllWindows(attempts: Int = 1) {
+        for key in Array(parkedWindows.keys) {
+            restoreWindow(forKey: key, attempts: attempts)
+        }
     }
 
     /// False if the window is still off screen. It's found again by its position in a later scan, and
     /// since scans otherwise only follow AX events, a failure asks for one, a limited number of times.
     @discardableResult
-    private func moveOffParking(_ window: AXUIElement, to origin: CGPoint) -> Bool {
-        for attempt in 1...restoreAttempts {
+    private func moveOffParking(_ window: AXUIElement, to origin: CGPoint, attempts: Int = 1) -> Bool {
+        // The display it came from may have been unplugged or moved since
+        let origin = hasDisplay(at: origin) ? origin : restingOrigin(of: window)
+        for attempt in 1...attempts {
             if tryMovingOffParking(window, to: origin) {
                 restoreRetries = 0
                 return true
             }
-            if attempt < restoreAttempts {
+            if attempt < attempts {
                 Thread.sleep(forTimeInterval: 0.1)
             }
         }
@@ -783,7 +843,9 @@ final class NotificationWatcher {
 
     // MARK: - Reading
 
-    private func capture(_ banner: AXUIElement, text: BannerText, token: String) -> CapturedNotification {
+    /// The banner is read here and the rest happens on the other queue. If that takes too long, the banner
+    /// comes back by itself in the meantime and the card follows when it's ready.
+    private func report(_ banner: AXUIElement, text: BannerText, token: String) {
         let description = (banner["AXAttributedDescription"] as? NSAttributedString)?.string
             ?? banner["AXAttributedDescription"] as? String
         let appName = description.flatMap { value in
@@ -792,14 +854,18 @@ final class NotificationWatcher {
                 .map { Self.cleanedAppName(String($0)) }
         }
 
-        return CapturedNotification(
-            token: token,
-            appName: appName,
-            bundleID: appName.flatMap(bundleID(forAppNamed:)),
-            title: text.title,
-            subtitle: text.subtitle,
-            body: text.body
-        )
+        // The helper sets this again on the main queue with every start
+        let onBanner = self.onBanner
+        bundleIDQueue.async { [weak self] in
+            onBanner?(CapturedNotification(
+                token: token,
+                appName: appName,
+                bundleID: appName.flatMap { self?.bundleID(forAppNamed: $0) },
+                title: text.title,
+                subtitle: text.subtitle,
+                body: text.body
+            ))
+        }
     }
 
     /// Only what the banner displays: with previews hidden that's all there is to read.

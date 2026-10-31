@@ -67,6 +67,7 @@ final class NotificationCardController {
         guard NotchPanelLayout.shared.screen(for: panel) != nil else { return false }
 
         motionTask?.cancel()
+        panel.ignoresMouseEvents = false
         model.notification = notification
         place(panel, animated: panel.isVisible)
         panel.orderFrontRegardless()
@@ -93,6 +94,8 @@ final class NotificationCardController {
 
     func hide() {
         guard let panel else { return }
+        // A card on its way out isn't there to be clicked, and what's below it is
+        panel.ignoresMouseEvents = true
         motionTask?.cancel()
         motionTask = Task { @MainActor [weak self] in
             if !Self.reduceMotion {
@@ -114,7 +117,7 @@ final class NotificationCardController {
     }
 
     /// Waits for the card to be on screen for real: ordered in, on its way, and not covered or on a
-    /// screen that's off. A banner only leaves when this says yes.
+    /// screen that's off. A banner only stays away when this says yes.
     func waitUntilOnScreen(_ notification: SystemNotification) async -> Bool {
         for _ in 0..<10 {
             if model.notification?.id == notification.id, model.isPresented,
@@ -274,6 +277,8 @@ private struct NotificationCardView: View {
             .onTapGesture {
                 SystemNotificationManager.shared.openActive()
             }
+            // The shape covers the whole card from the start. A click on the ball would open something unread.
+            .allowsHitTesting(model.stage == .card)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: Text("Close")) {

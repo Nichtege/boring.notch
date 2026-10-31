@@ -2,9 +2,9 @@
 //  SystemNotificationManager.swift
 //  boringNotch
 //
-//  Shows the notification banners of other apps as a card under the notch. A banner only moves off
-//  screen once its card is really up, and when in doubt it stays where it is. What a banner says stays
-//  in memory on this Mac.
+//  Shows the notification banners of other apps as a card under the notch. The helper takes a banner off
+//  screen as soon as it finds it, but it only stays away while its card is really up, and when in doubt
+//  it comes back. What a banner says stays in memory on this Mac.
 //
 
 import AppKit
@@ -36,7 +36,6 @@ final class SystemNotificationManager {
     private var queuedNotifications: [SystemNotification] = []
     private var isCardHovered = false
     private var didAskForPermission = false
-    private var wasAuthorized = false
     private var dismissTask: Task<Void, Never>?
     private var permissionTask: Task<Void, Never>?
     private var settingCancellable: AnyCancellable?
@@ -111,18 +110,15 @@ final class SystemNotificationManager {
         }
         guard Defaults[.showNotificationsInNotch] else { return false }
 
-        var isWatching = false
-        if authorized {
-            isWatching = await XPCHelperClient.shared.startNotificationWatching()
-            // Turned off while the helper was on its way
-            if !Defaults[.showNotificationsInNotch] {
-                XPCHelperClient.shared.stopNotificationWatching()
-            }
-        } else if wasAuthorized {
-            // The helper has put back what it could by now
-            dismissAll()
+        // Without the permission cards stay and time out as usual. A helper that can't move windows any
+        // more leaves a parked banner off screen, so its card may be all that's left of the notification.
+        guard authorized else { return false }
+
+        let isWatching = await XPCHelperClient.shared.startNotificationWatching()
+        // Turned off while the helper was on its way
+        if !Defaults[.showNotificationsInNotch] {
+            XPCHelperClient.shared.stopNotificationWatching()
         }
-        wasAuthorized = authorized
         return isWatching
     }
 
@@ -155,6 +151,10 @@ final class SystemNotificationManager {
         guard activeNotification == nil || !isCardHovered else {
             // Its banner comes back until its card comes, so nothing is lost if this one gets dropped
             XPCHelperClient.shared.restoreNotification(token)
+            // Most likely the same one read again, with more of its text this time
+            if notification.title != nil {
+                queuedNotifications.removeAll { $0.appName == notification.appName && $0.title == notification.title }
+            }
             queuedNotifications.append(notification)
             if queuedNotifications.count > queueLimit {
                 queuedNotifications.removeFirst()
@@ -225,6 +225,8 @@ final class SystemNotificationManager {
             if previous == nil {
                 isCardHovered = false
                 queuedNotifications.removeAll()
+                // The card before it may still be up, and nothing could dismiss it any more
+                NotificationCardController.shared.hide()
             }
             return
         }

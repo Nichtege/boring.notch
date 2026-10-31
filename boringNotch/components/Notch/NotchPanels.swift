@@ -16,18 +16,27 @@ final class NotchPanelLayout {
     let gapBelowNotch: CGFloat = 6
 
     private let moveDuration: TimeInterval = 0.3
-    private var screensWithOpenNotch: Set<String> = []
+    /// Asked for their screen when it matters, since that can change while a notch is open.
+    private var openNotches: [BoringViewModel] = []
 
     private init() {}
 
     /// The panels sit under the notch, so they move down with an opening notch and back up with a closing one.
-    func notchChanged(isOpen: Bool, screenUUID: String?) {
-        guard let uuid = screenUUID ?? NSScreen.main?.displayUUID else { return }
+    func notchChanged(_ notch: BoringViewModel, isOpen: Bool) {
+        openNotches.removeAll { $0 === notch }
         if isOpen {
-            screensWithOpenNotch.insert(uuid)
-        } else {
-            screensWithOpenNotch.remove(uuid)
+            openNotches.append(notch)
         }
+        movePanels()
+    }
+
+    /// The notches went away with their windows, and none of them will report closing any more.
+    func notchesRemoved() {
+        openNotches.removeAll()
+        movePanels()
+    }
+
+    private func movePanels() {
         AtlasPromptController.shared.notchMoved()
         NotificationCardController.shared.reposition()
     }
@@ -41,7 +50,8 @@ final class NotchPanelLayout {
     /// Where the notch ends on this screen, open or closed.
     func notchBottom(on screen: NSScreen) -> CGFloat {
         let closedHeight = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        let isOpen = screen.displayUUID.map(screensWithOpenNotch.contains) ?? false
+        let uuid = screen.displayUUID
+        let isOpen = uuid != nil && openNotches.contains { ($0.screenUUID ?? NSScreen.main?.displayUUID) == uuid }
         return screen.frame.maxY - (isOpen ? openNotchSize.height : closedHeight)
     }
 
