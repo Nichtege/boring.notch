@@ -299,7 +299,7 @@ final class AtlasChat: ObservableObject {
         } catch is DecodingError {
             failed(String(localized: "This Starlane version can't be talked to from here."))
         } catch {
-            // Said in the line, for when it's open or next opened. No network never brings anything up by itself
+            // Only said in the line, for when it's open or next opened: losing the network never brings anything up by itself
             failed(String(localized: "Starlane isn't reachable (is Tailscale on?)"), comesBack: false)
         }
     }
@@ -377,7 +377,7 @@ final class AtlasChat: ObservableObject {
                 lastAnswer = clock.now
             } catch {
                 guard !Task.isCancelled else { return }
-                // Said in the line, for when it's open or next opened. No network never brings anything up by itself
+                // Only said in the line, for when it's open or next opened: losing the network never brings anything up by itself
                 if clock.now - lastAnswer > silenceBeforeGivingUp {
                     phase = .failed(String(localized: "Lost the connection. The answer will still appear in Starlane."))
                     return
