@@ -387,6 +387,8 @@ final class AppVolumeMixer: ObservableObject {
 /// One app's sound, muted where it was and played again at its own volume. All of this runs on one queue, as
 /// setting it up can take a moment with Bluetooth. Only setGain comes from elsewhere.
 private final class AppVolumeTap: @unchecked Sendable {
+    private let checkInterval: TimeInterval = 2
+    private let checksBeforeStall = 2
     private let state = UnsafeMutablePointer<AppVolumeRenderState>.allocate(capacity: 1)
     private let onFailure: @Sendable (AppVolumeTap, OSStatus) -> Void
 
@@ -398,6 +400,9 @@ private final class AppVolumeTap: @unchecked Sendable {
     private var outputSampleRate: Float64 = 0
     private var connection = 0
     private var isStopped = false
+    private var lastPasses: UInt32 = 0
+    private var checksWithoutPass = 0
+    private var didRebuildForStall = false
 
     init(gain: Float, onFailure: @escaping @Sendable (AppVolumeTap, OSStatus) -> Void) {
         state.initialize(to: AppVolumeRenderState(target: gain))
@@ -506,7 +511,7 @@ private final class AppVolumeTap: @unchecked Sendable {
         // From silence to full in 5 ms
         state.pointee.maxStepPerFrame = Float(1 / (sampleRate * 0.005))
         state.pointee.current = 0
-        state.pointee.didRender = false
+        state.pointee.deviceInputs = LocalAudioRoute.objects(device, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput).count
         // A plain function and plain memory, so the audio thread touches nothing Swift would count or lock
         status = AudioDeviceCreateIOProcID(aggregateID, { _, _, input, _, output, _, state in
             if let state {
@@ -520,18 +525,29 @@ private final class AppVolumeTap: @unchecked Sendable {
         status = AudioDeviceStart(aggregateID, procID)
         guard status == noErr else { return status }
 
+        outputDevice = device
         outputUID = uid
         outputSampleRate = sampleRate
-        checkItRuns()
+        watch()
         return noErr
     }
 
     /// A device can come with inputs of its own. Left off, nothing here counts as using the microphone,
     /// and AirPods can't drop to call quality because of it. The tap's own streams come after them.
     private func turnOffInputs(of device: AudioObjectID, procID: AudioDeviceIOProcID) {
-        let deviceInputs = LocalAudioRoute.objects(device, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput).count
-        let allInputs = LocalAudioRoute.objects(aggregateID, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput).count
-        guard deviceInputs > 0, allInputs > deviceInputs else { return }
+        let deviceInputs = state.pointee.deviceInputs
+        guard deviceInputs > 0 else { return }
+        // The tap's streams can come a moment after the aggregate
+        var allInputs = 0
+        for _ in 0..<25 {
+            allInputs = LocalAudioRoute.objects(aggregateID, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput).count
+            if allInputs > deviceInputs { break }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        guard allInputs > deviceInputs else {
+            NSLog("Mixer: the tap's streams never came")
+            return
+        }
 
         // AudioHardwareIOProcStreamUsage: the proc, how many streams, then one flag per stream
         let flagsOffset = MemoryLayout<UnsafeMutableRawPointer>.size + MemoryLayout<UInt32>.size
@@ -545,16 +561,60 @@ private final class AppVolumeTap: @unchecked Sendable {
         }
 
         var address = LocalAudioRoute.propertyAddress(kAudioDevicePropertyIOProcStreamUsage, scope: kAudioObjectPropertyScopeInput)
-        AudioObjectSetPropertyData(aggregateID, &address, 0, nil, UInt32(size), usage)
+        let status = AudioObjectSetPropertyData(aggregateID, &address, 0, nil, UInt32(size), usage)
+        if status != noErr {
+            NSLog("Mixer: inputs stay on (%d)", status)
+        }
     }
 
-    /// The tap mutes the app, so an aggregate that never runs would leave it silent. Better back to its normal volume.
-    private func checkItRuns() {
+    /// The tap mutes the app, so an aggregate that stops running would leave it silent, and without the permission
+    /// everything would. A new build gets one chance, after that it's better back to its normal volume.
+    private func watch() {
         connection += 1
-        let checked = connection
-        appVolumeQueue.asyncAfter(deadline: .now() + 5) { [self] in
-            guard checked == connection, !isStopped, !state.pointee.didRender else { return }
-            fail(kAudioHardwareNotRunningError)
+        lastPasses = state.pointee.passes
+        checksWithoutPass = 0
+        scheduleCheck(of: connection)
+    }
+
+    private func scheduleCheck(of watched: Int) {
+        appVolumeQueue.asyncAfter(deadline: .now() + checkInterval) { [self] in
+            guard watched == connection, !isStopped else { return }
+            guard !AudioCapturePermission.isDenied else {
+                fail(kAudioHardwareIllegalOperationError)
+                return
+            }
+
+            if state.pointee.passes != lastPasses {
+                lastPasses = state.pointee.passes
+                checksWithoutPass = 0
+                didRebuildForStall = false
+            } else {
+                checksWithoutPass += 1
+            }
+
+            if checksWithoutPass < checksBeforeStall {
+                scheduleCheck(of: watched)
+            } else if didRebuildForStall {
+                fail(kAudioHardwareNotRunningError)
+            } else {
+                didRebuildForStall = true
+                build(processes: processes)
+            }
         }
+    }
+}
+
+/// What the system says about capturing other apps' sound. There's no public way to ask without a prompt.
+private enum AudioCapturePermission {
+    private typealias Preflight = @convention(c) (CFString, CFDictionary?) -> Int
+
+    private static let preflight: Preflight? = {
+        guard let framework = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW),
+              let function = dlsym(framework, "TCCAccessPreflight") else { return nil }
+        return unsafeBitCast(function, to: Preflight.self)
+    }()
+
+    static var isDenied: Bool {
+        preflight?("kTCCServiceAudioCapture" as CFString, nil) == 1
     }
 }

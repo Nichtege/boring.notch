@@ -16,7 +16,10 @@ struct AppVolumeRenderState {
     var current: Float = 0
     /// How far the gain may move per frame.
     var maxStepPerFrame: Float = 1
-    var didRender = false
+    /// How many inputs the output device brings along. Anything after those is the tap.
+    var deviceInputs = 0
+    /// Goes up with every pass, so whoever watches can tell it still runs.
+    var passes: UInt32 = 0
 }
 
 /// An AudioBufferList by hand, as Swift's wrapper for it goes through the Swift runtime on every access.
@@ -62,10 +65,11 @@ func renderAppVolume(
     let inputs = RenderBuffers(input)
     let outputs = RenderBuffers(output)
 
-    // The tap is the last two channels: a device with inputs of its own has those first
+    // The tap is the last two channels: a device with inputs of its own has those first. Without a tap
+    // there's only that device's microphone, which must not end up in the output.
     var firstInput = inputs.count
     var inputChannels = 0
-    while firstInput > 0 && inputChannels < 2 {
+    while firstInput > state.pointee.deviceInputs && inputChannels < 2 {
         firstInput -= 1
         inputChannels += Int(inputs.buffers[firstInput].mNumberChannels)
     }
@@ -128,5 +132,5 @@ func renderAppVolume(
     }
 
     state.pointee.current = end
-    state.pointee.didRender = true
+    state.pointee.passes &+= 1
 }
