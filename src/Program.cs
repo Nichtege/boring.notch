@@ -76,28 +76,31 @@ namespace BoringNotch
                 var search = new SearchWindow();
                 var notch = new NotchWindow(shelf, mixer, search);
 
+                Tray tray = null;
+                Action quit = () =>
+                {
+                    notch.Close();
+                    search.Close();
+                    mixer.Close();
+                    tray?.Dispose();
+                    app.Shutdown();
+                };
+                tray = new Tray(quit);
+
                 if (testFolder != null)
                 {
                     int result = 1;
                     notch.Loaded += async (sender, e) =>
                     {
                         result = await SelfTest.Run(testFolder, notch, search, shelf, mixer);
-                        app.Shutdown(result);
+                        // The real way out, so quitting gets tested too
+                        quit();
                     };
                     notch.Show();
                     app.Run();
                     return result;
                 }
 
-                Tray tray = null;
-                Action quit = () =>
-                {
-                    notch.Close();
-                    search.Close();
-                    tray?.Dispose();
-                    app.Shutdown();
-                };
-                tray = new Tray(quit);
                 notch.Show();
                 AppCatalog.RefreshIfStale();
                 app.Run();

@@ -31,6 +31,23 @@ function Check([string]$name, [bool]$ok) {
 }
 function Wait([int]$ms) { Start-Sleep -Milliseconds $ms }
 function Move-Mouse([int]$x, [int]$y) { [void][Input]::SetCursorPos($x, $y); [Input]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero) }
+function Press-HotKey {
+    [Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x41, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x41, 0, 2, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+}
+function Search-And-Enter([string]$text) {
+    Move-Mouse $cx 420
+    Press-HotKey
+    Wait 600
+    [Windows.Forms.SendKeys]::SendWait($text)
+    Wait 2500
+    [Windows.Forms.SendKeys]::SendWait('{ENTER}')
+    Wait 3000
+}
 function Glide([int]$fromX, [int]$fromY, [int]$toX, [int]$toY) {
     for ($i = 1; $i -le 15; $i++) {
         Move-Mouse ($fromX + ($toX - $fromX) * $i / 15) ($fromY + ($toY - $fromY) * $i / 15)
@@ -157,12 +174,7 @@ Stage 'tabs' {
 
 Stage 'search with the hot key' {
     Move-Mouse $cx 420
-    [Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x41, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x41, 0, 2, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Press-HotKey
     Wait 800
     Shot 'd1-suche'
     Check 'Ctrl+Alt+A brings up the line' (-not (Is-Target-Color $cx 64))
@@ -181,12 +193,7 @@ Stage 'search with the hot key' {
 
 Stage 'search finds a real file' {
     Move-Mouse $cx 420
-    [Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x41, 0, 0, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x41, 0, 2, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
-    [Input]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Press-HotKey
     Wait 600
     [Windows.Forms.SendKeys]::SendWait('NotchSuchprobe')
     Wait 3000
@@ -194,6 +201,33 @@ Stage 'search finds a real file' {
     [Windows.Forms.SendKeys]::SendWait('{ESC}')
     Wait 500
     Check 'Esc takes it away again' (Is-Target-Color $cx 64)
+}
+
+Stage 'Enter opens what was found' {
+    Get-Process notepad -ErrorAction SilentlyContinue | Stop-Process -Force
+    Search-And-Enter 'NotchSuchprobe'
+    Shot 'd6-datei-geoeffnet'
+    $titles = @(Get-Process notepad -ErrorAction SilentlyContinue | ForEach-Object { $_.MainWindowTitle })
+    Note "      Notepad says: $titles"
+    Check 'the file from the search opens, with Enter on the first row' ([bool]($titles -like '*NotchSuchprobe*'))
+    Check 'and the line is gone' (Is-Target-Color $cx 64)
+    Get-Process notepad -ErrorAction SilentlyContinue | Stop-Process -Force
+    Wait 500
+
+    Search-And-Enter 'note'
+    Shot 'd7-app-gestartet'
+    Check 'an app from the search starts' ([bool](Get-Process notepad -ErrorAction SilentlyContinue))
+    Get-Process notepad -ErrorAction SilentlyContinue | Stop-Process -Force
+    Wait 500
+
+    Search-And-Enter "Zz$([char]0xFC)bungx"
+    Shot 'd8-explorer-suche'
+    $shell = New-Object -ComObject Shell.Application
+    $where = @($shell.Windows() | ForEach-Object { $_.LocationURL + ' | ' + $_.LocationName })
+    Note "      Explorer shows: $where"
+    Check 'nothing found, Enter searches in Explorer' ([bool]($where -like '*search-ms*'))
+    @($shell.Windows()) | ForEach-Object { $_.Quit() }
+    Wait 800
 }
 
 Stage 'search from the notch' {

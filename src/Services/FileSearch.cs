@@ -44,7 +44,8 @@ namespace BoringNotch
                     {
                         while (reader != null && reader.Read())
                         {
-                            if (!reader.IsDBNull(0) && reader.GetValue(0) is string path && path.Length > 0)
+                            string path = reader.IsDBNull(0) ? null : FileQuery.PathFromUrl(reader.GetValue(0) as string);
+                            if (path != null)
                             {
                                 paths.Add(path);
                             }

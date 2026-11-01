@@ -43,6 +43,7 @@ namespace BoringNotch
         private List<SearchResult> _results = new List<SearchResult>();
         private IReadOnlyList<string> _files = new string[0];
         private int _selected;
+        private bool _selectionMoved;
         private bool _isOpen;
 
         public IntPtr Handle => _handle;
@@ -228,6 +229,7 @@ namespace BoringNotch
             _generation++;
             _files = new string[0];
             _selected = 0;
+            _selectionMoved = false;
             _problem.Visibility = Visibility.Collapsed;
             ShowResults();
 
@@ -258,10 +260,10 @@ namespace BoringNotch
 
         private void ShowResults()
         {
-            string selectedKey = _selected < _results.Count ? _results[_selected].Key : null;
+            string selectedKey = _selectionMoved && _selected < _results.Count ? _results[_selected].Key : null;
             _results = SearchResults.Combine(_field.Text, AppCatalog.Apps, SettingsCatalog.All, _files);
 
-            // Files arrive late, and the row in reach shouldn't jump away under the keyboard
+            // Files arrive late. A row picked with the arrows stays picked, and otherwise the best one is first
             int kept = selectedKey == null ? -1 : _results.FindIndex(r => r.Key == selectedKey);
             _selected = kept >= 0 ? kept : 0;
 
@@ -397,6 +399,7 @@ namespace BoringNotch
         {
             if (_results.Count == 0) return;
             _selected = (_selected + step + _results.Count) % _results.Count;
+            _selectionMoved = true;
             UpdateSelection();
         }
 

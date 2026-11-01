@@ -44,6 +44,11 @@ namespace BoringNotch
                 {
                     info.Arguments = arguments;
                 }
+                // As from a double click: a program looks for its own files beside it, not beside this app
+                if (File.Exists(file))
+                {
+                    info.WorkingDirectory = Path.GetDirectoryName(file);
+                }
 
                 // Null for what an already running program took over, which counts as opened
                 using (Process.Start(info))

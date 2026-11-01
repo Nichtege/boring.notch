@@ -155,8 +155,25 @@ namespace BoringNotch.Core
             if (tokens.Length == 0) return null;
 
             string names = string.Join(" AND ", tokens.Select(t => "System.FileName LIKE '%" + t + "%'"));
-            return "SELECT TOP " + top + " System.ItemPathDisplay FROM SystemIndex "
+            // Not System.ItemPathDisplay: that one is translated, and C:\Benutzer doesn't exist on a German Windows
+            return "SELECT TOP " + top + " System.ItemUrl FROM SystemIndex "
                 + "WHERE SCOPE='file:' AND " + names + " ORDER BY System.DateModified DESC";
+        }
+
+        /// <summary>
+        /// The real path from what the index says, like file:C:/Users/a/b.txt. It isn't encoded, so a % or # in a file
+        /// name is just that, and going through Uri would change them. Null for anything that isn't a file.
+        /// </summary>
+        public static string PathFromUrl(string url)
+        {
+            const string scheme = "file:";
+            if (url == null || !url.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)) return null;
+
+            string rest = url.Substring(scheme.Length).TrimStart('/').Replace('/', '\\');
+            if (rest.Length == 0) return null;
+
+            bool hasDrive = rest.Length >= 2 && rest[1] == ':';
+            return hasDrive ? rest : @"\\" + rest;
         }
 
         private static string Escape(string token)
@@ -223,7 +240,7 @@ namespace BoringNotch.Core
                 Kind = ResultKind.ExplorerSearch,
                 Title = "„" + trimmed + "“ im Explorer suchen",
                 Subtitle = "Alle Dateien im Suchindex",
-                Target = "search-ms:query=" + encoded,
+                Target = "search-ms:query=" + encoded + "&",
             });
             rows.Add(new SearchResult
             {

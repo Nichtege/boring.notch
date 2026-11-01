@@ -25,8 +25,8 @@ function Ask([string]$sql) {
 $sample = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'NotchSuchprobe 100%.txt'
 Set-Content -Path $sample -Value 'Boring Notch'
 
-$query = "SELECT TOP 6 System.ItemPathDisplay FROM SystemIndex WHERE SCOPE='file:' AND System.FileName LIKE '%NotchSuchprobe%' ORDER BY System.DateModified DESC"
-$escaped = "SELECT TOP 6 System.ItemPathDisplay FROM SystemIndex WHERE SCOPE='file:' AND System.FileName LIKE '%100[%]%' ORDER BY System.DateModified DESC"
+$query = "SELECT TOP 6 System.ItemUrl FROM SystemIndex WHERE SCOPE='file:' AND System.FileName LIKE '%NotchSuchprobe%' ORDER BY System.DateModified DESC"
+$escaped = "SELECT TOP 6 System.ItemUrl FROM SystemIndex WHERE SCOPE='file:' AND System.FileName LIKE '%100[%]%' ORDER BY System.DateModified DESC"
 
 Say ("Service before: " + (Get-Service WSearch -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Status) $($_.StartType)" }))
 try {
@@ -53,7 +53,7 @@ for ($i = 0; $i -lt 40 -and -not $found; $i++) {
     Start-Sleep -Seconds 5
     try {
         $rows = @(Ask $query)
-        if ($rows -contains $sample) { $found = $true }
+        if ($rows -like '*NotchSuchprobe*') { $found = $true; Say "The index says: $rows" }
         Say "After $(($i + 1) * 5) s: $($rows.Count) rows"
     } catch {
         Say ("After $(($i + 1) * 5) s: " + $_.Exception.InnerException.Message + " " + $_.Exception.InnerException.ErrorCode)
@@ -63,7 +63,7 @@ Say "The index knows the file: $found"
 
 if ($found) {
     try {
-        Say ("A literal % through bracket escaping finds it: " + ((@(Ask $escaped)) -contains $sample))
+        Say ("A literal % through bracket escaping finds it: " + [bool]((@(Ask $escaped)) -like '*NotchSuchprobe*'))
     } catch {
         Say ("Bracket escaping failed: " + $_.Exception.InnerException.Message + " " + $_.Exception.InnerException.ErrorCode)
     }

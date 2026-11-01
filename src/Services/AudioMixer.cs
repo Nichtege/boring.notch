@@ -21,8 +21,10 @@ namespace BoringNotch
     /// The volume of the PC and of every app making sound. Windows keeps each app's volume itself, so nothing is stored
     /// here and no sound passes through this app. Only for the UI thread.
     ///
-    /// Nothing here gets disposed on purpose: a session seen twice is one COM object behind two wrappers, and releasing
+    /// Sessions don't get disposed on purpose: a session seen twice is one COM object behind two wrappers, and releasing
     /// one wrapper would kill the other. They're a few small objects while the tab is open, which the GC takes care of.
+    /// Devices do, on this thread: left to their finalizer they unregister from Windows on another one, and an error
+    /// there would end the whole app.
     /// </summary>
     internal sealed class AudioMixer
     {
@@ -35,6 +37,8 @@ namespace BoringNotch
         private Dictionary<string, List<AudioSessionControl>> _sessions = new Dictionary<string, List<AudioSessionControl>>();
         private MMDeviceEnumerator _enumerator;
         private MMDevice _device;
+        private AudioEndpointVolume _deviceVolume;
+        private AudioSessionManager _deviceSessions;
         private string _lastProblem;
 
         public bool HasMaster { get; private set; }
@@ -56,14 +60,21 @@ namespace BoringNotch
 
                 // The same device keeps its objects, as each one of them registers with Windows for changes
                 MMDevice current = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                if (_device == null || _device.ID != current.ID)
+                if (_device != null && _device.ID == current.ID)
                 {
+                    Release(current, null, null);
+                }
+                else
+                {
+                    ReleaseDevice();
                     _device = current;
+                    _deviceVolume = current.AudioEndpointVolume;
+                    _deviceSessions = current.AudioSessionManager;
                 }
 
-                MasterVolume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
+                MasterVolume = _deviceVolume.MasterVolumeLevelScalar;
                 HasMaster = true;
-                ReadSessions(_device);
+                ReadSessions(_deviceSessions);
             }
             catch (Exception e)
             {
@@ -78,8 +89,8 @@ namespace BoringNotch
             double clamped = Clamp(volume);
             try
             {
-                if (_device == null) return;
-                _device.AudioEndpointVolume.MasterVolumeLevelScalar = (float)clamped;
+                if (_deviceVolume == null) return;
+                _deviceVolume.MasterVolumeLevelScalar = (float)clamped;
                 MasterVolume = clamped;
             }
             catch (Exception e)
@@ -117,9 +128,14 @@ namespace BoringNotch
             }
         }
 
-        private void ReadSessions(MMDevice device)
+        /// <summary>Before quitting, as finalizers also run while the app ends.</summary>
+        public void Close()
         {
-            AudioSessionManager manager = device.AudioSessionManager;
+            Forget();
+        }
+
+        private void ReadSessions(AudioSessionManager manager)
+        {
             manager.RefreshSessions();
             SessionCollection found = manager.Sessions;
 
@@ -219,9 +235,34 @@ namespace BoringNotch
             return name;
         }
 
+        private void ReleaseDevice()
+        {
+            Release(_device, _deviceVolume, _deviceSessions);
+            _device = null;
+            _deviceVolume = null;
+            _deviceSessions = null;
+        }
+
+        private void Release(MMDevice device, AudioEndpointVolume volume, AudioSessionManager sessions)
+        {
+            if (device == null) return;
+            try
+            {
+                device.Dispose();
+            }
+            catch (Exception e)
+            {
+                // It failed here where it does no harm, and it mustn't get a second try from a finalizer
+                GC.SuppressFinalize(device);
+                if (volume != null) GC.SuppressFinalize(volume);
+                if (sessions != null) GC.SuppressFinalize(sessions);
+                Report(e);
+            }
+        }
+
         private void Forget()
         {
-            _device = null;
+            ReleaseDevice();
             HasMaster = false;
             MasterVolume = 0;
             Apps = new MixerApp[0];

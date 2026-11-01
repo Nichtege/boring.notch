@@ -229,6 +229,15 @@ internal static class Tests
         string simple = FileQuery.Build("bericht", 6);
         Check("asks for the name", simple.Contains("System.FileName LIKE '%bericht%'"));
         Check("only files", simple.Contains("SCOPE='file:'"));
+        Check("asks for the real path, not the translated one", simple.Contains("System.ItemUrl") && !simple.Contains("ItemPathDisplay"));
+        Same("a path from the index", @"C:\Users\A\Übung 100%.txt", FileQuery.PathFromUrl("file:C:/Users/A/Übung 100%.txt"));
+        Same("with slashes after the scheme", @"C:\a.txt", FileQuery.PathFromUrl("file:///C:/a.txt"));
+        Same("a # stays in the name", @"C:\a#1.txt", FileQuery.PathFromUrl("file:C:/a#1.txt"));
+        Same("%41 isn't decoded", @"C:\%41.txt", FileQuery.PathFromUrl("file:C:/%41.txt"));
+        Same("a network share", @"\\server\share\a.txt", FileQuery.PathFromUrl("file://server/share/a.txt"));
+        Same("mail isn't a file", null, FileQuery.PathFromUrl("mapi15://x/y"));
+        Same("nothing is nothing", null, FileQuery.PathFromUrl(null));
+        Same("only the scheme", null, FileQuery.PathFromUrl("file:"));
         Check("the limit", simple.StartsWith("SELECT TOP 6 "));
         string two = FileQuery.Build("foo bar", 6);
         Check("both words", two.Contains("LIKE '%foo%' AND System.FileName LIKE '%bar%'"));
@@ -250,7 +259,7 @@ internal static class Tests
         Same("the web last", ResultKind.WebSearch, fallback[1].Kind);
 
         var encoded = SearchResults.Combine("a b&c", apps, SettingsCatalog.All, none);
-        Same("Explorer's query is encoded", "search-ms:query=a%20b%26c", encoded[0].Target);
+        Same("Explorer's query is encoded", "search-ms:query=a%20b%26c&", encoded[0].Target);
         Same("the web's too", "https://www.google.com/search?q=a%20b%26c", encoded[1].Target);
 
         var files = Enumerable.Range(0, 20).Select(i => @"C:\docs\paint" + i + ".txt").ToArray();
