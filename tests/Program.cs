@@ -28,6 +28,7 @@ internal static class Tests
         ClockTests();
         ShelfTests();
         SearchTests();
+        GraphTests();
         MusicTests();
 
         Console.WriteLine(_passed + " passed, " + Failed.Count + " failed");
@@ -333,6 +334,37 @@ internal static class Tests
         Same("no buffer", null, new SpectrumBands(48000).Feed(null, 0, 2));
         Same("no channels", null, new SpectrumBands(48000).Feed(new byte[8], 8, 0));
         Same("half a sample isn't read past the end", null, new SpectrumBands(48000).Feed(new byte[3], 3, 1));
+    }
+
+    /// <summary>Each bar measures against its own recent range, so a song moves them and a steady tone doesn't.</summary>
+    private static void GraphTests()
+    {
+        double Range(Func<int, double> signal)
+        {
+            const int rate = 48000;
+            var bands = new SpectrumBands(rate);
+            var buffer = new byte[480 * 4];
+            double lowest = 1, highest = 0;
+            for (int block = 0; block < 400; block++)
+            {
+                for (int i = 0; i < 480; i++)
+                {
+                    BitConverter.GetBytes((float)signal(block * 480 + i)).CopyTo(buffer, i * 4);
+                }
+                double[] levels = bands.Feed(buffer, buffer.Length, 1);
+                if (levels != null && block > 100)
+                {
+                    lowest = Math.Min(lowest, levels[0]);
+                    highest = Math.Max(highest, levels[0]);
+                }
+            }
+            return highest - lowest;
+        }
+
+        double steady = Range(i => 0.3 * Math.Sin(2 * Math.PI * 110 * i / 48000));
+        double beat = Range(i => 0.5 * Math.Exp(-(i % 24000) / 3000.0) * Math.Sin(2 * Math.PI * 110 * i / 48000));
+        Check("a steady tone leaves the bar still, moved " + steady, steady < 0.05);
+        Check("a beat moves the bar through most of its height, moved " + beat, beat > 0.6);
     }
 
     private static void SearchTests()

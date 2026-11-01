@@ -308,8 +308,8 @@ Stage 'a file dragged out of the notch' {
 
 Stage 'music' {
     $mediaLog = Join-Path $Out 'player.log'
-    $player = Start-Process powershell -ArgumentList @('-STA', '-File', (Join-Path $PSScriptRoot 'media.ps1'), '-Log', $mediaLog) -PassThru
-    Wait 5000
+    $player = Start-Process powershell -ArgumentList @('-STA', '-File', (Join-Path $PSScriptRoot 'media.ps1'), '-Log', $mediaLog) -WindowStyle Hidden -PassThru
+    Wait 6000
     Move-Mouse $cx 420
     Wait 500
     Shot 'j1-geschlossen-musik'
@@ -322,6 +322,39 @@ Stage 'music' {
     Click ($bodyLeft + 19) 16
     Wait 900
     Shot 'j3-musik-tab'
+
+    Click ($cx + 73) 158
+    Wait 1200
+    Shot 'k1-pausiert'
+    Check 'the pause button reaches the player' ((Get-Content $mediaLog | Select-Object -Last 1) -like 'Paused*')
+    Click ($cx + 73) 158
+    Wait 1200
+    Shot 'k2-spielt-wieder'
+    Check 'the play button reaches the player' ((Get-Content $mediaLog | Select-Object -Last 1) -like 'Playing*')
+
+    Click ($cx + 182) 100
+    Wait 1500
+    Shot 'k3-gespult'
+    $position = [double](((Get-Content $mediaLog | Select-Object -Last 1) -split ' ')[1])
+    Note "      the player is at $position s after a click three quarters along"
+    Check 'clicking the bar seeks in the song' ($position -gt 30 -and $position -lt 60)
+
+    Move-Mouse ($cx - 75) 158
+    Wait 100
+    Press-Down
+    Wait 60
+    Press-Up
+    Wait 500
+    Shot 'k4-lautstaerke'
+
+    Click ($cx + 258) 158
+    Wait 500
+    Shot 'k5-ausgabe-karte'
+    Check 'the output card opens on the notch' (Is-Black ($cx + 100) 185)
+    Click ($cx - 200) 100
+    Wait 500
+    Shot 'k6-karte-zu'
+
     Click ($bodyLeft + 57) 16
     Wait 1600
     Shot 'j4-mixer-mit-app'

@@ -92,7 +92,7 @@ namespace BoringNotch
 
         private readonly Border _closedArt = new Border { Width = ClosedArtSize, Height = ClosedArtSize, CornerRadius = new CornerRadius(4), Background = Theme.Pill };
         private readonly MusicBars _musicBars;
-        private readonly Canvas _ballHost = new Canvas { Width = WindowWidth, Height = ClosedHeight, Visibility = Visibility.Hidden };
+        private readonly Canvas _ballHost = new Canvas { Width = WindowWidth, Height = ClosedHeight, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Hidden };
         private readonly SideBall _ball;
         private readonly Border _ballNeck = new Border { Background = Theme.Black, Height = 0 };
         private readonly ScaleTransform _ballScale = new ScaleTransform(1, 1, BallDiameter / 2, BallDiameter / 2);
