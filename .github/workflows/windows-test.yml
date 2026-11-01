@@ -55,6 +55,28 @@ jobs:
         if: success() || failure()
         shell: powershell
         run: ci\drive.ps1 -Exe "$PWD\dist\BoringNotch.exe" -Out "$PWD\out\echt"
+      - name: A real browser playing a song with a cover
+        if: success() || failure()
+        shell: powershell
+        run: |
+          $folder = "$PWD\out\browser"
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          $server = Start-Process powershell -ArgumentList '-File', "$PWD\ci\browser.ps1", '-Folder', $folder -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 8
+          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          $browser = Start-Process $chrome -ArgumentList '--autoplay-policy=no-user-gesture-required', '--no-first-run', '--no-default-browser-check', "--user-data-dir=$env:TEMP\notch-chrome", '--new-window', 'http://localhost:8765/' -PassThru
+          Start-Sleep -Seconds 12
+          $env:NOTCH_TEST_MEDIA = '1'
+          $env:NOTCH_TEST_COVER = '1'
+          $p = Start-Process "$PWD\dist\BoringNotch.exe" -ArgumentList '--selftest', $folder -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output 'Hung'; exit 1 }
+          Get-Content "$folder\bericht.txt" -ErrorAction SilentlyContinue
+          $code = $p.ExitCode
+          if (Test-Path "$folder\browser-skips.log") { Write-Output 'The skip button reached the browser.' } else { Write-Output 'The skip button did NOT reach the browser.'; $code = 1 }
+          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -25,8 +25,8 @@ Notch schließen  Maus wegbewegen.
 Musik            Zeigt, was gerade läuft, mit Cover, Zeitleiste, Pause und Weiter.
                  Das funktioniert mit allen Apps, die ihre Wiedergabe an Windows
                  melden, zum Beispiel Spotify und Browser. Unten rechts wird die
-                 Ausgabe gewählt, unten links die Lautstärke der App. Bei
-                 geschlossener Notch stehen Cover und Graph rechts und links daneben.
+                 Ausgabe gewählt, unten links die Lautstärke der App. In der
+                 geschlossenen Notch steht links das Cover und rechts der Graph.
 Ablage           Dateien oder Ordner auf die Notch ziehen. Sie bleiben, wo sie
                  sind, die Ablage merkt sich nur den Pfad, auch über einen
                  Neustart. Doppelklick öffnet, rausziehen legt sie woanders ab.

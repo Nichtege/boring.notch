@@ -161,6 +161,21 @@ namespace BoringNotch
                     if (now == null) throw new InvalidOperationException("Nothing shows as playing.");
                     report.AppendLine("      title: " + now.Title + ", artist: " + now.Artist + ", cover: " + (now.Art != null));
                 }
+                if (Environment.GetEnvironmentVariable("NOTCH_TEST_COVER") == "1")
+                {
+                    // A cover comes after the title, and it may take its app a moment
+                    for (int i = 0; i < 80 && (media.Current == null || media.Current.Art == null); i++)
+                    {
+                        await Task.Delay(100);
+                    }
+                    now = media.Current;
+                    bool hasCover = now != null && now.Art != null;
+                    report.AppendLine("      cover after waiting: " + hasCover + ", tint: " + (now == null ? "" : now.Tint.ToString()));
+                    report.AppendLine("      the app has a volume of its own: " + (now != null && mixer.FindApp(now.AppId) != null));
+                    if (!hasCover) throw new InvalidOperationException("The cover never came.");
+                    media.Next();
+                    await Task.Delay(1500);
+                }
 
                 notch.ShowTab(NotchTab.Home);
                 notch.Open();
