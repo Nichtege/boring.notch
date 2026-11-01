@@ -69,6 +69,15 @@ einen bericht.txt ab. Das ist auch die beste Grundlage für eine KI, um Fehler z
 beheben.
 
 
+WAS GETESTET IST
+----------------
+Die exe lief automatisch auf einem echten Windows (Server 2025, Build 26100) mit
+Maus und Tastatur: Notch, Musik mit Chrome, Mixer, Ablage, Timer, Suche, Vollbild.
+Nicht getestet: Windows 10 und ein normaler Windows-11-PC, zwei Bildschirme,
+virtuelle Desktops, Spotify selbst, das Umschalten zwischen zwei echten
+Ausgabegeräten (der Test-PC hat nur eins) und ein deutsches Windows.
+
+
 FÜR DIE KI, DIE HIER WEITERBAUT
 -------------------------------
 Quellcode im Ordner "Quellcode": C#, WPF ohne XAML, .NET Framework 4.8.
