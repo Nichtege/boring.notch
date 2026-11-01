@@ -1,0 +1,54 @@
+name: Windows test
+
+on:
+  push:
+    branches: [windows]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # A sound card for the Mixer, which runners don't have. The test still runs without one.
+      - name: Virtual sound card
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf
+        continue-on-error: true
+      - name: Logic tests
+        run: dotnet run --project tests -c Release
+      - name: Build
+        run: dotnet build BoringNotch.csproj -c Release
+      - name: Keep only the exe, as it's sent
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist, out | Out-Null
+          Copy-Item bin/Release/net48/BoringNotch.exe dist/
+      - name: Play a sound for the Mixer to find
+        shell: powershell
+        run: Start-Process powershell -ArgumentList '-File', "$PWD\ci\beep.ps1" -WindowStyle Hidden
+      - name: Self test
+        shell: powershell
+        run: |
+          $p = Start-Process "$PWD\dist\BoringNotch.exe" -ArgumentList '--selftest', "$PWD\out\selftest" -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output 'Hung'; exit 1 }
+          Get-Content "$PWD\out\selftest\bericht.txt" -ErrorAction SilentlyContinue
+          exit $p.ExitCode
+      - name: Real use, with the mouse and keyboard
+        if: success() || failure()
+        shell: powershell
+        run: ci\drive.ps1 -Exe "$PWD\dist\BoringNotch.exe" -Out "$PWD\out\echt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ergebnis
+          path: |
+            dist
+            out

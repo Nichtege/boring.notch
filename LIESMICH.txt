@@ -1,0 +1,85 @@
+BORING NOTCH FÜR WINDOWS
+========================
+
+Eine Notch oben in der Mitte des Hauptbildschirms, mit Dateiablage, Mixer,
+Timer und einer Suchleiste für Windows.
+
+
+STARTEN
+-------
+BoringNotch.exe doppelklicken. Sonst muss nichts installiert werden, Windows 10
+(ab 1903) und Windows 11 bringen alles mit.
+
+Beim ersten Start warnt Windows vermutlich ("Der Computer wurde durch Windows
+geschützt"), weil die Datei nicht signiert ist. Dann: "Weitere Informationen",
+danach "Trotzdem ausführen".
+
+Beenden und Autostart: Rechtsklick auf das Notch-Symbol neben der Uhr.
+
+
+BEDIENUNG
+---------
+Notch öffnen     Maus kurz auf die Notch halten oder draufklicken.
+Notch schließen  Maus wegbewegen.
+
+Ablage           Dateien oder Ordner auf die Notch ziehen. Sie bleiben, wo sie
+                 sind, die Ablage merkt sich nur den Pfad, auch über einen
+                 Neustart. Doppelklick öffnet, rausziehen legt sie woanders ab.
+                 Beim Überfahren: Kreuz entfernt aus der Ablage (die Datei selbst
+                 bleibt), Ordner zeigt sie im Explorer.
+Mixer            Lautstärke des PCs und jeder App, die gerade Ton abspielt.
+Timer            25, 45 oder 60 Minuten. Die Restzeit steht neben der
+                 geschlossenen Notch. Am Ende kommt nur ein stiller Hinweis, kein Ton.
+Suche            Lupe in der Notch oder Strg+Alt+A. Findet Apps, Einstellungen
+                 und Dateien. Pfeiltasten wählen, Enter öffnet, Esc schließt.
+
+Über einem Video oder Spiel im Vollbild versteckt sich die geschlossene Notch.
+
+
+WAS NICHT DABEI IST
+-------------------
+Nur der Hauptbildschirm. Keine Musikanzeige und keine Benachrichtigungen, die
+gibt es nur in der Mac-Version. Die geschlossene Notch liegt über der Mitte der
+Titelleiste maximierter Fenster.
+
+
+PRIVATSPHÄRE
+------------
+Was in die Suche getippt wird, bleibt auf dem PC. Es geht nur ins Internet, wenn
+die Zeile "im Web suchen" gewählt wird (Google, im Standardbrowser).
+Gespeichert wird nur die Liste der Ablage-Pfade, in %APPDATA%\BoringNotch.
+
+
+WENN ETWAS NICHT GEHT
+---------------------
+Fehler stehen in %APPDATA%\BoringNotch\fehler.log. Suchtexte stehen dort nie drin.
+
+Prüfung: In einer Eingabeaufforderung
+    BoringNotch.exe --selftest C:\Temp\notch-test
+ausführen. Das Programm geht einmal alles durch und legt in dem Ordner Bilder und
+einen bericht.txt ab. Das ist auch die beste Grundlage für eine KI, um Fehler zu
+beheben.
+
+
+FÜR DIE KI, DIE HIER WEITERBAUT
+-------------------------------
+Quellcode im Ordner "Quellcode": C#, WPF ohne XAML, .NET Framework 4.8.
+Bauen: dotnet build BoringNotch.csproj -c Release
+Logik-Tests: dotnet run --project tests
+
+src/Core       Logik ohne Windows-Abhängigkeit (Federn, Hover, Timer, Ablage, Suche)
+src/Services   Windows-Anbindung (Ton, Icons, App-Liste, Dateisuche, Start von Apps)
+src/Views      die Tabs Ablage, Mixer und Timer
+src/NotchWindow.cs   das Notch-Fenster, seine Form und seine Zustände
+src/SearchWindow.cs  die Suchleiste unter der Notch
+
+Das Original für den Mac (Swift): https://github.com/Nichtege/boring.notch, Branch ege.
+Dort stehen alle Maße und Animationen, die hier übernommen wurden.
+
+
+LIZENZ
+------
+GPL-3.0, siehe LICENSE. Beruht auf Boring Notch von TheBoredTeam
+(https://github.com/TheBoredTeam/boring.notch). Wer das Programm weitergibt, muss
+den Quellcode mitgeben. Weitere Hinweise: THIRD_PARTY_LICENSES. Die Bibliothek
+NAudio (MIT, Copyright Mark Heath und Mitwirkende) steckt in der exe.
