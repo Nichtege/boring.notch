@@ -97,6 +97,9 @@ final class NotificationCardController {
             place(panel, animated: false)
         }
         panel.orderFrontRegardless()
+        // Stays put like the notch on a swipe to another space, instead of sliding away with the old one.
+        // That space is above the lock screen too, which is what hideAtOnce is for.
+        NotchSpaceManager.shared.notchSpace.windows.insert(panel)
         observeScreens()
 
         motionTask = Task { @MainActor [weak self] in
@@ -138,10 +141,24 @@ final class NotificationCardController {
             }
             try? await Task.sleep(for: self?.motionDuration ?? .seconds(1))
             guard let self, !Task.isCancelled else { return }
-            panel.orderOut(nil)
-            self.model.notifications = []
-            self.stopObservingScreens()
+            self.takeDown(panel)
         }
+    }
+
+    /// For the lock screen: what a card says is private, and the way out would take a second.
+    func hideAtOnce() {
+        guard let panel else { return }
+        motionTask?.cancel()
+        model.isExpanded = false
+        model.stage = .hidden
+        takeDown(panel)
+    }
+
+    private func takeDown(_ panel: NSPanel) {
+        // Stays in the notch's space: taking it out would leave it on the user's spaces for good
+        panel.orderOut(nil)
+        model.notifications = []
+        stopObservingScreens()
     }
 
     /// Waits for the card to be on screen for real: ordered in, on its way, and not covered or on a

@@ -63,6 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     @objc func onScreenLocked(_ notification: Notification) {
         SystemNotificationManager.shared.dismissAll()
+        NotificationCardController.shared.hideAtOnce()
         cleanupWindows()
     }
 
