@@ -179,6 +179,23 @@ Stage 'search with the hot key' {
     Check 'Esc takes it away' (Is-Target-Color $cx 64)
 }
 
+Stage 'search finds a real file' {
+    Move-Mouse $cx 420
+    [Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x41, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x41, 0, 2, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+    Wait 600
+    [Windows.Forms.SendKeys]::SendWait('NotchSuchprobe')
+    Wait 3000
+    Shot 'd5-suche-datei'
+    [Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Wait 500
+    Check 'Esc takes it away again' (Is-Target-Color $cx 64)
+}
+
 Stage 'search from the notch' {
     Move-Mouse $cx 10
     Wait 900
@@ -228,7 +245,7 @@ Stage 'a file dragged out of the notch' {
 Stage 'the shelf over a restart' {
     Stop-Process -Id $app.Id -Force
     Wait 800
-    $app = Start-Process $Exe -PassThru
+    $script:app = Start-Process $Exe -PassThru
     Wait 2500
     Move-Mouse $cx 10
     Wait 1000
@@ -248,7 +265,7 @@ Stage 'only one at a time' {
 Stage 'full screen' {
     Stop-Process -Id $target.Id -Force
     Wait 500
-    $target = Start-Target -Fullscreen
+    $script:target = Start-Target -Fullscreen
     Wait 3500
     Shot 'i1-vollbild'
     Check 'the notch hides over a full-screen window' (Is-Target-Color $cx 10)

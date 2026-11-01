@@ -21,6 +21,10 @@ jobs:
       - name: Virtual sound card
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf
         continue-on-error: true
+      - name: Windows Search, on as on a normal PC
+        continue-on-error: true
+        shell: powershell
+        run: ci\searchprobe.ps1 -Out "$PWD\out\echt"
       - name: Logic tests
         run: dotnet run --project tests -c Release
       - name: Build
