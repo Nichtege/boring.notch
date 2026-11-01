@@ -221,6 +221,27 @@ namespace BoringNotch
                 levels.LevelsChanged -= listen;
                 report.AppendLine("      updates: " + calls + ", loudest: " + loudest.ToString("0.00"));
                 if (mediaExpected && loudest <= 0) throw new InvalidOperationException("The graph heard nothing.");
+
+                // On the test machine another app stays loud beside the player, and that's not what the graph is for
+                if (Environment.GetEnvironmentVariable("NOTCH_TEST_ONLY_APP") == "1" && media.Current != null)
+                {
+                    media.TogglePlayPause();
+                    await Task.Delay(2000);
+                    int heard = 0;
+                    Action<double[]> count = values =>
+                    {
+                        if (values != null) heard++;
+                    };
+                    levels.LevelsChanged += count;
+                    levels.Start();
+                    await Task.Delay(3000);
+                    levels.Stop();
+                    levels.LevelsChanged -= count;
+                    media.TogglePlayPause();
+                    await Task.Delay(1000);
+                    report.AppendLine("      player paused, another app loud, updates heard: " + heard);
+                    if (heard > 3) throw new InvalidOperationException("The graph heard another app.");
+                }
             });
 
             await Step("outputs", () =>

@@ -162,7 +162,13 @@ namespace BoringNotch.Core
                 return path.IndexOf("\\" + package + "_", StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
-            return string.Equals(StripExe(LastPart(id)), StripExe(LastPart(path)), StringComparison.OrdinalIgnoreCase);
+            string exe = StripExe(LastPart(path));
+            string name = StripExe(LastPart(id));
+            if (string.Equals(name, exe, StringComparison.OrdinalIgnoreCase)) return true;
+
+            // Apps installed by Squirrel call themselves com.squirrel.TIDAL.TIDAL
+            int dot = name.LastIndexOf('.');
+            return dot >= 0 && string.Equals(name.Substring(dot + 1), exe, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string PackageName(string id)

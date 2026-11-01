@@ -3,41 +3,44 @@ using System.Globalization;
 using System.Threading;
 using System.Windows.Threading;
 using BoringNotch.Core;
-using NAudio.CoreAudioApi;
-using NAudio.Wave;
 
 namespace BoringNotch
 {
     /// <summary>
-    /// Real levels of what the PC plays, for the bars beside the notch. Listens only between Start and Stop, and the
-    /// sound is analyzed as it passes and never kept. Windows hands over everything going to the output as one, so these
-    /// are the levels of all sound on the PC, not of one app.
+    /// Real levels of the app that plays, and of nothing else on the PC, for the bars beside the notch. Listens only between
+    /// Start and Stop, and the sound is analyzed as it passes and never kept.
     ///
-    /// Nothing to show means one LevelsChanged(null), and the bars fall back to animating. A failed capture stays failed
-    /// until the next Start. Only a change of the output device starts it over, so it can never retry in a loop.
+    /// Nothing to show means one LevelsChanged(null), and the bars fall back to animating. That's also what happens where
+    /// Windows won't hand over one app's sound, as it never falls back to all the sound of the PC. A capture that couldn't
+    /// start stays off for that process until the next Start, so it can never retry in a loop.
     /// </summary>
     internal sealed class AudioLevels
     {
         private static readonly TimeSpan SilenceBeforeGivingUp = TimeSpan.FromSeconds(1.5);
 
         private readonly Dispatcher _ui = Dispatcher.CurrentDispatcher;
+        private readonly Func<int> _findProcess;
         private readonly DispatcherTimer _silence = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        // What plays can change, and a player can start its sound in another process
+        private readonly DispatcherTimer _targetCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
 
-        private WasapiLoopbackCapture _capture;
-        private MMDevice _device;
+        private AppAudioCapture _capture;
         private SpectrumBands _bands;
         private DateTime _lastLevels;
+        private int _target;
+        private int _failedTarget;
         private bool _saidNothing;
-        private bool _hasFailed;
-        private string _deviceId;
         private string _lastProblem;
         // Levels on their way to the UI thread: a busy thread gets the newest, not a queue of old ones
         private double[] _waiting;
         private int _isScheduled;
 
-        public AudioLevels()
+        /// <param name="findProcess">The process making the sound of what plays, 0 if that can't be told. On the UI thread.</param>
+        public AudioLevels(Func<int> findProcess)
         {
+            _findProcess = findProcess;
             _silence.Tick += (sender, e) => CheckSilence();
+            _targetCheck.Tick += (sender, e) => CheckTarget();
         }
 
         /// <summary>One value per bar from 0 to 1, low notes first, on the UI thread. Null: nothing to show right now.</summary>
@@ -49,11 +52,13 @@ namespace BoringNotch
         {
             if (IsRunning) return;
             IsRunning = true;
-            _hasFailed = false;
+            _target = 0;
+            _failedTarget = 0;
             _saidNothing = false;
             _lastLevels = DateTime.UtcNow;
             _silence.Start();
-            Begin();
+            _targetCheck.Start();
+            CheckTarget();
         }
 
         public void Stop()
@@ -61,96 +66,64 @@ namespace BoringNotch
             if (!IsRunning) return;
             IsRunning = false;
             _silence.Stop();
+            _targetCheck.Stop();
             End();
         }
 
-        private void Begin()
+        private void CheckTarget()
         {
+            if (!IsRunning) return;
+
+            int process;
             try
             {
-                using (var enumerator = new MMDeviceEnumerator())
-                {
-                    if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia))
-                    {
-                        Fail(null);
-                        return;
-                    }
-                    _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                }
-                _deviceId = _device.ID;
-
-                _capture = new WasapiLoopbackCapture(_device);
-                if (_capture.WaveFormat.Encoding != WaveFormatEncoding.IeeeFloat || _capture.WaveFormat.BitsPerSample != 32)
-                {
-                    Fail(null);
-                    return;
-                }
-
-                _bands = new SpectrumBands(_capture.WaveFormat.SampleRate);
-                _capture.DataAvailable += OnData;
-                _capture.RecordingStopped += OnStopped;
-                _capture.StartRecording();
+                process = _findProcess();
             }
             catch (Exception e)
             {
-                Fail(e);
+                Report(e);
+                process = 0;
             }
+            if (process == _target) return;
+
+            End();
+            _target = process;
+            if (process == 0 || process == _failedTarget)
+            {
+                SayNothing();
+                return;
+            }
+
+            _lastLevels = DateTime.UtcNow;
+            _bands = new SpectrumBands(AppAudioCapture.SampleRate);
+            _capture = new AppAudioCapture(process);
+            _capture.DataAvailable += OnData;
+            _capture.Failed += OnFailed;
+            _capture.Start();
         }
 
         private void End()
         {
-            WasapiLoopbackCapture capture = _capture;
-            MMDevice device = _device;
+            AppAudioCapture capture = _capture;
             _capture = null;
-            _device = null;
             _bands = null;
             Interlocked.Exchange(ref _waiting, null);
 
             if (capture != null)
             {
                 capture.DataAvailable -= OnData;
-                capture.RecordingStopped -= OnStopped;
-                try
-                {
-                    // Waits for its thread, which ends within a few hundredths of a second
-                    capture.Dispose();
-                }
-                catch (Exception e)
-                {
-                    Report(e);
-                }
+                capture.Failed -= OnFailed;
+                capture.Stop();
             }
-            if (device != null)
-            {
-                try
-                {
-                    // A capture only took an audio client from it, so there's nothing a finalizer could trip over
-                    device.Dispose();
-                }
-                catch (Exception e)
-                {
-                    GC.SuppressFinalize(device);
-                    Report(e);
-                }
-            }
-        }
-
-        private void Fail(Exception e)
-        {
-            _hasFailed = true;
-            if (e != null) Report(e);
-            End();
-            SayNothing();
         }
 
         // On the capture's own thread
-        private void OnData(object sender, WaveInEventArgs e)
+        private void OnData(byte[] buffer, int bytes)
         {
-            WasapiLoopbackCapture capture = sender as WasapiLoopbackCapture;
             SpectrumBands bands = _bands;
-            if (capture == null || bands == null || e.BytesRecorded <= 0) return;
+            if (bands == null) return;
 
-            double[] levels = bands.Feed(e.Buffer, e.BytesRecorded, capture.WaveFormat.Channels);
+            double[] levels = bands.Feed(buffer, bytes, AppAudioCapture.Channels);
             if (levels == null) return;
 
             Interlocked.Exchange(ref _waiting, levels);
@@ -171,58 +144,33 @@ namespace BoringNotch
             LevelsChanged?.Invoke(levels);
         }
 
-        private void OnStopped(object sender, StoppedEventArgs e)
+        // On the capture's own thread
+        private void OnFailed(Exception e, bool hadData)
         {
-            // WasapiCapture posts this where it was made, but a dispatcher in between costs nothing if not
+            AppAudioCapture failed = _capture;
             _ui.BeginInvoke(new Action(() =>
             {
-                if (!IsRunning || !ReferenceEquals(sender, _capture)) return;
-                if (!RestartIfOutputChanged())
+                if (!IsRunning || !ReferenceEquals(failed, _capture)) return;
+
+                Report(e);
+                // One that worked and ended has an app that quit or an output that changed, so the next check starts over.
+                // One that never gave anything would only fail again.
+                if (!hadData)
                 {
-                    Fail(e.Exception);
+                    _failedTarget = _target;
                 }
+                End();
+                _target = 0;
+                SayNothing();
             }));
         }
 
         private void CheckSilence()
         {
-            if (!IsRunning || _hasFailed) return;
-            if (DateTime.UtcNow - _lastLevels <= SilenceBeforeGivingUp) return;
-
-            // Sound moved to another output leaves this one silent, and the capture has to follow it there
-            SayNothing();
-            RestartIfOutputChanged();
-        }
-
-        /// <summary>True if the output is a new one, and listening went over to it.</summary>
-        private bool RestartIfOutputChanged()
-        {
-            string current = CurrentOutputId();
-            if (current == null || current == _deviceId) return false;
-
-            End();
-            _lastLevels = DateTime.UtcNow;
-            Begin();
-            return true;
-        }
-
-        private string CurrentOutputId()
-        {
-            try
+            if (!IsRunning) return;
+            if (DateTime.UtcNow - _lastLevels > SilenceBeforeGivingUp)
             {
-                using (var enumerator = new MMDeviceEnumerator())
-                {
-                    if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia)) return null;
-                    using (MMDevice device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia))
-                    {
-                        return device.ID;
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                Report(e);
-                return null;
+                SayNothing();
             }
         }
 

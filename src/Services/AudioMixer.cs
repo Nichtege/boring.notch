@@ -138,6 +138,48 @@ namespace BoringNotch
             return Core.AppMatcher.Find(appModelId, _sessions.Keys.Where(id => !id.StartsWith("pid:", StringComparison.Ordinal)));
         }
 
+        /// <summary>
+        /// The process making the sound of this app, so that only it gets listened to. If the app can't be told from its
+        /// name, but exactly one app makes sound, then that one is what plays. Otherwise 0: rather nothing than the wrong app.
+        /// </summary>
+        public int ProcessOf(string appModelId)
+        {
+            Refresh();
+            string id = Core.AppMatcher.Find(appModelId, _sessions.Keys.Where(key => !key.StartsWith("pid:", StringComparison.Ordinal)));
+            if (id == null)
+            {
+                List<string> sounding = _sessions.Where(pair => pair.Value.Any(IsActive)).Select(pair => pair.Key).ToList();
+                if (sounding.Count != 1) return 0;
+                id = sounding[0];
+            }
+
+            List<AudioSessionControl> sessions = _sessions[id];
+            AudioSessionControl session = sessions.FirstOrDefault(IsActive) ?? sessions.FirstOrDefault();
+            try
+            {
+                return session == null ? 0 : (int)session.GetProcessID;
+            }
+            catch (Exception e)
+            {
+                Report(e);
+                return 0;
+            }
+        }
+
+        private bool IsActive(AudioSessionControl session)
+        {
+            try
+            {
+                return session.State == AudioSessionState.AudioSessionStateActive;
+            }
+            catch (Exception e)
+            {
+                // An app that just quit takes its session along
+                Report(e);
+                return false;
+            }
+        }
+
         /// <summary>The volume of this Id, also when it's quiet and so not in Apps. 1 if it's not known.</summary>
         public double VolumeOf(string id)
         {

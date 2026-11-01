@@ -53,8 +53,9 @@ PRIVATSPHÄRE
 ------------
 Was in die Suche getippt wird, bleibt auf dem PC. Es geht nur ins Internet, wenn
 die Zeile "im Web suchen" gewählt wird (Google, im Standardbrowser).
-Für den Graphen wird der Ton des PCs ausgewertet, solange er sichtbar ist. Dabei
-wird nichts aufgezeichnet oder gespeichert.
+Für den Graphen wird nur der Ton der spielenden App ausgewertet, solange er
+sichtbar ist. Dabei wird nichts aufgezeichnet oder gespeichert. Lässt Windows das
+nicht zu, zum Beispiel im Exklusiv-Modus von TIDAL, tanzen die Balken stattdessen.
 Gespeichert wird nur die Liste der Ablage-Pfade, in %APPDATA%\BoringNotch.
 
 

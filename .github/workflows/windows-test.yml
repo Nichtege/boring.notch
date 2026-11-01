@@ -68,6 +68,9 @@ jobs:
           Start-Sleep -Seconds 12
           $env:NOTCH_TEST_MEDIA = '1'
           $env:NOTCH_TEST_COVER = '1'
+          $env:NOTCH_TEST_ONLY_APP = '1'
+          $noise = Start-Process powershell -ArgumentList '-File', "$PWD\ci\noise.ps1" -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 3
           $p = Start-Process "$PWD\dist\BoringNotch.exe" -ArgumentList '--selftest', $folder -PassThru
           $null = $p.Handle
           if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output 'Hung'; exit 1 }
@@ -76,6 +79,7 @@ jobs:
           if (Test-Path "$folder\browser-skips.log") { Write-Output 'The skip button reached the browser.' } else { Write-Output 'The skip button did NOT reach the browser.'; $code = 1 }
           Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          Stop-Process -Id $noise.Id -Force -ErrorAction SilentlyContinue
           exit $code
       - name: At 150 percent scale
         if: success() || failure()

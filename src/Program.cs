@@ -80,7 +80,7 @@ namespace BoringNotch
 
                 var mixer = new AudioMixer();
                 var media = new MediaSessions();
-                var levels = new AudioLevels();
+                var levels = new AudioLevels(() => mixer.ProcessOf(media.Current?.AppId));
                 var search = new SearchWindow();
                 var notch = new NotchWindow(shelf, mixer, media, levels, search);
 

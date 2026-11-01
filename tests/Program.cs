@@ -339,6 +339,17 @@ internal static class Tests
     /// <summary>Each bar measures against its own recent range, so a song moves them and a steady tone doesn't.</summary>
     private static void GraphTests()
     {
+        const string tidal = @"C:\Users\A\AppData\Local\TIDAL\app-2.40.0\TIDAL.exe";
+        const string storeTidal = @"C:\Program Files\WindowsApps\WiMPMusic.27241E05630EA_2.40.0.0_x64__kn85bz84x7te4\app\TIDAL.exe";
+        Check("TIDAL by its exe", AppMatcher.Matches("TIDAL.exe", tidal));
+        Check("TIDAL by its name", AppMatcher.Matches("TIDAL", tidal));
+        Check("TIDAL as Squirrel installs it", AppMatcher.Matches("com.squirrel.TIDAL.TIDAL", tidal));
+        Check("TIDAL from the Store", AppMatcher.Matches("WiMPMusic.27241E05630EA_kn85bz84x7te4!TIDAL", storeTidal));
+        Check("another app isn't TIDAL", !AppMatcher.Matches("Spotify.exe", tidal));
+        Check("nor is one from Squirrel", !AppMatcher.Matches("com.squirrel.Discord.Discord", tidal));
+        Check("nor one from another package", !AppMatcher.Matches("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", storeTidal));
+        Same("the right one of several", tidal, AppMatcher.Find("com.squirrel.TIDAL.TIDAL", new[] { @"C:\x\chrome.exe", tidal }));
+
         double Range(Func<int, double> signal)
         {
             const int rate = 48000;
