@@ -15,8 +15,9 @@ namespace BoringNotch
 {
     internal enum NotchTab
     {
-        Shelf,
+        Home,
         Mixer,
+        Shelf,
         Timer,
     }
 
@@ -34,18 +35,26 @@ namespace BoringNotch
         private const double ClosedWidth = 193;
         public const double ClosedHeight = 32;
         private const double TimerWidth = 269;
+        private const double MusicWidth = 259;
+        private const double ClosedArtSize = 20;
         private const double BannerWidth = 599;
         private const double BannerSideWidth = 190;
         private const double OpenSideInset = 31;
         private const double BodyTop = 40;
         private const double BodyHeight = 138;
-        private const double TabWidth = 46;
+        private const double TabWidth = 38;
+        private const int SearchSlot = 3;
         private const double TabHeight = 26;
 
         // Room for the shadow and the springs to overshoot
         private const double Bleed = 24;
         private const double WindowWidth = OpenWidth + 2 * Bleed;
         private const double WindowHeight = OpenHeight + Bleed;
+
+        // The ball beside the notch, for what the music leaves no room for. As on the Mac it measures from this width.
+        private const double BallDiameter = 26;
+        private const double BallGap = 6;
+        private const double BallChinWidth = 245;
 
         private const double DragLinger = 0.5;
         private const double BannerSeconds = 3;
@@ -54,6 +63,7 @@ namespace BoringNotch
 
         private readonly ShelfStore _shelf;
         private readonly SearchWindow _search;
+        private readonly MediaSessions _media;
         private readonly FocusClock _clock = new FocusClock();
         private readonly HoverMachine _hover = new HoverMachine();
         private readonly Stopwatch _time = Stopwatch.StartNew();
@@ -62,6 +72,7 @@ namespace BoringNotch
         private readonly Spring _height = new Spring(ClosedHeight);
         private readonly Spring _topRadius = new Spring(6);
         private readonly Spring _bottomRadius = new Spring(14);
+        private readonly Spring _ballProgress = new Spring(0);
 
         private readonly Grid _root = new Grid { Width = WindowWidth, Height = WindowHeight, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         private readonly Path _shape = new Path { Fill = Theme.Black };
@@ -72,11 +83,21 @@ namespace BoringNotch
         private readonly Canvas _closedContent = new Canvas { Width = WindowWidth, Height = ClosedHeight, IsHitTestVisible = false };
 
         private readonly Border _tabCapsule = new Border { Width = TabWidth, Height = TabHeight, CornerRadius = new CornerRadius(TabHeight / 2), Background = Theme.Pill };
-        private readonly GlyphIcon[] _tabIcons = new GlyphIcon[3];
+        private readonly GlyphIcon[] _tabIcons = new GlyphIcon[4];
 
+        private readonly HomeView _homeView;
         private readonly ShelfView _shelfView;
         private readonly MixerView _mixerView;
         private readonly TimerView _timerView;
+
+        private readonly Border _closedArt = new Border { Width = ClosedArtSize, Height = ClosedArtSize, CornerRadius = new CornerRadius(4), Background = Theme.Pill };
+        private readonly MusicBars _musicBars;
+        private readonly Canvas _ballHost = new Canvas { Width = WindowWidth, Height = ClosedHeight, Visibility = Visibility.Hidden };
+        private readonly SideBall _ball;
+        private readonly Border _ballNeck = new Border { Background = Theme.Black, Height = 0 };
+        private readonly ScaleTransform _ballScale = new ScaleTransform(1, 1, BallDiameter / 2, BallDiameter / 2);
+        private readonly TranslateTransform _ballShift = new TranslateTransform();
+        private ImageSource _closedArtSource;
 
         private readonly GlyphIcon _closedTimerIcon = new GlyphIcon(Icons.Timer, 13, Theme.Orange);
         private readonly TextBlock _closedTimerText = Theme.Text("", 11, Theme.Orange, FontWeights.SemiBold);
@@ -89,7 +110,7 @@ namespace BoringNotch
         private readonly DispatcherTimer _bannerTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(BannerSeconds) };
 
         private IntPtr _handle;
-        private NotchTab _tab = NotchTab.Shelf;
+        private NotchTab _tab;
         private bool _isOpen;
         private bool _isHidden;
         private bool _isHovered;
@@ -113,10 +134,16 @@ namespace BoringNotch
 
         public bool HotKeyRegistered => _hotKeyRegistered;
 
-        public NotchWindow(ShelfStore shelf, AudioMixer mixer, SearchWindow search)
+        public NotchWindow(ShelfStore shelf, AudioMixer mixer, MediaSessions media, AudioLevels levels, SearchWindow search)
         {
             _shelf = shelf;
+            _media = media;
             _search = search;
+            _tab = DefaultTab;
+            _ballProgress.Configure(0.5, 0.68);
+            _homeView = new HomeView(media, mixer);
+            _musicBars = new MusicBars(levels);
+            _ball = new SideBall(_clock, OpenTimerFromBall) { Diameter = BallDiameter };
             _shelfView = new ShelfView(shelf);
             _mixerView = new MixerView(mixer);
             _timerView = new TimerView(_clock, TimerChanged);
@@ -153,6 +180,7 @@ namespace BoringNotch
             _secondTimer.Tick += (sender, e) => SecondPassed();
             _fullscreenTimer.Tick += (sender, e) => CheckFullscreen();
             _bannerTimer.Tick += (sender, e) => BannerOver();
+            _media.Changed += MediaChanged;
         }
 
         private double CenterX => WindowWidth / 2;
@@ -160,6 +188,9 @@ namespace BoringNotch
         private void BuildContent()
         {
             _shape.Effect = _shadow;
+            // Before the notch, so the ball comes out from behind it
+            BuildBall();
+            _root.Children.Add(_ballHost);
             _root.Children.Add(_shape);
             _root.Children.Add(_clipped);
 
@@ -193,17 +224,34 @@ namespace BoringNotch
             Canvas.SetTop(_tabCapsule, 3);
             _openContent.Children.Add(_tabCapsule);
 
-            AddTabButton(left, Icons.Tray, "Ablage", 0, () => ShowTab(NotchTab.Shelf));
-            AddTabButton(left + TabWidth, Icons.Sliders, "Mixer", 1, () => ShowTab(NotchTab.Mixer));
-            AddTabButton(left + 2 * TabWidth, Icons.Timer, "Timer", 2, () => ShowTab(NotchTab.Timer));
-            AddTabButton(left + 3 * TabWidth, Icons.Search, "Windows durchsuchen", -1, OpenSearch);
+            Canvas.SetLeft(_tabCapsule, left + SlotOf(_tab) * TabWidth);
+            AddTabButton(left + SlotOf(NotchTab.Home) * TabWidth, Icons.Note, "Musik", NotchTab.Home, () => ShowTab(NotchTab.Home));
+            AddTabButton(left + SlotOf(NotchTab.Mixer) * TabWidth, Icons.Sliders, "Mixer", NotchTab.Mixer, () => ShowTab(NotchTab.Mixer));
+            AddTabButton(left + SlotOf(NotchTab.Shelf) * TabWidth, Icons.Tray, "Ablage", NotchTab.Shelf, () => ShowTab(NotchTab.Shelf));
+            // Where the Mac has Starlane and its Atlas line
+            AddTabButton(left + SearchSlot * TabWidth, Icons.Search, "Windows durchsuchen", null, OpenSearch);
+            AddTabButton(left + SlotOf(NotchTab.Timer) * TabWidth, Icons.Timer, "Timer", NotchTab.Timer, () => ShowTab(NotchTab.Timer));
             UpdateTabColors();
         }
 
-        private void AddTabButton(double x, string glyph, string label, int index, Action action)
+        private static int SlotOf(NotchTab tab)
+        {
+            switch (tab)
+            {
+                case NotchTab.Home: return 0;
+                case NotchTab.Mixer: return 1;
+                case NotchTab.Shelf: return 2;
+                default: return 4;
+            }
+        }
+
+        /// <summary>As on the Mac: what's on the shelf comes first, and otherwise the music.</summary>
+        private NotchTab DefaultTab => _shelf.IsEmpty ? NotchTab.Home : NotchTab.Shelf;
+
+        private void AddTabButton(double x, string glyph, string label, NotchTab? tab, Action action)
         {
             var icon = new GlyphIcon(glyph, 15, Theme.Gray, filled: glyph == Icons.Sliders);
-            if (index >= 0) _tabIcons[index] = icon;
+            if (tab != null) _tabIcons[(int)tab.Value] = icon;
 
             var button = new Grid { Width = TabWidth, Height = TabHeight, Background = Brushes.Transparent, ToolTip = label };
             icon.HorizontalAlignment = HorizontalAlignment.Center;
@@ -220,7 +268,7 @@ namespace BoringNotch
         {
             double left = CenterX - OpenWidth / 2 + OpenSideInset;
             double width = OpenWidth - 2 * OpenSideInset;
-            foreach (FrameworkElement view in new FrameworkElement[] { _shelfView, _mixerView, _timerView })
+            foreach (FrameworkElement view in new FrameworkElement[] { _homeView, _shelfView, _mixerView, _timerView })
             {
                 view.Width = width;
                 view.Height = BodyHeight;
@@ -231,9 +279,69 @@ namespace BoringNotch
             UpdateBodyVisibility();
         }
 
+        private void BuildBall()
+        {
+            double left = CenterX + BallChinWidth / 2 + BallGap;
+            double top = (ClosedHeight - BallDiameter) / 2;
+
+            Canvas.SetLeft(_ballNeck, left - BallGap);
+            _ballNeck.Width = BallDiameter / 2 + BallGap;
+            _ballHost.Children.Add(_ballNeck);
+
+            var transforms = new TransformGroup();
+            transforms.Children.Add(_ballScale);
+            transforms.Children.Add(_ballShift);
+            _ball.RenderTransform = transforms;
+            _ball.Width = BallDiameter;
+            _ball.Height = BallDiameter;
+            Canvas.SetLeft(_ball, left);
+            Canvas.SetTop(_ball, top);
+            _ballHost.Children.Add(_ball);
+            ApplyBall();
+        }
+
+        /// <summary>
+        /// How far the ball has come out of the notch: 0 behind its edge, 1 in its place, past 1 when the spring overshoots.
+        /// It stretches on the way and stays joined to the notch by a neck that thins until it snaps.
+        /// </summary>
+        private void ApplyBall()
+        {
+            double progress = _ballProgress.Value;
+            double clamped = Math.Min(Math.Max(progress, 0), 1);
+            double stretch = Math.Sin(clamped * Math.PI);
+            double size = 0.55 + 0.45 * progress;
+
+            _ballScale.ScaleX = size * (1 + 0.3 * stretch);
+            _ballScale.ScaleY = size * (1 - 0.18 * stretch);
+            _ballShift.X = -(BallDiameter + BallGap) * (1 - progress);
+
+            double neck = BallDiameter * 0.55 * (1 - clamped);
+            _ballNeck.Height = neck;
+            Canvas.SetTop(_ballNeck, (ClosedHeight - neck) / 2);
+
+            bool isGone = progress < 0.01 && _ballProgress.Target == 0;
+            _ballHost.Visibility = isGone ? Visibility.Hidden : Visibility.Visible;
+        }
+
+        private void OpenTimerFromBall()
+        {
+            ShowTab(NotchTab.Timer);
+            Open();
+        }
+
         private void BuildClosedContent()
         {
             double gap = ClosedBodyWidth / 2;
+            double musicLeft = CenterX - MusicWidth / 2 + 12;
+            Canvas.SetLeft(_closedArt, musicLeft);
+            Canvas.SetTop(_closedArt, (ClosedHeight - ClosedArtSize) / 2);
+            _closedContent.Children.Add(_closedArt);
+
+            // The graph on the right: 16 by 12, in the middle of a square as big as the art
+            Canvas.SetLeft(_musicBars, CenterX + MusicWidth / 2 - 12 - ClosedArtSize + 2);
+            Canvas.SetTop(_musicBars, (ClosedHeight - 12) / 2);
+            _closedContent.Children.Add(_musicBars);
+
             Canvas.SetLeft(_closedTimerIcon, CenterX - gap - 22);
             Canvas.SetTop(_closedTimerIcon, (ClosedHeight - 13) / 2);
             _closedContent.Children.Add(_closedTimerIcon);
@@ -270,6 +378,7 @@ namespace BoringNotch
 
             _mouseTimer.Start();
             _fullscreenTimer.Start();
+            _media.Start();
         }
 
         private IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -296,6 +405,10 @@ namespace BoringNotch
             _secondTimer.Stop();
             _fullscreenTimer.Stop();
             _bannerTimer.Stop();
+            _homeView.Hidden();
+            _musicBars.SetVisible(false);
+            _media.Changed -= MediaChanged;
+            _media.Stop();
             if (_hotKeyRegistered)
             {
                 Native.UnregisterHotKey(_handle, HotKeyId);
@@ -333,6 +446,7 @@ namespace BoringNotch
             _openContent.IsHitTestVisible = false;
             AnimateOpenContent(0, 0.8);
             _mixerView.Hidden();
+            _homeView.Hidden();
             ShowBannerIfWaiting();
             UpdateClosedContent();
 
@@ -364,7 +478,7 @@ namespace BoringNotch
             {
                 if (_isOpen) return;
                 _openContent.Visibility = Visibility.Hidden;
-                ShowTab(NotchTab.Shelf);
+                ShowTab(DefaultTab);
             };
             _openContent.BeginAnimation(OpacityProperty, fade);
             _openScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, length) { EasingFunction = ease });
@@ -376,6 +490,7 @@ namespace BoringNotch
             double width;
             if (_isOpen) width = OpenWidth;
             else if (_bannerShown) width = BannerWidth;
+            else if (MusicTakesNotch && !_isHidden) width = MusicWidth;
             else if (_clock.IsRunning && !_isHidden) width = TimerWidth;
             else width = ClosedWidth;
 
@@ -405,10 +520,12 @@ namespace BoringNotch
             _height.Step(seconds);
             _topRadius.Step(seconds);
             _bottomRadius.Step(seconds);
+            _ballProgress.Step(seconds);
             RedrawShape();
+            ApplyBall();
 
             // Nothing runs while the notch is at rest
-            if (_width.IsSettled && _height.IsSettled && _topRadius.IsSettled && _bottomRadius.IsSettled)
+            if (_width.IsSettled && _height.IsSettled && _topRadius.IsSettled && _bottomRadius.IsSettled && _ballProgress.IsSettled)
             {
                 CompositionTarget.Rendering -= OnFrame;
                 _isAnimating = false;
@@ -429,7 +546,9 @@ namespace BoringNotch
             _height.Snap();
             _topRadius.Snap();
             _bottomRadius.Snap();
+            _ballProgress.Snap();
             RedrawShape();
+            ApplyBall();
             _openContent.BeginAnimation(OpacityProperty, null);
             _openContent.Opacity = _isOpen ? 1 : 0;
             _openScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -445,7 +564,7 @@ namespace BoringNotch
             _tab = tab;
             UpdateTabColors();
 
-            double left = CenterX - OpenWidth / 2 + OpenSideInset + (int)tab * TabWidth;
+            double left = CenterX - OpenWidth / 2 + OpenSideInset + SlotOf(tab) * TabWidth;
             _tabCapsule.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(left, TimeSpan.FromMilliseconds(250))
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
@@ -465,6 +584,7 @@ namespace BoringNotch
 
         private void UpdateBodyVisibility()
         {
+            _homeView.Visibility = _tab == NotchTab.Home ? Visibility.Visible : Visibility.Hidden;
             _shelfView.Visibility = _tab == NotchTab.Shelf ? Visibility.Visible : Visibility.Hidden;
             _mixerView.Visibility = _tab == NotchTab.Mixer ? Visibility.Visible : Visibility.Hidden;
             _timerView.Visibility = _tab == NotchTab.Timer ? Visibility.Visible : Visibility.Hidden;
@@ -473,6 +593,8 @@ namespace BoringNotch
         private void ShowBody()
         {
             if (!_isOpen) return;
+            if (_tab == NotchTab.Home) _homeView.Shown();
+            else _homeView.Hidden();
             if (_tab == NotchTab.Mixer) _mixerView.Shown();
             else _mixerView.Hidden();
             if (_tab == NotchTab.Shelf) _shelfView.Refresh();
@@ -578,6 +700,25 @@ namespace BoringNotch
             _lastDrag = _time.Elapsed.TotalSeconds;
         }
 
+        // MARK: - The music
+
+        /// <summary>One thing keeps the notch, and that's what plays. The timer then goes into the ball beside it.</summary>
+        private bool MusicTakesNotch
+        {
+            get
+            {
+                NowPlaying now = _media.Current;
+                return now != null && (now.IsPlaying || !_media.IsIdle);
+            }
+        }
+
+        private void MediaChanged()
+        {
+            _homeView.Update();
+            UpdateTargets();
+            UpdateClosedContent();
+        }
+
         // MARK: - The timer
 
         private void TimerChanged()
@@ -599,6 +740,7 @@ namespace BoringNotch
                 UpdateTargets();
             }
             _timerView.Update();
+            _ball.Update();
             UpdateClosedContent();
         }
 
@@ -632,8 +774,36 @@ namespace BoringNotch
         private void UpdateClosedContent()
         {
             bool closed = !_isOpen && !_isHidden;
-            bool timer = closed && !_bannerShown && _clock.IsRunning;
             bool banner = closed && _bannerShown;
+            bool music = closed && !banner && MusicTakesNotch;
+            bool timer = closed && !banner && !music && _clock.IsRunning;
+            bool ball = music && _clock.IsRunning;
+
+            NowPlaying now = _media.Current;
+            _closedArt.Visibility = music ? Visibility.Visible : Visibility.Hidden;
+            _musicBars.Visibility = music ? Visibility.Visible : Visibility.Hidden;
+            _musicBars.SetVisible(music);
+            if (now != null)
+            {
+                _musicBars.SetPlaying(now.IsPlaying);
+                _musicBars.SetTint(now.Tint);
+                if (!ReferenceEquals(_closedArtSource, now.Art))
+                {
+                    _closedArtSource = now.Art;
+                    _closedArt.Background = now.Art == null
+                        ? Theme.Pill
+                        : new ImageBrush(now.Art) { Stretch = Stretch.UniformToFill };
+                }
+            }
+
+            double ballTarget = ball ? 1 : 0;
+            if (_ballProgress.Target != ballTarget)
+            {
+                _ballProgress.SetTarget(ballTarget);
+                StartAnimating();
+            }
+            if (ball) _ball.Update();
+
 
             _closedTimerIcon.Visibility = timer ? Visibility.Visible : Visibility.Hidden;
             _closedTimerText.Visibility = timer ? Visibility.Visible : Visibility.Hidden;

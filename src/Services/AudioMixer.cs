@@ -128,6 +128,36 @@ namespace BoringNotch
             }
         }
 
+        /// <summary>
+        /// The Id of the row for what an app calls itself when it plays, like Spotify.exe or a packaged app's id. Looks
+        /// afresh, as the tab may not have been open. Null if none fits, such as a browser reporting a hash.
+        /// </summary>
+        public string FindApp(string appModelId)
+        {
+            Refresh();
+            return Core.AppMatcher.Find(appModelId, _sessions.Keys.Where(id => !id.StartsWith("pid:", StringComparison.Ordinal)));
+        }
+
+        /// <summary>The volume of this Id, also when it's quiet and so not in Apps. 1 if it's not known.</summary>
+        public double VolumeOf(string id)
+        {
+            if (id == null || !_sessions.TryGetValue(id, out List<AudioSessionControl> sessions)) return 1;
+
+            foreach (AudioSessionControl session in sessions)
+            {
+                try
+                {
+                    SimpleAudioVolume control = session.SimpleAudioVolume;
+                    if (control != null) return Clamp(control.Volume);
+                }
+                catch (Exception e)
+                {
+                    Report(e);
+                }
+            }
+            return 1;
+        }
+
         /// <summary>Before quitting, as finalizers also run while the app ends.</summary>
         public void Close()
         {

@@ -145,10 +145,10 @@ Stage 'a click on the notch does not reach the window behind' {
 Stage 'tabs' {
     Move-Mouse $cx 10
     Wait 900
-    Click ($bodyLeft + 69) 16
+    Click ($bodyLeft + 57) 16
     Wait 1600
     Shot 'c1-mixer'
-    Click ($bodyLeft + 115) 16
+    Click ($bodyLeft + 171) 16
     Wait 500
     Shot 'c2-timer'
     Click ($cx + 26) 109
@@ -162,7 +162,7 @@ Stage 'tabs' {
 
     Move-Mouse $cx 10
     Wait 900
-    Click ($bodyLeft + 115) 16
+    Click ($bodyLeft + 171) 16
     Wait 500
     Click ($cx + 108) 109
     Wait 500
@@ -225,7 +225,7 @@ Stage 'Enter opens what was found' {
     $shell = New-Object -ComObject Shell.Application
     $where = @($shell.Windows() | ForEach-Object { $_.LocationURL + ' | ' + $_.LocationName })
     Note "      Explorer shows: $where"
-    Check 'nothing found, Enter searches in Explorer' ([bool]($where -like '*search-ms*'))
+    Check 'nothing found, Enter searches in Explorer' ([bool]($where -like '*bungx*'))
     @($shell.Windows()) | ForEach-Object { $_.Quit() }
     Wait 800
 }
@@ -263,7 +263,7 @@ Stage 'a click on the line itself keeps it, on the shadow does not' {
 Stage 'search from the notch' {
     Move-Mouse $cx 10
     Wait 900
-    Click ($bodyLeft + 161) 16
+    Click ($bodyLeft + 133) 16
     Wait 900
     Shot 'e1-suche-aus-notch'
     Check 'the notch closes' (Is-Target-Color ($cx + 295) 100)
@@ -304,6 +304,54 @@ Stage 'a file dragged out of the notch' {
     Shot 'g2-rausgezogen'
     Check 'the other window got the file' ((Target-Says) -contains "dropped $sampleFile")
     Check 'the shelf still has it' ((Get-Content $shelfFile) -contains $sampleFile)
+}
+
+Stage 'music' {
+    $mediaLog = Join-Path $Out 'player.log'
+    $player = Start-Process powershell -ArgumentList @('-STA', '-File', (Join-Path $PSScriptRoot 'media.ps1'), '-Log', $mediaLog) -PassThru
+    Wait 5000
+    Move-Mouse $cx 420
+    Wait 500
+    Shot 'j1-geschlossen-musik'
+    Check 'playing widens the closed notch' (Is-Black ($cx + 115) 4)
+    Wait 350
+    Shot 'j2-geschlossen-musik-spaeter'
+
+    Move-Mouse $cx 10
+    Wait 1000
+    Click ($bodyLeft + 19) 16
+    Wait 900
+    Shot 'j3-musik-tab'
+    Click ($bodyLeft + 57) 16
+    Wait 1600
+    Shot 'j4-mixer-mit-app'
+    Move-Mouse $cx 420
+    Wait 900
+
+    Move-Mouse $cx 10
+    Wait 900
+    Click ($bodyLeft + 171) 16
+    Wait 500
+    Click ($cx + 26) 109
+    Wait 500
+    Move-Mouse $cx 420
+    Wait 1400
+    Shot 'j5-musik-und-timer'
+    Check 'the timer goes into a ball beside the music' (Is-Black ($cx + 141) 16)
+    Move-Mouse $cx 10
+    Wait 900
+    Click ($bodyLeft + 171) 16
+    Wait 500
+    Click ($cx + 108) 109
+    Wait 500
+    Move-Mouse $cx 420
+    Wait 1200
+    Check 'stopped, the ball goes' (Is-Target-Color ($cx + 141) 16)
+
+    Stop-Process -Id $player.Id -Force
+    Wait 5000
+    Shot 'j6-musik-beendet'
+    Check 'with the player gone the notch is small again' (Is-Target-Color ($cx + 115) 4)
 }
 
 Stage 'the shelf over a restart' {

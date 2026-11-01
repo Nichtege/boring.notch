@@ -93,6 +93,17 @@ namespace BoringNotch
         public const string Gear = "M11,8 A3,3 0 1 1 5,8 A3,3 0 1 1 11,8 M8,1 V3 M8,13 V15 M1,8 H3 M13,8 H15 M3,3 L4.4,4.4 M11.6,11.6 L13,13 M3,13 L4.4,11.6 M11.6,4.4 L13,3";
         public const string Globe = "M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 M1.5,8 H14.5 M8,1.5 A9,9 0 0 1 8,14.5 M8,1.5 A9,9 0 0 0 8,14.5";
         public const string App = "M2,2 H14 V14 H2 Z M2,5.5 H14";
+        public const string Play = "M5,2.5 L13.5,8 L5,13.5 Z";
+        public const string Pause = "M4,2.5 H6.5 V13.5 H4 Z M9.5,2.5 H12 V13.5 H9.5 Z";
+        public const string Previous = "M8,3.5 L2,8 L8,12.5 Z M14,3.5 L8,8 L14,12.5 Z";
+        public const string Next = "M8,3.5 L14,8 L8,12.5 Z M2,3.5 L8,8 L2,12.5 Z";
+        public const string Note = "M6,12.5 V3.5 L13,2 V11 M6,12.5 A2,1.7 0 1 1 2,12.5 A2,1.7 0 1 1 6,12.5 M13,11 A2,1.7 0 1 1 9,11 A2,1.7 0 1 1 13,11";
+        public const string Check = "M3,8.5 L6.5,12 L13,4.5";
+        public const string SpeakerMute = "M2,6 V10 H5 L9,13 V3 L5,6 Z M11.5,6 L15,10 M15,6 L11.5,10";
+        public const string SpeakerLow = "M2,6 V10 H5 L9,13 V3 L5,6 Z M11,6.5 A2,2 0 0 1 11,9.5";
+        public const string SpeakerMedium = "M2,6 V10 H5 L9,13 V3 L5,6 Z M11,5.5 A3.5,3.5 0 0 1 11,10.5";
+        public const string Headphones = "M2.5,11 V8.5 A5.5,5.5 0 0 1 13.5,8.5 V11 M2.5,10 H4.5 V14 H2.5 Z M11.5,10 H13.5 V14 H11.5 Z";
+        public const string Monitor = "M2,3 H14 V11 H2 Z M5.5,14 H10.5 M8,11 V14";
 
         private static readonly Dictionary<string, Geometry> Parsed = new Dictionary<string, Geometry>();
 

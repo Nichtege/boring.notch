@@ -17,7 +17,7 @@ namespace BoringNotch
     /// </summary>
     internal static class SelfTest
     {
-        public static async Task<int> Run(string folder, NotchWindow notch, SearchWindow search, ShelfStore shelf, AudioMixer mixer)
+        public static async Task<int> Run(string folder, NotchWindow notch, SearchWindow search, ShelfStore shelf, AudioMixer mixer, MediaSessions media, AudioLevels levels)
         {
             var report = new StringBuilder();
             int failures = 0;
@@ -48,6 +48,7 @@ namespace BoringNotch
 
             await Step("shelf empty", async () =>
             {
+                notch.ShowTab(NotchTab.Shelf);
                 notch.Open();
                 notch.SettleForTest();
                 await Picture(notch.Root, "2-ablage-leer");
@@ -141,6 +142,86 @@ namespace BoringNotch
                 search.SettleForTest();
                 await Picture(search.Root, "10-suche-ergebnisse");
                 report.AppendLine("      rows: " + search.ResultCount + ", file search failed: " + search.FileSearchFailed);
+            });
+
+            // On the test machine something really plays, so there nothing here may be missing
+            bool mediaExpected = Environment.GetEnvironmentVariable("NOTCH_TEST_MEDIA") == "1";
+
+            await Step("music", async () =>
+            {
+                search.HideLine();
+                for (int i = 0; i < 100 && media.Current == null; i++)
+                {
+                    await Task.Delay(100);
+                }
+                NowPlaying now = media.Current;
+                report.AppendLine("      session: " + (now != null) + (now == null ? "" : ", playing: " + now.IsPlaying + ", can skip: " + now.CanNext + ", app: " + now.AppId));
+                if (mediaExpected)
+                {
+                    if (now == null) throw new InvalidOperationException("Nothing shows as playing.");
+                    report.AppendLine("      title: " + now.Title + ", artist: " + now.Artist + ", cover: " + (now.Art != null));
+                }
+
+                notch.ShowTab(NotchTab.Home);
+                notch.Open();
+                notch.SettleForTest();
+                await Task.Delay(800);
+                await Picture(notch.Root, "11-musik");
+                notch.CloseNotch();
+                notch.SettleForTest();
+                await Task.Delay(800);
+                await Picture(notch.Root, "12-geschlossen-musik");
+            });
+
+            await Step("pause and play from here", async () =>
+            {
+                if (media.Current == null) return;
+                bool before = media.Current.IsPlaying;
+                media.TogglePlayPause();
+                for (int i = 0; i < 50 && media.Current != null && media.Current.IsPlaying == before; i++)
+                {
+                    await Task.Delay(100);
+                }
+                bool changed = media.Current != null && media.Current.IsPlaying != before;
+                report.AppendLine("      the button reached the player: " + changed);
+                media.TogglePlayPause();
+                await Task.Delay(1000);
+                if (mediaExpected && !changed) throw new InvalidOperationException("Play and pause didn't reach the player.");
+            });
+
+            await Step("the graph's levels", async () =>
+            {
+                double loudest = 0;
+                int calls = 0;
+                Action<double[]> listen = values =>
+                {
+                    calls++;
+                    if (values != null) loudest = Math.Max(loudest, values.Max());
+                };
+                levels.LevelsChanged += listen;
+                bool wasRunning = levels.IsRunning;
+                if (!wasRunning) levels.Start();
+                await Task.Delay(2500);
+                if (!wasRunning) levels.Stop();
+                levels.LevelsChanged -= listen;
+                report.AppendLine("      updates: " + calls + ", loudest: " + loudest.ToString("0.00"));
+                if (mediaExpected && loudest <= 0) throw new InvalidOperationException("The graph heard nothing.");
+            });
+
+            await Step("outputs", () =>
+            {
+                var outputs = OutputDevices.List();
+                report.AppendLine("      outputs: " + outputs.Count + ", current: " + outputs.Count(o => o.IsCurrent));
+                if (mediaExpected)
+                {
+                    OutputDevice current = outputs.FirstOrDefault(o => o.IsCurrent);
+                    if (current == null) throw new InvalidOperationException("No current output.");
+                    // The current one again: this only proves Windows takes the call, it doesn't change anything
+                    bool taken = OutputDevices.Select(current.Id);
+                    report.AppendLine("      picking an output is taken: " + taken);
+                    if (!taken) throw new InvalidOperationException("Picking an output failed.");
+                }
+                return Task.CompletedTask;
             });
 
             await Step("hot key", () =>

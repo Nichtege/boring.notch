@@ -34,17 +34,23 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist, out | Out-Null
           Copy-Item bin/Release/net48/BoringNotch.exe dist/
-      - name: Play a sound for the Mixer to find
+      - name: A player for the self test to find
         shell: powershell
-        run: Start-Process powershell -ArgumentList '-File', "$PWD\ci\beep.ps1" -WindowStyle Hidden
+        run: |
+          $p = Start-Process powershell -ArgumentList '-STA', '-File', "$PWD\ci\media.ps1", '-Log', "$PWD\out\selftest-player.log" -WindowStyle Hidden -PassThru
+          Set-Content -Path "$PWD\out\selftest-player.pid" -Value $p.Id
+          Start-Sleep -Seconds 5
       - name: Self test
         shell: powershell
         run: |
+          $env:NOTCH_TEST_MEDIA = '1'
           $p = Start-Process "$PWD\dist\BoringNotch.exe" -ArgumentList '--selftest', "$PWD\out\selftest" -PassThru
           $null = $p.Handle
           if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Output 'Hung'; exit 1 }
           Get-Content "$PWD\out\selftest\bericht.txt" -ErrorAction SilentlyContinue
-          exit $p.ExitCode
+          $code = $p.ExitCode
+          Stop-Process -Id (Get-Content "$PWD\out\selftest-player.pid") -Force -ErrorAction SilentlyContinue
+          exit $code
       - name: Real use, with the mouse and keyboard
         if: success() || failure()
         shell: powershell

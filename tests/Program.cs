@@ -28,6 +28,7 @@ internal static class Tests
         ClockTests();
         ShelfTests();
         SearchTests();
+        MusicTests();
 
         Console.WriteLine(_passed + " passed, " + Failed.Count + " failed");
         foreach (string failure in Failed) Console.WriteLine("FAILED: " + failure);
@@ -194,6 +195,144 @@ internal static class Tests
         {
             if (Directory.Exists(dir)) Directory.Delete(dir, true);
         }
+    }
+
+    private static void MusicTests()
+    {
+        Same("under an hour", "1:05", PlaybackMath.TimeText(65.9));
+        Same("zero", "0:00", PlaybackMath.TimeText(0));
+        Same("from an hour on", "1:02:03", PlaybackMath.TimeText(3723));
+        Same("negative isn't shown", "0:00", PlaybackMath.TimeText(-5));
+        Same("not a number isn't shown", "0:00", PlaybackMath.TimeText(double.NaN));
+
+        var at = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc);
+        Same("playing runs on", 15.0, PlaybackMath.Estimated(10, 100, true, 1, at, at.AddSeconds(5)));
+        Same("at double speed", 20.0, PlaybackMath.Estimated(10, 100, true, 2, at, at.AddSeconds(5)));
+        Same("paused stands still", 10.0, PlaybackMath.Estimated(10, 100, false, 1, at, at.AddSeconds(5)));
+        Same("not past the end", 100.0, PlaybackMath.Estimated(90, 100, true, 1, at, at.AddHours(1)));
+        Same("paused neither", 100.0, PlaybackMath.Estimated(120, 100, false, 1, at, at));
+        Same("not before the start", 0.0, PlaybackMath.Estimated(0, 100, true, 1, at, at.AddSeconds(-5)));
+
+        Rgb bright = ColorMath.Average(new byte[] { 200, 100, 50, 255, 100, 200, 150, 255 });
+        Same("the middle of blue", 150, (int)bright.B);
+        Same("of green", 150, (int)bright.G);
+        Same("of red", 100, (int)bright.R);
+        Rgb black = ColorMath.Average(new byte[] { 0, 0, 0, 255 });
+        Same("near black becomes gray", 128, (int)black.R);
+        Same("all the way", (int)black.R, (int)black.B);
+        // 0.2, 0.1, 0.1 lifted to a brightness of 0.5: the hue stays and the color gets paler
+        Rgb dark = ColorMath.Average(new byte[] { 26, 26, 51, 255 });
+        Same("dark red is lifted to the minimum", 128, (int)dark.R);
+        Check("and stays red, " + dark.R + " over " + dark.G, dark.R > dark.G && dark.G == dark.B);
+        Same("no picture is white", 255, (int)ColorMath.Average(new byte[0]).R);
+
+        Rgb scaled = ColorMath.EnsureMinimumBrightness(new Rgb(255, 255, 255), 0.6);
+        Same("white comes down to the level asked for", 153, (int)scaled.G);
+        Rgb none = ColorMath.EnsureMinimumBrightness(new Rgb(0, 0, 0), 0.6);
+        Same("black can't divide by zero", 153, (int)none.R);
+        Same("a factor out of bounds changes nothing", 10, (int)ColorMath.EnsureMinimumBrightness(new Rgb(10, 20, 30), 2).R);
+
+        KeyValuePair<string, bool> S(string id, bool playing) => new KeyValuePair<string, bool>(id, playing);
+        Same("nothing there", null, SessionChoice.Pick("a", "a", new KeyValuePair<string, bool>[0]));
+        Same("first the current one", "b", SessionChoice.Pick(null, "b", new[] { S("a", false), S("b", false) }));
+        Same("what's shown and plays stays", "a", SessionChoice.Pick("a", "b", new[] { S("a", true), S("b", true) }));
+        Same("something playing takes over", "b", SessionChoice.Pick("a", "a", new[] { S("a", false), S("b", true) }));
+        Same("paused with nothing else stays", "a", SessionChoice.Pick("a", "b", new[] { S("a", false), S("b", false) }));
+        Same("gone falls to the current one", "b", SessionChoice.Pick("x", "b", new[] { S("a", false), S("b", false) }));
+        Same("gone without a current one", "a", SessionChoice.Pick("x", null, new[] { S("a", false), S("b", false) }));
+        Same("the current one first if several play", "c", SessionChoice.Pick("a", "c", new[] { S("a", false), S("b", true), S("c", true) }));
+
+        var exes = new[]
+        {
+            @"c:\program files\google\chrome\application\chrome.exe",
+            @"c:\users\a\appdata\roaming\spotify\spotify.exe",
+            @"c:\program files\windowsapps\microsoft.zunemusic_11.2_x64__8wekyb3d8bbwe\microsoft.media.player.exe",
+            @"c:\windows\system32\msedge.exe",
+        };
+        Same("an exe name", exes[1], AppMatcher.Find("Spotify.exe", exes));
+        Same("a name alone", exes[0], AppMatcher.Find("Chrome", exes));
+        Same("whatever the case", exes[3], AppMatcher.Find("MSEdge", exes));
+        Same("a packaged app", exes[2], AppMatcher.Find("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic", exes));
+        Same("a full path", exes[0], AppMatcher.Find(@"C:\Program Files\Google\Chrome\Application\chrome.exe", exes));
+        Same("a hash fits nothing", null, AppMatcher.Find("308046B0AF4A39CB", exes));
+        Same("a package that isn't there", null, AppMatcher.Find("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", exes));
+        Same("nothing fits nothing", null, AppMatcher.Find("", exes));
+        Check("a name inside a longer one is no match", !AppMatcher.Matches("Chrome", @"c:\x\chromedriver.exe"));
+
+        SpectrumTests();
+    }
+
+    private static byte[] Bytes(float[] samples)
+    {
+        var bytes = new byte[samples.Length * sizeof(float)];
+        Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
+        return bytes;
+    }
+
+    /// <summary>A steady noise with a tone pulsing on top of it, as each bar measures against its own recent range.</summary>
+    private static double[] HighestLevels(double toneHertz, int channels)
+    {
+        const int rate = 48000;
+        const int block = 480;
+        var bands = new SpectrumBands(rate);
+        var random = new Random(7);
+        var highest = new double[SpectrumBands.BandCount];
+        for (int b = 0; b < 400; b++)
+        {
+            bool isOn = b / 20 % 2 == 1;
+            var samples = new float[block * channels];
+            for (int i = 0; i < block; i++)
+            {
+                double time = (b * block + i) / (double)rate;
+                double noise = (random.NextDouble() - 0.5) * 0.002;
+                double tone = isOn ? 0.5 * Math.Sin(2 * Math.PI * toneHertz * time) : 0;
+                for (int channel = 0; channel < channels; channel++)
+                {
+                    samples[i * channels + channel] = (float)(noise + tone);
+                }
+            }
+            double[] levels = bands.Feed(Bytes(samples), samples.Length * sizeof(float), channels);
+            if (levels == null) continue;
+            for (int band = 0; band < levels.Length; band++)
+            {
+                Check("a level stays between 0 and 1, was " + levels[band], levels[band] >= 0 && levels[band] <= 1);
+                highest[band] = Math.Max(highest[band], levels[band]);
+            }
+        }
+        return highest;
+    }
+
+    private static void SpectrumTests()
+    {
+        double[] low = HighestLevels(120, 2);
+        Same("four bars", 4, low.Length);
+        Check("a low tone lifts the first bar most: " + string.Join(", ", low), low[0] > 0.5 && low[0] > low[2] && low[0] > low[3]);
+
+        double[] high = HighestLevels(8000, 1);
+        Check("a high tone lifts the last bar most: " + string.Join(", ", high), high[3] > 0.5 && high[3] > high[0] && high[3] > high[1]);
+
+        double[] middle = HighestLevels(2000, 2);
+        Check("a middle tone doesn't lift the first bar most: " + string.Join(", ", middle), middle[2] > middle[0]);
+
+        var silent = new SpectrumBands(48000);
+        double[] during = null;
+        for (int b = 0; b < 100; b++)
+        {
+            during = silent.Feed(new byte[960 * sizeof(float)], 960 * sizeof(float), 2) ?? during;
+        }
+        Same("silence says nothing", null, during);
+        Check("and the bars are at 0", silent.Levels.All(level => level == 0));
+
+        var bad = new SpectrumBands(48000);
+        var broken = new float[4800];
+        for (int i = 0; i < broken.Length; i++) broken[i] = i % 2 == 0 ? float.NaN : float.PositiveInfinity;
+        double[] fromBroken = null;
+        for (int b = 0; b < 3; b++) fromBroken = bad.Feed(Bytes(broken), broken.Length * sizeof(float), 2) ?? fromBroken;
+        Check("broken samples can't break the levels", fromBroken == null || fromBroken.All(level => level >= 0 && level <= 1));
+
+        Same("no buffer", null, new SpectrumBands(48000).Feed(null, 0, 2));
+        Same("no channels", null, new SpectrumBands(48000).Feed(new byte[8], 8, 0));
+        Same("half a sample isn't read past the end", null, new SpectrumBands(48000).Feed(new byte[3], 3, 1));
     }
 
     private static void SearchTests()

@@ -79,14 +79,17 @@ namespace BoringNotch
                 shelf.Load();
 
                 var mixer = new AudioMixer();
+                var media = new MediaSessions();
+                var levels = new AudioLevels();
                 var search = new SearchWindow();
-                var notch = new NotchWindow(shelf, mixer, search);
+                var notch = new NotchWindow(shelf, mixer, media, levels, search);
 
                 Tray tray = null;
                 Action quit = () =>
                 {
                     notch.Close();
                     search.CloseForGood();
+                    levels.Stop();
                     mixer.Close();
                     tray?.Dispose();
                     app.Shutdown();
@@ -98,7 +101,7 @@ namespace BoringNotch
                     int result = 1;
                     notch.Loaded += async (sender, e) =>
                     {
-                        result = await SelfTest.Run(testFolder, notch, search, shelf, mixer);
+                        result = await SelfTest.Run(testFolder, notch, search, shelf, mixer, media, levels);
                         // The real way out, so quitting gets tested too
                         quit();
                     };
