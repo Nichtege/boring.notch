@@ -36,6 +36,8 @@ private let parkingPosition = CGPoint(x: -10000, y: -10000)
 private let restoreDelay: TimeInterval = 0.35
 /// How long a banner stays out of sight without the app saying that its card is up.
 private let cardConfirmationTime: TimeInterval = 1.5
+/// How long a banner that became a stack has to show what's new. Its text can come a moment after its role.
+private let stackTextDelay: TimeInterval = 0.5
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 /// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
@@ -163,6 +165,10 @@ final class NotificationWatcher {
         var element: AXUIElement
         var window: AXUIElement
         var hasCard = false
+        /// Just found, and the app still has time to say that its card is up. Messages come quicker than
+        /// that, and a neighbour's card on its way is no reason to bring the window back.
+        var awaitsCard = false
+        var isStack: Bool
     }
 
     private struct ParkedWindow {
@@ -477,44 +483,57 @@ final class NotificationWatcher {
                 }
                 seen.formUnion(readings.map { $0.identity })
 
-                // A banner that became a stack can keep its identifier and text, and so can a repeat
-                // next to the original. Neither is what the card stands in for any more.
-                let isStillMirrorable = readings.allSatisfy { NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) }
-                    && Set(readings.map { $0.identity }).count == readings.count
-                if !isStillMirrorable {
+                // An alert has to be answered where it is, and everything in the window goes with it
+                if !readings.allSatisfy({ NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) }) {
                     restoreWindow(forKey: key(for: window))
                 }
 
-                let fresh = readings.filter { liveBanners[$0.identity] == nil }
-                for reading in readings where liveBanners[reading.identity] != nil {
-                    liveBanners[reading.identity]?.element = reading.banner.element
-                    liveBanners[reading.identity]?.window = window
+                var fresh: [(banner: Banner, text: BannerText, identity: Int)] = []
+                for reading in readings {
+                    let isStack = reading.banner.subrole == NotificationPanelDetection.stackSubrole
+                    if let live = liveBanners[reading.identity] {
+                        liveBanners[reading.identity]?.element = reading.banner.element
+                        liveBanners[reading.identity]?.window = window
+                        if isStack, !live.isStack {
+                            liveBanners[reading.identity]?.isStack = true
+                            expectNewText(identity: reading.identity, token: live.token)
+                        }
+                    } else {
+                        liveBanners[reading.identity] = LiveBanner(
+                            token: UUID().uuidString,
+                            element: reading.banner.element,
+                            window: window,
+                            isStack: isStack
+                        )
+                        fresh.append(reading)
+                    }
                 }
                 guard !fresh.isEmpty else { continue }
-                for reading in fresh {
-                    liveBanners[reading.identity] = LiveBanner(
-                        token: UUID().uuidString,
-                        element: reading.banner.element,
-                        window: window
-                    )
-                }
-
-                // Several new ones at once are a stack in all but name, with no card coming
-                guard !centerIsClosing, fresh.count == 1, let reading = fresh.first,
-                      NotificationPanelDetection.isMirrorable(subrole: reading.banner.subrole),
-                      let token = liveBanners[reading.identity]?.token
-                else {
+                guard !centerIsClosing else {
                     restoreWindow(forKey: key(for: window))
                     continue
                 }
 
-                // Out of sight before anything else, or the banner shows next to the card on its way
-                if !parkBeforeCard(window, banners: banners, identity: reading.identity, token: token) {
-                    restoreWindow(forKey: key(for: window))
+                // All of them first, or the first to park would see the others as banners without a card
+                for reading in fresh where NotificationPanelDetection.isMirrorable(subrole: reading.banner.subrole) {
+                    liveBanners[reading.identity]?.awaitsCard = true
                 }
-                // Its text may only come a moment later, as a banner of its own to the next scan
-                if !reading.text.isEmpty {
-                    report(reading.banner.element, text: reading.text, token: token)
+                for reading in fresh {
+                    guard NotificationPanelDetection.isMirrorable(subrole: reading.banner.subrole),
+                          let token = liveBanners[reading.identity]?.token
+                    else {
+                        restoreWindow(forKey: key(for: window))
+                        continue
+                    }
+
+                    // Out of sight before anything else, or the banner shows next to the card on its way
+                    if !parkBeforeCard(window, banners: banners, identity: reading.identity, token: token) {
+                        restoreWindow(forKey: key(for: window))
+                    }
+                    // Its text may only come a moment later, as a banner of its own to the next scan
+                    if !reading.text.isEmpty {
+                        report(reading.banner.element, text: reading.text, token: token)
+                    }
                 }
             }
 
@@ -599,12 +618,24 @@ final class NotificationWatcher {
     /// A new banner leaves as soon as it's found. Nothing depends on the app for that: unless the app
     /// says in time that the card is up, the banner comes back by itself.
     private func parkBeforeCard(_ window: AXUIElement, banners: [Banner], identity: Int, token: String) -> Bool {
-        guard canPark(banners, for: identity), moveAway(window, token: token) else { return false }
         DispatchQueue.main.asyncAfter(deadline: .now() + cardConfirmationTime) { [weak self] in
-            guard let self, self.liveBanners.values.first(where: { $0.token == token })?.hasCard != true else { return }
+            guard let self else { return }
+            if let identity = self.liveBanners.first(where: { $0.value.token == token })?.key {
+                self.liveBanners[identity]?.awaitsCard = false
+                if self.liveBanners[identity]?.hasCard == true { return }
+            }
             self.restore(token: token)
         }
-        return true
+        return canPark(banners, for: identity) && moveAway(window, token: token)
+    }
+
+    /// Something new came, or it wouldn't be a stack now. New text makes a new identity and a new card. If
+    /// it still says the same after a moment, no card can show what's new, so the stack itself has to.
+    private func expectNewText(identity: Int, token: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + stackTextDelay) { [weak self] in
+            guard let self, self.liveBanners[identity]?.token == token else { return }
+            self.restore(token: token)
+        }
     }
 
     /// Called by the app once the card for this banner is really on screen. Everything is looked at
@@ -655,16 +686,16 @@ final class NotificationWatcher {
         return true
     }
 
-    /// Everything in the window has to be a banner, and either this one or one whose card is up.
+    /// Everything in the window has to be a banner, and either this one or one whose card is up or coming.
+    /// A repeat next to the original says the same, so the same card stands in for both.
     private func canPark(_ banners: [Banner], for identity: Int) -> Bool {
         var containsBanner = false
         for banner in banners {
             guard NotificationPanelDetection.isMirrorable(subrole: banner.subrole) else { return false }
             let other = self.identity(of: banner.element, showing: readText(in: banner.element))
             if other == identity {
-                guard !containsBanner else { return false }
                 containsBanner = true
-            } else if liveBanners[other]?.hasCard != true {
+            } else if liveBanners[other]?.hasCard != true, liveBanners[other]?.awaitsCard != true {
                 return false
             }
         }
@@ -688,14 +719,17 @@ final class NotificationWatcher {
 
         if let identity, let window = liveBanners[identity]?.window {
             liveBanners[identity]?.hasCard = false
+            liveBanners[identity]?.awaitsCard = false
             restoreWindow(forKey: key(for: window))
         }
     }
 
-    /// Presses the banner if it's still there and can be pressed. The app handles a no.
+    /// Presses the banner if it's still there and can be pressed. The app handles a no. A press on a stack
+    /// may only unfold it, out of sight, so that's a no too.
     func press(token: String) -> Bool {
         guard AXIsProcessTrusted(),
-              let banner = liveBanners.values.first(where: { $0.token == token })?.element
+              let banner = liveBanners.values.first(where: { $0.token == token })?.element,
+              banner.string(kAXSubroleAttribute) == NotificationPanelDetection.plainBannerSubrole
         else { return false }
         var actions: CFArray?
         guard AXUIElementCopyActionNames(banner, &actions) == .success,
