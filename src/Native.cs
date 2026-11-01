@@ -97,6 +97,15 @@ namespace BoringNotch
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int capacity);
 
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr processId);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool doAttach);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
 
@@ -137,6 +146,28 @@ namespace BoringNotch
             int height = (int)Math.Ceiling(heightInDips * scale);
             int x = info.rcMonitor.Left + (info.rcMonitor.Right - info.rcMonitor.Left - width) / 2;
             SetWindowPos(hwnd, HWND_TOPMOST, x, info.rcMonitor.Top, width, height, SWP_NOACTIVATE);
+        }
+
+        /// <summary>
+        /// Windows only lets the app the user is working with hand over the keyboard. A hot key or a click normally
+        /// counts as that. If it doesn't, going in along with the app in front is the usual way that still works.
+        /// </summary>
+        public static void BringToFront(IntPtr hwnd)
+        {
+            if (SetForegroundWindow(hwnd)) return;
+
+            IntPtr foreground = GetForegroundWindow();
+            uint other = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, IntPtr.Zero);
+            uint own = GetCurrentThreadId();
+            if (other == 0 || other == own || !AttachThreadInput(own, other, true)) return;
+            try
+            {
+                SetForegroundWindow(hwnd);
+            }
+            finally
+            {
+                AttachThreadInput(own, other, false);
+            }
         }
 
         public static void KeepOnTop(IntPtr hwnd)

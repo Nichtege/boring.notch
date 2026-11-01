@@ -173,6 +173,18 @@ internal static class Tests
             again.Remove(@"C:\USERS\A\Übung ä.pdf");
             Check("removes whatever the case", again.Paths.All(p => !p.StartsWith(@"C:\Users\A\Ü")) || again.IsEmpty);
 
+            string real = Path.Combine(dir, "echt.txt");
+            File.WriteAllText(real, "x");
+            Check("a file that's there stays", ShelfStore.StillThereOrUnknown(real));
+            Check("a folder that's there stays", ShelfStore.StillThereOrUnknown(dir));
+            Check("a file deleted on a disk that's there goes", !ShelfStore.StillThereOrUnknown(Path.Combine(dir, "weg.txt")));
+            if (Path.DirectorySeparatorChar == '\\')
+            {
+                // Only Windows has these. The workflow runs this there too.
+                Check("a file on a drive that's unplugged stays", ShelfStore.StillThereOrUnknown(@"Q:\weg\datei.txt"));
+                Check("a file on a share stays, unasked", ShelfStore.StillThereOrUnknown(@"\\gibtsnicht\freigabe\datei.txt"));
+            }
+
             File.WriteAllText(file, "\n  \r\nC:\\a.txt\nC:\\a.txt\n\n");
             var messy = new ShelfStore(file, exists);
             messy.Load();

@@ -23,6 +23,7 @@ namespace BoringNotch
     /// <summary>
     /// The notch at the top of the main screen. The window stays one size and never activates. What moves is the
     /// black shape inside it, and clicks pass through everything around that shape, as those pixels are fully clear.
+    /// The exception is the shadow of an open or hovered notch: its ring of a few pixels takes clicks and does nothing.
     /// </summary>
     internal sealed class NotchWindow : Window
     {
@@ -142,7 +143,8 @@ namespace BoringNotch
             RedrawShape();
 
             SourceInitialized += OnSourceInitialized;
-            DpiChanged += (sender, e) => Place();
+            // Later, as WPF moves the window itself right after telling about the new scale
+            DpiChanged += (sender, e) => Dispatcher.BeginInvoke(new Action(Place));
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (sender, e) =>
                 Dispatcher.BeginInvoke(new Action(Place));
             Closed += (sender, e) => Cleanup();
@@ -309,7 +311,6 @@ namespace BoringNotch
             _isOpen = true;
 
             Native.KeepOnTop(_handle);
-            _shelfView.Refresh();
             ConfigureSprings(0.42, 0.8);
             UpdateTargets();
             UpdateClosedContent();

@@ -69,7 +69,13 @@ namespace BoringNotch
                 };
 
                 string storeFolder = testFolder ?? Log.Folder;
-                var shelf = new ShelfStore(Path.Combine(storeFolder, "ablage.txt"));
+                string shelfFile = Path.Combine(storeFolder, "ablage.txt");
+                if (testFolder != null && File.Exists(shelfFile))
+                {
+                    // Every self test starts with an empty shelf, or its first picture proves nothing
+                    File.Delete(shelfFile);
+                }
+                var shelf = new ShelfStore(shelfFile);
                 shelf.Load();
 
                 var mixer = new AudioMixer();
@@ -80,7 +86,7 @@ namespace BoringNotch
                 Action quit = () =>
                 {
                     notch.Close();
-                    search.Close();
+                    search.CloseForGood();
                     mixer.Close();
                     tray?.Dispose();
                     app.Shutdown();

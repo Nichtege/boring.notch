@@ -45,6 +45,7 @@ namespace BoringNotch
         private int _selected;
         private bool _selectionMoved;
         private bool _isOpen;
+        private bool _isQuitting;
 
         public IntPtr Handle => _handle;
 
@@ -100,6 +101,18 @@ namespace BoringNotch
             _field.TextChanged += (sender, e) => QueryChanged();
             PreviewKeyDown += OnKey;
             Deactivated += (sender, e) => HideLine();
+            // A closed window can never show again, so Alt+F4 only hides the line
+            Closing += (sender, e) =>
+            {
+                if (_isQuitting) return;
+                e.Cancel = true;
+                HideLine();
+            };
+            // The card's shadow takes clicks too, and those are clicks beside the line
+            MouseLeftButtonDown += (sender, e) =>
+            {
+                if (!_card.IsMouseOver) HideLine();
+            };
             _thinking.Tick += (sender, e) => SearchFiles();
             SourceInitialized += (sender, e) =>
             {
@@ -191,7 +204,7 @@ namespace BoringNotch
 
             Show();
             Activate();
-            Native.SetForegroundWindow(_handle);
+            Native.BringToFront(_handle);
             // The field can only take the keyboard once the window has been laid out and activated
             Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -208,6 +221,12 @@ namespace BoringNotch
             _generation++;
             Hide();
             _field.Text = "";
+        }
+
+        public void CloseForGood()
+        {
+            _isQuitting = true;
+            Close();
         }
 
         /// <summary>The line stays under the notch, so it moves with an opening or closing notch.</summary>

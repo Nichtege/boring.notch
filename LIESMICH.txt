@@ -38,9 +38,9 @@ Suche            Lupe in der Notch oder Strg+Alt+A. Findet Apps, Einstellungen
 
 WAS NICHT DABEI IST
 -------------------
-Nur der Hauptbildschirm. Keine Musikanzeige und keine Benachrichtigungen, die
-gibt es nur in der Mac-Version. Die geschlossene Notch liegt über der Mitte der
-Titelleiste maximierter Fenster.
+Nur der Hauptbildschirm. Keine Musikanzeige, kein Equalizer und keine
+Benachrichtigungen, die gibt es nur in der Mac-Version. Die geschlossene Notch
+liegt über der Mitte der Titelleiste maximierter Fenster.
 
 
 PRIVATSPHÄRE

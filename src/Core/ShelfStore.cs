@@ -18,7 +18,27 @@ namespace BoringNotch.Core
         public ShelfStore(string file, Func<string, bool> exists = null)
         {
             _file = file;
-            _exists = exists ?? (path => File.Exists(path) || Directory.Exists(path));
+            _exists = exists ?? StillThereOrUnknown;
+        }
+
+        /// <summary>
+        /// Only a file really gone comes off the shelf. On a USB stick that's unplugged it can't be told, and it's
+        /// back with the stick. A network share isn't asked at all, as an offline one would freeze the notch for its timeout.
+        /// </summary>
+        public static bool StillThereOrUnknown(string path)
+        {
+            try
+            {
+                string root = Path.GetPathRoot(path);
+                if (string.IsNullOrEmpty(root) || root.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+                if (!Directory.Exists(root)) return true;
+                if (root.Length > 1 && new DriveInfo(root).DriveType == DriveType.Network) return true;
+                return File.Exists(path) || Directory.Exists(path);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException)
+            {
+                return true;
+            }
         }
 
         public IReadOnlyList<string> Paths => _paths;

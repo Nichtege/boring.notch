@@ -230,6 +230,36 @@ Stage 'Enter opens what was found' {
     Wait 800
 }
 
+Stage 'Alt+F4 only hides the search' {
+    Move-Mouse $cx 420
+    Press-HotKey
+    Wait 700
+    Check 'the line is up' (-not (Is-Target-Color $cx 64))
+    [Input]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x73, 0, 0, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x73, 0, 2, [UIntPtr]::Zero)
+    [Input]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    Wait 600
+    Check 'Alt+F4 takes it away' (Is-Target-Color $cx 64)
+    Press-HotKey
+    Wait 700
+    Shot 'd9-nach-alt-f4'
+    Check 'and it still comes back' (-not (Is-Target-Color $cx 64))
+    [Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Wait 500
+}
+
+Stage 'a click on the line itself keeps it, on the shadow does not' {
+    Press-HotKey
+    Wait 700
+    Click ($cx + 150) 64
+    Wait 400
+    Check 'a click on the line keeps it' (-not (Is-Target-Color $cx 64))
+    Click ($cx + 290) 64
+    Wait 500
+    Check 'a click just beside it takes it away' (Is-Target-Color $cx 64)
+}
+
 Stage 'search from the notch' {
     Move-Mouse $cx 10
     Wait 900
@@ -311,6 +341,15 @@ Stage 'full screen' {
     Wait 2500
     Shot 'i2-nach-vollbild'
     Check 'it comes back afterwards' (Is-Black $cx 10)
+}
+
+Stage 'the icons in the file' {
+    $assembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($Exe))
+    $stream = $assembly.GetManifestResourceStream('BoringNotch.ico')
+    $tray = New-Object Drawing.Icon($stream, 16, 16)
+    Check 'the tray icon has a handle' ($tray.Handle -ne [IntPtr]::Zero)
+    $tray.ToBitmap().Save((Join-Path $Out 'z-tray-16.png'), [Drawing.Imaging.ImageFormat]::Png)
+    [Drawing.Icon]::ExtractAssociatedIcon($Exe).ToBitmap().Save((Join-Path $Out 'z-exe-32.png'), [Drawing.Imaging.ImageFormat]::Png)
 }
 
 Stage 'at the end' {
