@@ -17,11 +17,11 @@ struct TabModel: Identifiable {
 
 let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
-    TabModel(label: "Devices", icon: "hifispeaker.2.fill", view: .devices),
+    TabModel(label: "Mixer", icon: "slider.horizontal.3", view: .mixer),
     TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
     TabModel(label: "Starlane", icon: "sparkles", view: .starlane),
     TabModel(label: "Focus", icon: "timer", view: .focus),
-    TabModel(label: "Mixer", icon: "slider.horizontal.3", view: .mixer)
+    TabModel(label: "Devices", icon: "hifispeaker.2.fill", view: .devices)
 ]
 
 struct TabSelectionView: View {
