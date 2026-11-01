@@ -2,9 +2,9 @@
 //  SystemNotificationManager.swift
 //  boringNotch
 //
-//  Shows the notification banners of other apps as a card under the notch. The helper takes a banner off
-//  screen as soon as it finds it, but it only stays away while its card is really up, and when in doubt
-//  it comes back. What a banner says stays in memory on this Mac.
+//  Shows the notification banners of other apps as cards under the notch, stacked when they come quickly.
+//  The helper takes a banner off screen as soon as it finds it, but it only stays away while a card is
+//  really up for it, and when in doubt it comes back. What a banner says stays in memory on this Mac.
 //
 
 import AppKit
@@ -13,27 +13,42 @@ import Defaults
 
 struct SystemNotification: Identifiable, Equatable {
     var id = UUID().uuidString
+    /// The helper's name for the banner behind this card.
+    var token: String
     var appName: String?
     var bundleID: String?
     var title: String?
     var subtitle: String?
     var body: String?
     var receivedAt = Date()
+
+    func isFromSameSender(as other: SystemNotification) -> Bool {
+        appName == other.appName && title == other.title
+    }
+
+    /// A title that arrives before the body makes a banner look new to the helper.
+    func isLongerReading(of other: SystemNotification) -> Bool {
+        title != nil && isFromSameSender(as: other)
+            && receivedAt.timeIntervalSince(other.receivedAt) < 1
+            && body?.hasPrefix(other.body ?? "") ?? (other.body == nil)
+    }
 }
 
 @MainActor
 final class SystemNotificationManager {
     static let shared = SystemNotificationManager()
 
-    private let queueLimit = 5
+    /// The newest card and three behind it. An older one leaves the stack for the Notification Center,
+    /// which has it anyway.
+    private let stackLimit = 4
     private let displayDuration: Duration = .seconds(8)
     // A check is two trips to the helper. While it's watching it looks after the permission itself and
     // says when it stops, so this is only a safety net.
     private let watchingCheckInterval: Duration = .seconds(30)
     // Waiting for the permission to be given
     private let waitingCheckInterval: Duration = .seconds(3)
-    private var activeNotification: SystemNotification?
-    private var queuedNotifications: [SystemNotification] = []
+    /// Newest first.
+    private var notifications: [SystemNotification] = []
     private var isCardHovered = false
     private var didAskForPermission = false
     private var dismissTask: Task<Void, Never>?
@@ -139,8 +154,8 @@ final class SystemNotificationManager {
             return
         }
 
-        let notification = SystemNotification(
-            id: token,
+        var notification = SystemNotification(
+            token: token,
             appName: nonEmpty(payload["appName"]),
             bundleID: nonEmpty(payload["bundleID"]),
             title: nonEmpty(payload["title"]),
@@ -148,54 +163,65 @@ final class SystemNotificationManager {
             body: nonEmpty(payload["body"])
         )
 
-        guard activeNotification == nil || !isCardHovered else {
-            // Its banner comes back until its card comes, so nothing is lost if this one gets dropped
-            XPCHelperClient.shared.restoreNotification(token)
-            // Most likely the same one read again, with more of its text this time
-            if notification.title != nil {
-                queuedNotifications.removeAll { queued in
-                    queued.appName == notification.appName && queued.title == notification.title
-                        && notification.body?.hasPrefix(queued.body ?? "") ?? (queued.body == nil)
-                }
+        // The card it took the place of, whose banner may still be there too
+        var replaced: SystemNotification?
+        if let index = notifications.firstIndex(where: { notification.isLongerReading(of: $0) }) {
+            replaced = notifications[index]
+            notification.id = notifications[index].id
+            notification.receivedAt = notifications[index].receivedAt
+            notifications[index] = notification
+        } else {
+            notifications.insert(notification, at: 0)
+            if notifications.count > stackLimit {
+                replaced = notifications.removeLast()
             }
-            queuedNotifications.append(notification)
-            if queuedNotifications.count > queueLimit {
-                queuedNotifications.removeFirst()
-            }
+        }
+
+        guard NotificationCardController.shared.show(notifications) else {
+            // There's no screen for any of them, and nothing could dismiss a card that's still up
+            dismissAll()
             return
         }
-        present(notification)
+        scheduleDismiss()
+
+        Task { await parkBanner(notification.token, whileShowing: notification) }
+        if let replaced {
+            Task { await parkBanner(replaced.token, whileShowing: notification) }
+        }
     }
 
-    /// Seen means the user dealt with the card. Its banner then stays away until it's gone by itself: there's
-    /// nothing left to tell, and it would only flash back for a moment.
-    func dismissActive(seen: Bool = false) {
-        guard let notification = activeNotification else { return }
-        dismissTask?.cancel()
-        dismissTask = nil
-        activeNotification = nil
-        if !seen {
-            releaseBanner(of: notification)
-        }
-
-        if queuedNotifications.isEmpty {
-            isCardHovered = false
-            NotificationCardController.shared.hide()
-        } else {
-            present(queuedNotifications.removeFirst())
-        }
+    /// The user dealt with this card. Its banner stays away until it's gone by itself: there's nothing
+    /// left to tell, and it would only flash back for a moment.
+    func dismiss(_ notification: SystemNotification) {
+        remove { $0.id == notification.id }
     }
 
     /// Everything goes, and every banner still up comes back.
     func dismissAll() {
-        queuedNotifications.removeAll()
-        dismissActive()
+        guard !notifications.isEmpty else { return }
+        let dismissed = notifications
+        remove { _ in true }
+        dismissed.forEach(releaseBanner)
+    }
+
+    private func remove(where shouldRemove: (SystemNotification) -> Bool) {
+        notifications.removeAll(where: shouldRemove)
+        guard notifications.isEmpty else {
+            if !NotificationCardController.shared.show(notifications) {
+                dismissAll()
+            }
+            return
+        }
+        dismissTask?.cancel()
+        dismissTask = nil
+        isCardHovered = false
+        NotificationCardController.shared.hide()
     }
 
     /// Only a card that's staying can be hovered. One on its way out reports it too, but it has no exit
     /// to come once it's gone.
     func cardHoverChanged(_ hovering: Bool) {
-        isCardHovered = hovering && activeNotification != nil
+        isCardHovered = hovering && !notifications.isEmpty
         if isCardHovered {
             dismissTask?.cancel()
             dismissTask = nil
@@ -205,14 +231,14 @@ final class SystemNotificationManager {
     }
 
     /// Opens the right place through the banner if it's still there, the app itself otherwise. If
-    /// nothing opened the card stays, since it may be all that's left of the notification.
-    func openActive() {
-        guard let notification = activeNotification else { return }
+    /// nothing opened the card stays, since it may be all that's left of the notification. What opened
+    /// is the whole conversation, so the sender's other cards are done as well.
+    func open(_ notification: SystemNotification) {
         Task {
-            let pressed = await XPCHelperClient.shared.pressNotification(notification.id)
+            let pressed = await XPCHelperClient.shared.pressNotification(notification.token)
             let opened = if pressed { true } else { await activateApp(of: notification) }
-            if opened, activeNotification?.id == notification.id {
-                dismissActive(seen: true)
+            if opened {
+                remove { $0.isFromSameSender(as: notification) }
             }
         }
     }
@@ -226,50 +252,36 @@ final class SystemNotificationManager {
         (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
     }
 
-    private func present(_ notification: SystemNotification) {
-        let previous = activeNotification
-        guard NotificationCardController.shared.show(notification) else {
-            if previous == nil {
-                isCardHovered = false
-                queuedNotifications.removeAll()
-                // The card before it may still be up, and nothing could dismiss it any more
-                NotificationCardController.shared.hide()
-            }
-            return
-        }
-        activeNotification = notification
-        scheduleDismiss()
-
-        if let previous {
-            releaseBanner(of: previous)
-        }
-        Task { await parkBanner(of: notification) }
-    }
-
-    private func parkBanner(of notification: SystemNotification) async {
+    /// Waits for the card, which stands in for this banner, and then lets the banner stay away.
+    private func parkBanner(_ token: String, whileShowing notification: SystemNotification) async {
         guard await NotificationCardController.shared.waitUntilOnScreen(notification),
-              activeNotification?.id == notification.id, canShowCards
+              isShown(notification), canShowCards
         else { return }
 
         // The card may have gone while the helper was at it
-        let parked = await XPCHelperClient.shared.parkNotification(notification.id)
-        if parked, activeNotification?.id != notification.id {
-            XPCHelperClient.shared.restoreNotification(notification.id)
+        let parked = await XPCHelperClient.shared.parkNotification(token)
+        if parked, !isShown(notification) {
+            XPCHelperClient.shared.restoreNotification(token)
         }
     }
 
-    private func releaseBanner(of notification: SystemNotification) {
-        XPCHelperClient.shared.restoreNotification(notification.id)
+    private func isShown(_ notification: SystemNotification) -> Bool {
+        notifications.contains { $0.id == notification.id }
     }
 
+    private func releaseBanner(of notification: SystemNotification) {
+        XPCHelperClient.shared.restoreNotification(notification.token)
+    }
+
+    /// The stack goes as one, a while after the newest card came.
     private func scheduleDismiss() {
         dismissTask?.cancel()
         dismissTask = nil
-        guard !isCardHovered, let id = activeNotification?.id else { return }
+        guard !isCardHovered, !notifications.isEmpty else { return }
         dismissTask = Task { [weak self, displayDuration] in
             try? await Task.sleep(for: displayDuration)
-            guard !Task.isCancelled, let self, self.activeNotification?.id == id else { return }
-            self.dismissActive()
+            guard !Task.isCancelled else { return }
+            self?.dismissAll()
         }
     }
 

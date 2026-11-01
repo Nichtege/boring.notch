@@ -77,14 +77,11 @@ final class NotchPanelLayout {
     }
 
     func move(_ panel: NSPanel, to frame: NSRect, animated: Bool) {
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = moveDuration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                panel.animator().setFrame(frame, display: true)
-            }
-        } else {
-            panel.setFrame(frame, display: true)
+        // Without a duration too, or a move still underway would end up overriding this one
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animated ? moveDuration : 0
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(frame, display: true)
         }
     }
 }
