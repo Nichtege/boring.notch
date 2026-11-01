@@ -72,7 +72,8 @@ beheben.
 WAS GETESTET IST
 ----------------
 Die exe lief automatisch auf einem echten Windows (Server 2025, Build 26100) mit
-Maus und Tastatur: Notch, Musik mit Chrome, Mixer, Ablage, Timer, Suche, Vollbild.
+Maus und Tastatur: Notch, Musik mit Chrome, Mixer, Ablage, Timer, Suche, Vollbild,
+und bei 100 und 150 % Skalierung.
 Nicht getestet: Windows 10 und ein normaler Windows-11-PC, zwei Bildschirme,
 virtuelle Desktops, Spotify selbst, das Umschalten zwischen zwei echten
 Ausgabegeräten (der Test-PC hat nur eins) und ein deutsches Windows.
