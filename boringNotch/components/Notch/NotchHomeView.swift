@@ -193,12 +193,11 @@ struct MusicControlsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .overlay(alignment: .trailing) {
-            // The name only fits when the last slot is empty
             Group {
                 if let device = musicManager.remoteDevice {
-                    remoteLabel(device, showsName: slots.last == MusicControlButton.none)
+                    remoteLabel(device)
                 } else {
-                    MusicOutputButton(showsName: slots.last == MusicControlButton.none)
+                    MusicOutputButton()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -206,27 +205,17 @@ struct MusicControlsView: View {
     }
 
     /// Where another device plays can't be changed from here, so this leads to the list of them.
-    private func remoteLabel(_ device: RemoteNowPlaying, showsName: Bool) -> some View {
+    private func remoteLabel(_ device: RemoteNowPlaying) -> some View {
         Button {
             withAnimation(.smooth) {
                 BoringViewCoordinator.shared.currentView = .devices
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: RemoteMediaManager.shared.outputIconName(of: device))
-                if showsName {
-                    Text(verbatim: RemoteMediaManager.shared.outputName(of: device))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-            }
-            .font(.caption)
-            .foregroundColor(.gray)
-            .frame(maxWidth: 84, alignment: .trailing)
-            .frame(height: 30)
-            .contentShape(Rectangle())
+            OutputDeviceIcon(systemName: RemoteMediaManager.shared.outputIconName(of: device))
         }
         .buttonStyle(PlainButtonStyle())
+        // The name is in the list it leads to, and for VoiceOver here
+        .accessibilityLabel(Text(verbatim: RemoteMediaManager.shared.outputName(of: device)))
     }
 
     private var activeSlots: [MusicControlButton] {
@@ -300,9 +289,20 @@ struct MusicControlsView: View {
     }
 }
 
-struct MusicOutputButton: View {
-    let showsName: Bool
+/// Only the device's symbol, big as on the iPhone's lock screen: the names are in the picker and the Devices tab.
+struct OutputDeviceIcon: View {
+    let systemName: String
 
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 19, weight: .medium))
+            .foregroundColor(.gray)
+            .frame(width: 30, height: 30)
+            .contentShape(Rectangle())
+    }
+}
+
+struct MusicOutputButton: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var outputController = MusicOutputController.shared
@@ -330,21 +330,10 @@ struct MusicOutputButton: View {
         Button {
             showPopover.toggle()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: currentIcon)
-                if showsName {
-                    Text(currentName)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-            }
-            .font(.caption)
-            .foregroundColor(.gray)
-            .frame(maxWidth: 84, alignment: .trailing)
-            .frame(height: 30)
-            .contentShape(Rectangle())
+            OutputDeviceIcon(systemName: currentIcon)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Text(verbatim: currentName))
         .opacity(isVisible ? 1 : 0)
         .disabled(!isVisible)
         .onHover { hovering in
