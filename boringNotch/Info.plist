@@ -4,5 +4,11 @@
 <dict>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>This app plays apps you turned down at their own volume and measures the music app for the bars in the notch. The sound only passes through: nothing is recorded or kept.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_airplay._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app finds the speakers in your network, so the notch can set the volume of the HomePod your iPhone plays on.</string>
 </dict>
 </plist>

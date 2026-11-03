@@ -8,6 +8,7 @@
 import Combine
 import Defaults
 import Foundation
+import Network
 import WidgetKit
 
 final class RemoteMediaManager: ObservableObject {
@@ -20,8 +21,14 @@ final class RemoteMediaManager: ObservableObject {
     @Published private(set) var selected = Defaults[.selectedMediaDevice]
     /// Says the notch's close gesture should leave a scroll in the list alone
     var scrolls = false
+    /// The volume of the speaker the shown device plays on, from 0 to 1. Nil while it isn't known, and then the
+    /// player has no slider for it.
+    @Published private(set) var speakerVolume: Double?
 
     private let controller = RemoteNowPlayingController()
+    private let speakerIDs = SpeakerIDs()
+    /// The speaker `speakerVolume` belongs to
+    private var volumeSpeaker: String?
     private var cancellables = Set<AnyCancellable>()
     private var lastControlTile: [String]?
 
@@ -32,6 +39,20 @@ final class RemoteMediaManager: ObservableObject {
                 self?.devicesChanged(devices)
             }
             .store(in: &cancellables)
+
+        controller.speakerVolumes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] answer in
+                guard let self, answer.speaker == self.volumeSpeaker else { return }
+                self.speakerVolume = answer.volume
+            }
+            .store(in: &cancellables)
+
+        // The IDs come a moment after the search starts
+        speakerIDs.onChange = { [weak self] in
+            guard let self, self.volumeSpeaker == nil, MusicManager.shared.remoteDevice != nil else { return }
+            self.refreshSpeakerVolume()
+        }
 
         Publishers.Merge(
             MusicManager.shared.$musicState.map { _ in () },
@@ -141,6 +162,33 @@ final class RemoteMediaManager: ObservableObject {
         controller.refresh()
     }
 
+    /// Where the shown device's sound comes out: the speaker an iPhone plays on, or a speaker playing by itself.
+    private func speakerID(of device: RemoteNowPlaying) -> String? {
+        let name = device.isPhone ? speaker(of: device)?.name : device.deviceName
+        return name.flatMap { speakerIDs.ids[$0] }
+    }
+
+    /// For when the player shows another device. The first time, macOS asks to allow finding devices in the network.
+    func refreshSpeakerVolume() {
+        speakerIDs.start()
+        guard let device = MusicManager.shared.remoteDevice, let speaker = speakerID(of: device) else {
+            volumeSpeaker = nil
+            speakerVolume = nil
+            return
+        }
+        if speaker != volumeSpeaker {
+            volumeSpeaker = speaker
+            speakerVolume = nil
+        }
+        controller.readVolume(ofSpeaker: speaker)
+    }
+
+    func setSpeakerVolume(_ level: Double) {
+        guard let volumeSpeaker else { return }
+        speakerVolume = level
+        controller.setVolume(level, ofSpeaker: volumeSpeaker)
+    }
+
     /// The tile is its own process. It only gets to know what plays, and only while it does.
     private func updateControlTile() {
         let music = MusicManager.shared
@@ -158,5 +206,34 @@ final class RemoteMediaManager: ObservableObject {
         shared?.set(tile?[1], forKey: "mediaTileDevice")
         shared?.set(tile?[2], forKey: "mediaTileIcon")
         ControlCenter.shared.reloadControls(ofKind: "com.nichtege.boringnotch.media")
+    }
+}
+
+/// The ID macOS knows each speaker by. Music gives only names, and the ID is in the speaker's AirPlay announcement
+/// in the local network. It's looked for from the first time it's needed, and only names and IDs are kept.
+private final class SpeakerIDs {
+    /// Name → ID
+    private(set) var ids: [String: String] = [:]
+    var onChange: (() -> Void)?
+
+    private var browser: NWBrowser?
+
+    func start() {
+        guard browser == nil else { return }
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: "_airplay._tcp", domain: nil), using: .tcp)
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            var ids: [String: String] = [:]
+            for result in results {
+                guard case let .service(name, _, _, _) = result.endpoint,
+                      case let .bonjour(record) = result.metadata,
+                      let id = record["psi"] else { continue }
+                ids[name] = id
+            }
+            guard let self, ids != self.ids else { return }
+            self.ids = ids
+            self.onChange?()
+        }
+        browser.start(queue: .main)
+        self.browser = browser
     }
 }

@@ -433,12 +433,24 @@ private extension Array where Element == MusicControlButton {
 
 struct VolumeControlView: View {
     @ObservedObject var musicManager = MusicManager.shared
+    @ObservedObject var remoteMedia = RemoteMediaManager.shared
     @State private var volumeSliderValue: Double = 0.5
     @State private var dragging: Bool = false
 
+    /// With another device shown, this is the volume of the speaker it plays on, once that's known
     private var isVisible: Bool {
-        !musicManager.isRemoteSource
-            && !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+        if musicManager.isRemoteSource {
+            return remoteMedia.speakerVolume != nil
+        }
+        return !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+    }
+
+    private func setVolume(_ level: Double) {
+        if musicManager.isRemoteSource {
+            RemoteMediaManager.shared.setSpeakerVolume(level)
+        } else {
+            MusicManager.shared.setVolume(to: level)
+        }
     }
 
     var body: some View {
@@ -454,8 +466,8 @@ struct VolumeControlView: View {
                 color: .white,
                 dragging: $dragging,
                 lastDragged: .constant(Date.distantPast),
-                onValueChange: MusicManager.shared.setVolume(to:),
-                onDragChange: MusicManager.shared.setVolume(to:),
+                onValueChange: { setVolume($0) },
+                onDragChange: { setVolume($0) },
                 detentCount: SliderDetents.volumeCount
             )
             .frame(width: 80, height: 8)
@@ -463,12 +475,24 @@ struct VolumeControlView: View {
         .opacity(isVisible ? 1 : 0)
         .disabled(!isVisible)
         .onReceive(musicManager.$volume) { volume in
-            if !dragging {
+            if !dragging && !musicManager.isRemoteSource {
                 volumeSliderValue = volume
             }
         }
-        .task {
-            await MusicManager.shared.syncVolumeFromActiveApp()
+        .onReceive(remoteMedia.$speakerVolume) { volume in
+            if !dragging, musicManager.isRemoteSource, let volume {
+                volumeSliderValue = volume
+            }
+        }
+        // Again for each device shown, as it may play on another speaker
+        .task(id: musicManager.remoteDevice?.deviceName) {
+            if musicManager.isRemoteSource {
+                if let volume = remoteMedia.speakerVolume { volumeSliderValue = volume }
+                RemoteMediaManager.shared.refreshSpeakerVolume()
+            } else {
+                volumeSliderValue = musicManager.volume
+                await MusicManager.shared.syncVolumeFromActiveApp()
+            }
         }
     }
 

@@ -3,12 +3,14 @@
 //  RemoteNowPlayingAdapter
 //
 //  Tells what other devices play, like the iPhone or a HomePod, as macOS itself hears of it. Passes commands on to them.
+//  Also reads and sets a speaker's volume, also while the iPhone plays on it.
 //  macOS answers MediaRemote only for its own programs, so this gets loaded into /usr/bin/perl. It writes one JSON
 //  line per change and reads one command per line. The end of its input means the app is gone. Nothing is kept.
 //
 
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#import <objc/message.h>
 
 @interface NSObject (MediaRemote)
 @property (readonly) NSString *displayName;
@@ -37,6 +39,19 @@ static NSDictionary *originsByName;
 static NSString *lastLine;
 static NSMutableDictionary *lastArtworkKeys;
 static BOOL isRefreshDue;
+/// Speaker ID → the connection macOS has to it
+static NSMutableDictionary *speakerEndpoints;
+/// The newest level for each speaker that a set is still under way for. A dragged slider sends many
+static NSMutableDictionary *pendingLevels;
+static NSMutableSet *speakersBeingSet;
+
+static void writeLine(NSDictionary *object) {
+    NSData *json = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
+    if (!json) return;
+    fwrite(json.bytes, 1, json.length, stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+}
 
 static NSDictionary *payload(NSDictionary *info, id origin, id client) {
     NSString *title = info[@"kMRMediaRemoteNowPlayingInfoTitle"];
@@ -134,11 +149,96 @@ static void scheduleRefresh(void) {
     });
 }
 
+static id externalDevice(id endpoint) {
+    if (![endpoint respondsToSelector:@selector(externalDevice)]) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)(endpoint, @selector(externalDevice));
+}
+
+/// The speaker's own device, connected, or nil when it can't be reached. A speaker is found by the ID from its AirPlay
+/// announcement only, not by its name. Searching for it this way works where a discovery of all devices finds none.
+static void withSpeaker(NSString *speaker, void (^body)(id device)) {
+    id known = externalDevice(speakerEndpoints[speaker]);
+    if (known && ((BOOL (*)(id, SEL))objc_msgSend)(known, @selector(isConnected))) {
+        body(known);
+        return;
+    }
+
+    Class sessionClass = NSClassFromString(@"MRAVLightweightReconnaissanceSession");
+    SEL search = @selector(searchEndpointsForOutputDeviceUID:timeout:reason:queue:completion:);
+    SEL connect = @selector(connectToExternalDeviceWithOptions:userInfo:completion:);
+    if (![sessionClass instancesRespondToSelector:search]) {
+        body(nil);
+        return;
+    }
+    id session = [[sessionClass alloc] init];
+    ((void (*)(id, SEL, id, double, id, dispatch_queue_t, id))objc_msgSend)(session, search, speaker, 6.0, @"Boring Notch volume", queue, ^(id endpoint, NSError *error) {
+        dispatch_async(queue, ^{
+            (void)session; // The search lasts as long as it does
+            if (![endpoint respondsToSelector:connect]) {
+                body(nil);
+                return;
+            }
+            speakerEndpoints[speaker] = endpoint;
+            ((void (*)(id, SEL, unsigned, id, id))objc_msgSend)(endpoint, connect, 0, nil, ^(NSError *connectError) {
+                dispatch_async(queue, ^{ body(connectError ? nil : externalDevice(endpoint)); });
+            });
+        });
+    });
+}
+
+/// Without a volume, the speaker can't be reached now.
+static void readSpeakerVolume(NSString *speaker) {
+    withSpeaker(speaker, ^(id device) {
+        SEL read = @selector(outputDeviceVolume:queue:completion:);
+        if (![device respondsToSelector:read]) {
+            writeLine(@{@"speaker": speaker});
+            return;
+        }
+        ((void (*)(id, SEL, id, dispatch_queue_t, id))objc_msgSend)(device, read, speaker, queue, ^(float volume, NSError *error) {
+            if (error) [speakerEndpoints removeObjectForKey:speaker];
+            writeLine(error ? @{@"speaker": speaker} : @{@"speaker": speaker, @"volume": @(volume)});
+        });
+    });
+}
+
+/// One at a time for each speaker, and then only the newest level.
+static void setSpeakerVolume(NSString *speaker) {
+    NSNumber *level = pendingLevels[speaker];
+    if (!level || [speakersBeingSet containsObject:speaker]) return;
+    [pendingLevels removeObjectForKey:speaker];
+    [speakersBeingSet addObject:speaker];
+
+    withSpeaker(speaker, ^(id device) {
+        SEL set = @selector(setOutputDeviceVolume:outputDeviceUID:queue:completion:);
+        if (![device respondsToSelector:set]) {
+            [speakersBeingSet removeObject:speaker];
+            [pendingLevels removeObjectForKey:speaker];
+            writeLine(@{@"speaker": speaker});
+            return;
+        }
+        ((void (*)(id, SEL, float, id, dispatch_queue_t, id))objc_msgSend)(device, set, level.floatValue, speaker, queue, ^(NSError *error) {
+            if (error) [speakerEndpoints removeObjectForKey:speaker];
+            [speakersBeingSet removeObject:speaker];
+            setSpeakerVolume(speaker);
+        });
+    });
+}
+
 /// One line: the command, its device, and how far for a skip. Separated by tabs, as device names have spaces.
+/// For a speaker's volume: "volume" and its ID, or "setvolume", its ID and the level from 0 to 1.
 static void handleCommand(NSString *line) {
     NSArray *fields = [line componentsSeparatedByString:@"\t"];
     if ([fields.firstObject isEqualToString:@"refresh"]) {
         scheduleRefresh();
+        return;
+    }
+    if ([fields.firstObject isEqualToString:@"volume"] && fields.count > 1) {
+        readSpeakerVolume(fields[1]);
+        return;
+    }
+    if ([fields.firstObject isEqualToString:@"setvolume"] && fields.count > 2) {
+        pendingLevels[fields[1]] = @(MIN(MAX([fields[2] doubleValue], 0.0), 1.0));
+        setSpeakerVolume(fields[1]);
         return;
     }
     NSDictionary *commands = @{@"toggle": @2, @"next": @4, @"previous": @5, @"forward": @17, @"backward": @18};
@@ -167,6 +267,9 @@ __attribute__((visibility("default"))) void run(void) {
 
     queue = dispatch_queue_create("com.nichtege.boringnotch.remotenowplaying", DISPATCH_QUEUE_SERIAL);
     lastArtworkKeys = [NSMutableDictionary dictionary];
+    speakerEndpoints = [NSMutableDictionary dictionary];
+    pendingLevels = [NSMutableDictionary dictionary];
+    speakersBeingSet = [NSMutableSet set];
 
     registerForNotifications(dispatch_get_main_queue());
     NSArray *names = @[

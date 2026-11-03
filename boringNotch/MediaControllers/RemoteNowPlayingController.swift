@@ -46,6 +46,12 @@ final class RemoteNowPlayingController {
         var devices: [Device]
     }
 
+    /// No volume means the speaker can't be reached now.
+    private struct SpeakerVolume: Decodable {
+        var speaker: String
+        var volume: Double?
+    }
+
     private struct Device: Decodable {
         var title: String?
         var artist: String?
@@ -61,6 +67,8 @@ final class RemoteNowPlayingController {
     }
 
     @Published private(set) var devices: [RemoteNowPlaying] = []
+    /// A speaker's ID and its volume from 0 to 1, nil when it can't be reached
+    let speakerVolumes = PassthroughSubject<(speaker: String, volume: Double?), Never>()
 
     private let restartDelay: Duration = .seconds(30)
     private let triesBeforeGivingUp = 5
@@ -87,6 +95,15 @@ final class RemoteNowPlayingController {
     /// For when a device may just have come. macOS doesn't tell of those.
     func refresh() {
         write("refresh")
+    }
+
+    /// The answer comes through `speakerVolumes`.
+    func readVolume(ofSpeaker speaker: String) {
+        write("volume\t\(speaker)")
+    }
+
+    func setVolume(_ level: Double, ofSpeaker speaker: String) {
+        write("setvolume\t\(speaker)\t\(level)")
     }
 
     private func write(_ line: String) {
@@ -160,6 +177,8 @@ final class RemoteNowPlayingController {
             if let update = try? JSONDecoder().decode(Update.self, from: line) {
                 failures = 0
                 devices = update.devices.compactMap(nowPlaying)
+            } else if let answer = try? JSONDecoder().decode(SpeakerVolume.self, from: line) {
+                speakerVolumes.send((answer.speaker, answer.volume))
             }
             buffer.removeSubrange(buffer.startIndex...end)
         }
