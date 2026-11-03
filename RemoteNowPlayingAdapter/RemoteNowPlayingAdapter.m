@@ -44,6 +44,8 @@ static NSMutableDictionary *speakerEndpoints;
 /// The newest level for each speaker that a set is still under way for. A dragged slider sends many
 static NSMutableDictionary *pendingLevels;
 static NSMutableSet *speakersBeingSet;
+/// Speaker ID → what waits for the search under way for it. A search can take seconds, and the app asks again meanwhile
+static NSMutableDictionary *waitingForSpeaker;
 
 static void writeLine(NSDictionary *object) {
     NSData *json = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
@@ -163,11 +165,23 @@ static void withSpeaker(NSString *speaker, void (^body)(id device)) {
         return;
     }
 
+    NSMutableArray *waiting = waitingForSpeaker[speaker];
+    if (waiting) {
+        [waiting addObject:[body copy]];
+        return;
+    }
+    waitingForSpeaker[speaker] = [NSMutableArray arrayWithObject:[body copy]];
+    void (^done)(id) = ^(id device) {
+        NSArray *bodies = waitingForSpeaker[speaker];
+        [waitingForSpeaker removeObjectForKey:speaker];
+        for (void (^waitingBody)(id) in bodies) waitingBody(device);
+    };
+
     Class sessionClass = NSClassFromString(@"MRAVLightweightReconnaissanceSession");
     SEL search = @selector(searchEndpointsForOutputDeviceUID:timeout:reason:queue:completion:);
     SEL connect = @selector(connectToExternalDeviceWithOptions:userInfo:completion:);
     if (![sessionClass instancesRespondToSelector:search]) {
-        body(nil);
+        done(nil);
         return;
     }
     id session = [[sessionClass alloc] init];
@@ -175,12 +189,12 @@ static void withSpeaker(NSString *speaker, void (^body)(id device)) {
         dispatch_async(queue, ^{
             (void)session; // The search lasts as long as it does
             if (![endpoint respondsToSelector:connect]) {
-                body(nil);
+                done(nil);
                 return;
             }
             speakerEndpoints[speaker] = endpoint;
             ((void (*)(id, SEL, unsigned, id, id))objc_msgSend)(endpoint, connect, 0, nil, ^(NSError *connectError) {
-                dispatch_async(queue, ^{ body(connectError ? nil : externalDevice(endpoint)); });
+                dispatch_async(queue, ^{ done(connectError ? nil : externalDevice(endpoint)); });
             });
         });
     });
@@ -270,6 +284,7 @@ __attribute__((visibility("default"))) void run(void) {
     speakerEndpoints = [NSMutableDictionary dictionary];
     pendingLevels = [NSMutableDictionary dictionary];
     speakersBeingSet = [NSMutableSet set];
+    waitingForSpeaker = [NSMutableDictionary dictionary];
 
     registerForNotifications(dispatch_get_main_queue());
     NSArray *names = @[

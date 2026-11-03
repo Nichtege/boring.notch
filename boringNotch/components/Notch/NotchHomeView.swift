@@ -488,7 +488,11 @@ struct VolumeControlView: View {
         .task(id: musicManager.remoteDevice?.deviceName) {
             if musicManager.isRemoteSource {
                 if let volume = remoteMedia.speakerVolume { volumeSliderValue = volume }
-                RemoteMediaManager.shared.refreshSpeakerVolume()
+                // The speaker doesn't tell of a change made on the iPhone, so it's asked while this shows
+                while !Task.isCancelled {
+                    RemoteMediaManager.shared.refreshSpeakerVolume()
+                    try? await Task.sleep(for: .seconds(2))
+                }
             } else {
                 volumeSliderValue = musicManager.volume
                 await MusicManager.shared.syncVolumeFromActiveApp()

@@ -29,6 +29,7 @@ final class RemoteMediaManager: ObservableObject {
     private let speakerIDs = SpeakerIDs()
     /// The speaker `speakerVolume` belongs to
     private var volumeSpeaker: String?
+    private var lastVolumeSet = Date.distantPast
     private var cancellables = Set<AnyCancellable>()
     private var lastControlTile: [String]?
 
@@ -44,6 +45,8 @@ final class RemoteMediaManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] answer in
                 guard let self, answer.speaker == self.volumeSpeaker else { return }
+                // An answer asked for before the slider moved would put it back for a moment
+                if answer.volume != nil && Date().timeIntervalSince(self.lastVolumeSet) < 1.5 { return }
                 self.speakerVolume = answer.volume
             }
             .store(in: &cancellables)
@@ -185,6 +188,7 @@ final class RemoteMediaManager: ObservableObject {
 
     func setSpeakerVolume(_ level: Double) {
         guard let volumeSpeaker else { return }
+        lastVolumeSet = Date()
         speakerVolume = level
         controller.setVolume(level, ofSpeaker: volumeSpeaker)
     }
