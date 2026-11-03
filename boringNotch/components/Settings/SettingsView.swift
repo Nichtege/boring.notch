@@ -123,13 +123,6 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: Binding(
-                    get: { Defaults[.menubarIcon] },
-                    set: { Defaults[.menubarIcon] = $0 }
-                )) {
-                    Text("Show menu bar icon")
-                }
-                .tint(.effectiveAccent)
                 LaunchAtLoginToggle()
                 Defaults.Toggle(key: .micStaysOnMacBook) {
                     Text("Always use the MacBook's microphone")
