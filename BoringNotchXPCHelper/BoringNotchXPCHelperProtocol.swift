@@ -26,6 +26,9 @@ import Foundation
     func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void)
     func performNotificationAction(_ token: String, label: String, with reply: @escaping (Bool) -> Void)
     func reofferNotificationAlerts()
+    func beginNotificationReply(_ token: String, with reply: @escaping (Bool) -> Void)
+    func sendNotificationReply(_ token: String, text: String, with reply: @escaping (Bool) -> Void)
+    func cancelNotificationReply(_ token: String)
     func restoreStrandedNotifications()
     // The microphone (set by the helper, which isn't sandboxed)
     func keepMicOnMacBook()
@@ -36,6 +39,6 @@ import Foundation
 /// Calls from the helper back to the app.
 @objc protocol BoringNotchXPCAppDelegate {
     func notificationDidAppear(_ payload: [String: String])
-    func notificationAlertDidEnd(_ token: String)
+    func notificationDidEnd(_ token: String)
     func notificationWatchingDidStop()
 }

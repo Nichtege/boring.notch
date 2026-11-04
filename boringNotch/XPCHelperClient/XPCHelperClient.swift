@@ -169,9 +169,9 @@ final class NotificationXPCDelegate: NSObject, BoringNotchXPCAppDelegate {
         }
     }
 
-    func notificationAlertDidEnd(_ token: String) {
+    func notificationDidEnd(_ token: String) {
         Task { @MainActor in
-            SystemNotificationManager.shared.alertDidEnd(token)
+            SystemNotificationManager.shared.notificationDidEnd(token)
         }
     }
 
@@ -209,6 +209,18 @@ extension XPCHelperClient {
 
     nonisolated func reofferNotificationAlerts() {
         send { $0.reofferNotificationAlerts() }
+    }
+
+    nonisolated func beginNotificationReply(_ token: String) async -> Bool {
+        await ask { $0.beginNotificationReply(token, with: $1) } ?? false
+    }
+
+    nonisolated func sendNotificationReply(_ token: String, text: String) async -> Bool {
+        await ask { $0.sendNotificationReply(token, text: text, with: $1) } ?? false
+    }
+
+    nonisolated func cancelNotificationReply(_ token: String) {
+        send { $0.cancelNotificationReply(token) }
     }
 
     nonisolated func restoreStrandedNotifications() {

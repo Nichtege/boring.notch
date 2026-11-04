@@ -68,11 +68,12 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
                     "body": notification.body ?? "",
                     "kind": notification.isAlert ? "alert" : "banner",
                     // A string, like everything else in here: what the interface lets through without a list of classes
-                    "actions": notification.actions.joined(separator: "\u{1F}")
+                    "actions": notification.actions.joined(separator: "\u{1F}"),
+                    "canReply": notification.canReply ? "1" : ""
                 ])
             }
-            watcher.onAlertEnded = { token in
-                delegate?.notificationAlertDidEnd(token)
+            watcher.onEnded = { token in
+                delegate?.notificationDidEnd(token)
             }
             watcher.onStopped = {
                 Self.stopWatching()
@@ -109,6 +110,19 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
 
     @objc func reofferNotificationAlerts() {
         DispatchQueue.main.async { Self.watcher.reofferAlerts() }
+    }
+
+    @objc func beginNotificationReply(_ token: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async { Self.watcher.beginReply(token: token, completion: reply) }
+    }
+
+    /// What the user typed goes straight into the banner's field and nowhere else.
+    @objc func sendNotificationReply(_ token: String, text: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async { Self.watcher.sendReply(token: token, text: text, completion: reply) }
+    }
+
+    @objc func cancelNotificationReply(_ token: String) {
+        DispatchQueue.main.async { Self.watcher.cancelReply(token: token) }
     }
 
     @objc func restoreStrandedNotifications() {

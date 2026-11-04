@@ -12,9 +12,16 @@ import Combine
 import SwiftUI
 
 // MARK: - Window
+/// Never takes the keyboard, except while a reply is being typed on a card.
 private final class NotificationCardPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var takesKeyboard = false
+
+    override var canBecomeKey: Bool { takesKeyboard }
     override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        SystemNotificationManager.shared.cancelReply()
+    }
 }
 
 /// The panel is never key, so the first click is the only click.
@@ -43,6 +50,15 @@ final class NotificationCardModel: ObservableObject {
     /// How the first card arrives and how the last one goes.
     @Published var stage = Stage.hidden
     @Published var isExpanded = false
+
+    enum ReplyState: Equatable {
+        case editing, sending, sent
+        case failed(String)
+    }
+    /// The card a reply is being typed on, and what it says so far. Never kept anywhere else.
+    @Published var replyingID: String?
+    @Published var replyText = ""
+    @Published var replyState = ReplyState.editing
     // A new image on every update would crossfade with the old one while the icon moves
     private var icons: [String: NSImage] = [:]
 
@@ -73,8 +89,84 @@ final class NotificationCardController {
     private var motionTask: Task<Void, Never>?
     private var shrinkTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    private var keyObserver: NSObjectProtocol?
 
     private init() {}
+
+    // MARK: Replying
+    var replyingID: String? { model.replyingID }
+    var replyText: String { model.replyText }
+    var replyState: NotificationCardModel.ReplyState { model.replyState }
+
+    /// The field opens on the card in front, and the keyboard goes to it without this app coming forward.
+    func startReplying(_ id: String, in notifications: [SystemNotification]) {
+        guard let panel, show(notifications) else { return }
+        withAnimation(Self.stackAnimation) {
+            model.replyText = ""
+            model.replyState = .editing
+            model.replyingID = id
+            model.isExpanded = false
+        }
+        panel.takesKeyboard = true
+        panel.makeKeyAndOrderFront(nil)
+        focusReplyField(in: panel)
+
+        if keyObserver == nil {
+            keyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+            ) { _ in
+                // A click elsewhere with nothing typed means no reply. Anything typed stays for a click back.
+                Task { @MainActor in
+                    let model = NotificationCardController.shared.model
+                    if model.replyingID != nil, model.replyState == .editing,
+                       model.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        SystemNotificationManager.shared.cancelReply()
+                    }
+                }
+            }
+        }
+    }
+
+    func setReplyState(_ state: NotificationCardModel.ReplyState) {
+        withAnimation(Self.stackAnimation) {
+            model.replyState = state
+        }
+    }
+
+    /// The keyboard goes back to where it was: a panel that lets go of it gives it to the app in front.
+    func stopReplying() {
+        withAnimation(Self.stackAnimation) {
+            model.replyingID = nil
+            model.replyText = ""
+            model.replyState = .editing
+        }
+        guard let panel else { return }
+        panel.takesKeyboard = false
+        if panel.isKeyWindow {
+            panel.orderOut(nil)
+            panel.orderFrontRegardless()
+        }
+    }
+
+    /// SwiftUI's focus doesn't reach a field in a panel that only just took the keyboard, so AppKit is asked.
+    private func focusReplyField(in panel: NSPanel) {
+        Task { @MainActor in
+            for _ in 0..<10 {
+                if let field = Self.textField(in: panel.contentView), panel.makeFirstResponder(field) {
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        }
+    }
+
+    private static func textField(in view: NSView?) -> NSTextField? {
+        guard let view else { return nil }
+        if let field = view as? NSTextField, field.isEditable {
+            return field
+        }
+        return view.subviews.lazy.compactMap { textField(in: $0) }.first
+    }
 
     /// Shows these as the stack, whatever it held before. False if there's no screen to show it on.
     func show(_ notifications: [SystemNotification]) -> Bool {
@@ -275,6 +367,8 @@ private struct NotificationCardView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hoveredID: String?
+    /// The card being held, which gives a little under the finger like on the iPhone.
+    @GestureState private var heldID: String?
     /// What each card needs for its text. Behind the one in front it only gets that once spread out.
     @State private var heights: [String: CGFloat] = [:]
 
@@ -399,9 +493,10 @@ private struct NotificationCardView: View {
             .background { shell(isOpened: isOpened, isHidingBehind: isHidingBehind, depth: index) }
             .overlay { movingIcon(notification, isOpened: isOpened).opacity(isHidingBehind ? 0 : 1) }
             .contentShape(shape)
-            .onTapGesture {
-                SystemNotificationManager.shared.open(notification)
-            }
+            // While a reply is typed on it, the field and its button get every click
+            .gesture(pressGesture(for: notification), including: model.replyingID == notification.id ? .subviews : .all)
+            .scaleEffect(heldID == notification.id ? 0.97 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: heldID)
             .allowsHitTesting(!isHidingBehind)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
@@ -409,6 +504,11 @@ private struct NotificationCardView: View {
                 SystemNotificationManager.shared.dismiss(notification)
             }
             .accessibilityActions {
+                if notification.canReply {
+                    Button("Reply") {
+                        SystemNotificationManager.shared.startReply(notification)
+                    }
+                }
                 ForEach(notification.actions, id: \.self) { action in
                     Button(action) {
                         SystemNotificationManager.shared.answer(notification, with: action)
@@ -425,6 +525,24 @@ private struct NotificationCardView: View {
             .offset(y: model.isExpanded ? spreadOffset(at: index) : peek * CGFloat(index))
             // Into the front card before it turns into a ball
             .opacity(isFront ? (model.isPresented || !reduceMotion ? 1 : 0) : (isFrontOpened && model.isPresented ? 1 : 0))
+    }
+
+    /// A click opens it. Held, a card that can be answered opens its reply field instead.
+    private func pressGesture(for notification: SystemNotification) -> AnyGesture<Void> {
+        let open = TapGesture().onEnded {
+            // Its field is for typing in, not a way into the app
+            guard model.replyingID != notification.id else { return }
+            SystemNotificationManager.shared.open(notification)
+        }
+        guard notification.canReply else { return AnyGesture(open) }
+        let hold = LongPressGesture(minimumDuration: 0.45)
+            .updating($heldID) { isHeld, state, _ in
+                state = isHeld && model.replyingID == nil ? notification.id : nil
+            }
+            .onEnded { _ in
+                SystemNotificationManager.shared.startReply(notification)
+            }
+        return AnyGesture(hold.exclusively(before: open).map { _ in })
     }
 
     private func card(_ notification: SystemNotification, showsText: Bool) -> some View {
@@ -506,6 +624,10 @@ private struct NotificationCardView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
+                if model.replyingID == notification.id {
+                    ReplyField(model: model)
+                        .padding(.top, 8)
+                }
                 if !notification.actions.isEmpty {
                     ButtonRows {
                         ForEach(notification.actions, id: \.self) { action in
@@ -567,6 +689,65 @@ private struct NotificationCardView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return Text(formatter.localizedString(for: date, relativeTo: now))
+    }
+}
+
+/// Where a reply is typed: Return sends it, Esc puts the card back as it was.
+private struct ReplyField: View {
+    @ObservedObject var model: NotificationCardModel
+    @FocusState private var isFocused: Bool
+
+    private var isBlank: Bool {
+        model.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        switch model.replyState {
+        case .editing, .sending:
+            HStack(spacing: 8) {
+                TextField("Reply…", text: $model.replyText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+                    .focused($isFocused)
+                    .onSubmit { SystemNotificationManager.shared.sendReply() }
+                    .disabled(model.replyState == .sending)
+                if model.replyState == .sending {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button {
+                        SystemNotificationManager.shared.sendReply()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(isBlank ? 0.3 : 1))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(isBlank)
+                    .help(Text("Send"))
+                }
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 5)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.14), in: Capsule())
+            .onAppear { isFocused = true }
+        case .sent:
+            Label("Sent", systemImage: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+                AlertButton(label: String(localized: "Open app")) {
+                    SystemNotificationManager.shared.openAfterFailedReply()
+                }
+            }
+        }
     }
 }
 

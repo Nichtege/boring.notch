@@ -23,6 +23,8 @@ struct SystemNotification: Identifiable, Equatable {
     /// An alert stays until it's answered, with these buttons. A banner's card goes by itself.
     var isAlert = false
     var actions: [String] = []
+    /// Can be answered right from the card, by holding it.
+    var canReply = false
     var receivedAt = Date()
 
     func isFromSameSender(as other: SystemNotification) -> Bool {
@@ -169,7 +171,8 @@ final class SystemNotificationManager {
             subtitle: nonEmpty(payload["subtitle"]),
             body: nonEmpty(payload["body"]),
             isAlert: payload["kind"] == "alert",
-            actions: (payload["actions"] ?? "").split(separator: "\u{1F}").map(String.init)
+            actions: (payload["actions"] ?? "").split(separator: "\u{1F}").map(String.init),
+            canReply: payload["canReply"] == "1"
         )
 
         // The card it took the place of, whose banner may still be there too
@@ -182,7 +185,9 @@ final class SystemNotificationManager {
             notification.receivedAt = notifications[index].receivedAt
             notifications[index] = notification
         } else {
-            notifications.insert(notification, at: 0)
+            // A card being replied from stays in front, where its field is
+            let isReplyingInFront = replyingID != nil && notifications.first?.id == replyingID
+            notifications.insert(notification, at: isReplyingInFront ? 1 : 0)
             if notifications.count > stackLimit {
                 let oldest = notifications.dropFirst().lastIndex { !$0.isAlert } ?? notifications.count - 1
                 let pushedOut = notifications.remove(at: oldest)
@@ -217,9 +222,115 @@ final class SystemNotificationManager {
         }
     }
 
-    /// The alert behind this card is gone, or the helper put it back on screen.
-    func alertDidEnd(_ token: String) {
+    /// The alert behind this card is gone, or the helper put it back on screen. Or the banner that a reply
+    /// was being typed for is gone before it was sent.
+    func notificationDidEnd(_ token: String) {
+        let cards = NotificationCardController.shared
+        if let replyingID, let card = notifications.first(where: { $0.id == replyingID }), card.token == token {
+            // While sending, the answer to that says how it went
+            guard cards.replyState == .editing else { return }
+            let kept = keepInClipboard(cards.replyText)
+            cards.setReplyState(.failed(kept
+                ? String(localized: "This notification is gone. Your text is in the clipboard.")
+                : String(localized: "This notification is gone.")))
+            return
+        }
         remove { $0.isAlert && $0.token == token }
+    }
+
+    // MARK: - Replying
+    /// The card being replied from.
+    private var replyingID: String? { NotificationCardController.shared.replyingID }
+    /// The helper unfolding the banner to its field, which takes a moment.
+    private var replyReady: Task<Bool, Never>?
+
+    /// Held like on the iPhone: the card comes to the front with a field, and the keyboard goes to it.
+    func startReply(_ notification: SystemNotification) {
+        guard notification.canReply, replyingID == nil,
+              let index = notifications.firstIndex(where: { $0.id == notification.id })
+        else { return }
+        dismissTask?.cancel()
+        dismissTask = nil
+        if index != 0 {
+            notifications.insert(notifications.remove(at: index), at: 0)
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        NotificationCardController.shared.startReplying(notification.id, in: notifications)
+
+        let token = notification.token
+        let ready = Task { await XPCHelperClient.shared.beginNotificationReply(token) }
+        replyReady = ready
+        Task {
+            guard !(await ready.value), replyingID == notification.id,
+                  NotificationCardController.shared.replyState == .editing
+            else { return }
+            NotificationCardController.shared.setReplyState(.failed(String(localized: "This can't be answered from here.")))
+        }
+    }
+
+    /// Sent through the banner's own field. What was typed is never kept, except in the clipboard if it
+    /// couldn't be sent, so it isn't lost.
+    func sendReply() {
+        let cards = NotificationCardController.shared
+        let text = cards.replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = replyingID, cards.replyState == .editing, !text.isEmpty,
+              let notification = notifications.first(where: { $0.id == id })
+        else { return }
+        cards.setReplyState(.sending)
+
+        let ready = replyReady
+        Task {
+            let isReady = await ready?.value ?? false
+            let sent = isReady ? await XPCHelperClient.shared.sendNotificationReply(notification.token, text: text) : false
+            guard replyingID == id else { return }
+            guard sent else {
+                let kept = keepInClipboard(text)
+                cards.setReplyState(.failed(kept
+                    ? String(localized: "Not sent. Your text is in the clipboard.")
+                    : String(localized: "Not sent.")))
+                XPCHelperClient.shared.cancelNotificationReply(notification.token)
+                return
+            }
+            cards.setReplyState(.sent)
+            try? await Task.sleep(for: .milliseconds(900))
+            guard replyingID == id else { return }
+            // Answered: the conversation's other banners are done as well
+            remove { $0.id == id || $0.isFromSameSender(as: notification) && !$0.isAlert }
+            scheduleDismiss()
+        }
+    }
+
+    /// Esc, or a click elsewhere before anything was typed. The banner folds back, as it was.
+    func cancelReply() {
+        guard let id = replyingID else { return }
+        if let notification = notifications.first(where: { $0.id == id }) {
+            XPCHelperClient.shared.cancelNotificationReply(notification.token)
+        }
+        endReply()
+        scheduleDismiss()
+    }
+
+    /// After a reply that didn't go: the app, to answer there.
+    func openAfterFailedReply() {
+        guard let id = replyingID, let notification = notifications.first(where: { $0.id == id }) else { return }
+        cancelReply()
+        Task {
+            if await activateApp(of: notification) {
+                remove { $0.id == id }
+            }
+        }
+    }
+
+    private func endReply() {
+        replyReady = nil
+        NotificationCardController.shared.stopReplying()
+    }
+
+    private func keepInClipboard(_ text: String) -> Bool {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(text, forType: .string)
     }
 
     /// Alerts that went back on screen while no card could be shown get one again.
@@ -231,13 +342,20 @@ final class SystemNotificationManager {
     /// Everything goes, and every banner still up comes back.
     func dismissAll() {
         guard !notifications.isEmpty else { return }
+        cancelReply()
         let dismissed = notifications
         remove { _ in true }
         dismissed.forEach(releaseBanner)
     }
 
     private func remove(where shouldRemove: (SystemNotification) -> Bool) {
+        let replying = replyingID.flatMap { id in notifications.first { $0.id == id } }
         notifications.removeAll(where: shouldRemove)
+        // An unfolded banner wouldn't go by itself, and would stay out of sight with nothing for it
+        if let replying, !notifications.contains(where: { $0.id == replying.id }) {
+            XPCHelperClient.shared.cancelNotificationReply(replying.token)
+            endReply()
+        }
         guard notifications.isEmpty else {
             if !NotificationCardController.shared.show(notifications) {
                 dismissAll()
@@ -325,7 +443,7 @@ final class SystemNotificationManager {
     private func scheduleDismiss() {
         dismissTask?.cancel()
         dismissTask = nil
-        guard !isCardHovered, notifications.contains(where: { !$0.isAlert }) else { return }
+        guard !isCardHovered, replyingID == nil, notifications.contains(where: { !$0.isAlert }) else { return }
         dismissTask = Task { [weak self, displayDuration] in
             try? await Task.sleep(for: displayDuration)
             guard let self, !Task.isCancelled else { return }

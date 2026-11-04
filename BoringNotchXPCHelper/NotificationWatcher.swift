@@ -46,6 +46,24 @@ private let answerCheckDelay: TimeInterval = 1
 /// Every banner and alert has this button, and it only unfolds the notification where it is. A card
 /// already shows what it says.
 private let unfoldingActions: Set<String> = ["Details einblenden", "Details ausblenden", "Show Details", "Hide Details"]
+/// A message banner's way to its reply field, the field's own button, and the way back. Compared without
+/// case, dots and spaces. "Mehr anzeigen" is what Messages offers on 27.2: it unfolds a text area and "Senden".
+private let replyOpeners: Set<String> = ["mehranzeigen", "showmore", "antworten", "antwort", "antwortgeben", "reply"]
+private let replySenders: Set<String> = ["senden", "send"]
+private let replyClosers: Set<String> = ["detailsausblenden", "hidedetails", "wenigeranzeigen", "showless"]
+/// How long the reply field has to appear, and how long a sent reply has to leave the field.
+private let replyWaitTime: TimeInterval = 1.5
+private let replyPollInterval: TimeInterval = 0.1
+
+private func plainLabel(_ label: String) -> String {
+    label.lowercased().filter { !". …".contains($0) }
+}
+
+/// Notification Center's answer to a press can be a failure although the press went through, as with
+/// "Mehr anzeigen". Only these mean that nothing happened.
+private func pressDidNothing(_ result: AXError) -> Bool {
+    [.invalidUIElement, .actionUnsupported, .illegalArgument, .apiDisabled, .notImplemented].contains(result)
+}
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 /// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
@@ -153,6 +171,8 @@ struct CapturedNotification {
     /// Stays until it's answered, with these buttons.
     let isAlert: Bool
     let actions: [String]
+    /// Has a field for a reply.
+    let canReply: Bool
 }
 
 final class NotificationWatcher {
@@ -182,6 +202,9 @@ final class NotificationWatcher {
         var isStack: Bool
         let isAlert: Bool
         let foundAt = Date()
+        /// Its own name, which stays when its text changes as it unfolds for a reply.
+        let axIdentifier: String?
+        var isReplying = false
     }
 
     private struct ParkedWindow {
@@ -191,9 +214,9 @@ final class NotificationWatcher {
     }
 
     var onBanner: ((CapturedNotification) -> Void)?
-    /// An alert's card has nothing left to stand in for: the alert is gone, or back on screen. A banner's
-    /// card goes by itself.
-    var onAlertEnded: ((String) -> Void)?
+    /// An alert's card, or a card being replied from, has nothing left to stand in for: the alert or banner
+    /// is gone, or back on screen. Any other banner's card goes by itself.
+    var onEnded: ((String) -> Void)?
     /// The permission is gone and the watcher stopped by itself.
     var onStopped: (() -> Void)?
 
@@ -319,8 +342,8 @@ final class NotificationWatcher {
         scanWorkItem = nil
         restoreRetries = 0
         // Back on screen with everything else, or found again by a new start with a card of its own
-        for banner in liveBanners.values where banner.isAlert {
-            alertEnded(token: banner.token)
+        for banner in liveBanners.values where banner.isAlert || banner.isReplying {
+            ended(token: banner.token)
         }
         liveBanners.removeAll()
         appElement = nil
@@ -530,7 +553,8 @@ final class NotificationWatcher {
                             element: reading.banner.element,
                             window: window,
                             isStack: isStack,
-                            isAlert: reading.banner.subrole == NotificationPanelDetection.alertSubrole
+                            isAlert: reading.banner.subrole == NotificationPanelDetection.alertSubrole,
+                            axIdentifier: reading.banner.element.string(kAXIdentifierAttribute)
                         )
                         fresh.append(reading)
                     }
@@ -567,8 +591,8 @@ final class NotificationWatcher {
             for identity in Array(liveBanners.keys) where !seen.contains(identity) {
                 if let banner = liveBanners.removeValue(forKey: identity) {
                     releaseAfterSlideOut(token: banner.token)
-                    if banner.isAlert {
-                        alertEnded(token: banner.token)
+                    if banner.isAlert || banner.isReplying {
+                        ended(token: banner.token)
                     }
                 }
             }
@@ -644,6 +668,11 @@ final class NotificationWatcher {
     /// A banner keeps its identifier and text across scans, while its element may not. A second
     /// notification can reuse the identifier, and it mustn't pass for the first in a parked window.
     private func identity(of banner: AXUIElement, showing text: BannerText) -> Int {
+        // Unfolded for a reply it may show more of its text, and it's still the same banner
+        if let identifier = banner.string(kAXIdentifierAttribute),
+           let replying = liveBanners.first(where: { $0.value.isReplying && $0.value.axIdentifier == identifier }) {
+            return replying.key
+        }
         var hasher = Hasher()
         if let identifier = banner.string(kAXIdentifierAttribute), !structuralIdentifiers.contains(identifier) {
             hasher.combine(identifier)
@@ -839,15 +868,15 @@ final class NotificationWatcher {
             self.scan()
             guard self.liveBanners.values.contains(where: { $0.token == token }) else { return }
             self.restore(token: token)
-            self.alertEnded(token: token)
+            self.ended(token: token)
         }
     }
 
     /// In the same order as the cards, which also come by the other queue.
-    private func alertEnded(token: String) {
-        let onAlertEnded = self.onAlertEnded
+    private func ended(token: String) {
+        let onEnded = self.onEnded
         bundleIDQueue.async {
-            onAlertEnded?(token)
+            onEnded?(token)
         }
     }
 
@@ -863,6 +892,124 @@ final class NotificationWatcher {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return label.isEmpty ? nil : (label, name)
         }
+    }
+
+    // MARK: - Replying
+
+    /// Unfolds the banner to its reply field, out of sight. Unfolded it also stays until it's answered or
+    /// folded again. No if the field didn't come.
+    func beginReply(token: String, completion: @escaping (Bool) -> Void) {
+        guard AXIsProcessTrusted(),
+              let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+              let banner = liveBanners[identity]
+        else { return completion(false) }
+        if banner.isReplying, replyField(in: banner.element) != nil { return completion(true) }
+
+        guard let opener = buttons(of: banner.element).first(where: { replyOpeners.contains(plainLabel($0.label)) }) else {
+            return completion(false)
+        }
+        // Before it changes, so the scans keep it for the same banner
+        liveBanners[identity]?.isReplying = true
+        guard !pressDidNothing(AXUIElementPerformAction(banner.element, opener.name as CFString)) else {
+            liveBanners[identity]?.isReplying = false
+            return completion(false)
+        }
+        waitForReplyField(token: token, until: Date().addingTimeInterval(replyWaitTime), completion: completion)
+    }
+
+    private func waitForReplyField(token: String, until deadline: Date, completion: @escaping (Bool) -> Void) {
+        scan()
+        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(false) }
+        if replyField(in: banner.element) != nil { return completion(true) }
+        guard Date() < deadline else {
+            endReply(token: token)
+            return completion(false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
+            guard let self else { return completion(false) }
+            self.waitForReplyField(token: token, until: deadline, completion: completion)
+        }
+    }
+
+    /// Puts the text in the banner's own field and sends it with the banner's own button. The text is only
+    /// sent if the field holds all of it, and only counted, never kept. Yes once the field let go of it.
+    func sendReply(token: String, text: String, completion: @escaping (Bool) -> Void) {
+        guard AXIsProcessTrusted(),
+              let banner = liveBanners.values.first(where: { $0.token == token }), banner.isReplying,
+              let field = replyField(in: banner.element),
+              let sender = buttons(of: banner.element).first(where: { replySenders.contains(plainLabel($0.label)) }),
+              AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success,
+              characterCount(of: field) == (text as NSString).length
+        else {
+            clearReplyField(token: token)
+            return completion(false)
+        }
+        guard !pressDidNothing(AXUIElementPerformAction(banner.element, sender.name as CFString)) else {
+            clearReplyField(token: token)
+            return completion(false)
+        }
+        waitForSent(token: token, until: Date().addingTimeInterval(replyWaitTime), completion: completion)
+    }
+
+    private func waitForSent(token: String, until deadline: Date, completion: @escaping (Bool) -> Void) {
+        scan()
+        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(true) }
+        guard let field = replyField(in: banner.element), characterCount(of: field) != 0 else {
+            endReply(token: token)
+            return completion(true)
+        }
+        guard Date() < deadline else {
+            clearReplyField(token: token)
+            endReply(token: token)
+            return completion(false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
+            guard let self else { return completion(false) }
+            self.waitForSent(token: token, until: deadline, completion: completion)
+        }
+    }
+
+    /// Nothing typed stays behind in the banner, which comes back on screen if its card goes.
+    func cancelReply(token: String) {
+        clearReplyField(token: token)
+        endReply(token: token)
+    }
+
+    private func clearReplyField(token: String) {
+        guard let banner = liveBanners.values.first(where: { $0.token == token }),
+              let field = replyField(in: banner.element)
+        else { return }
+        AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString)
+    }
+
+    /// Folds the banner back if it's still unfolded. From then on it's an ordinary banner again.
+    private func endReply(token: String) {
+        guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+              let banner = liveBanners[identity]
+        else { return }
+        // Only an unfolded banner offers this, with or without a field in it
+        if let closer = buttons(of: banner.element).first(where: { replyClosers.contains(plainLabel($0.label)) }) {
+            AXUIElementPerformAction(banner.element, closer.name as CFString)
+        }
+        liveBanners[identity]?.isReplying = false
+    }
+
+    private func replyField(in banner: AXUIElement) -> AXUIElement? {
+        var pending = [banner]
+        var visited = 0
+        while let element = pending.popLast(), visited < maxTextNodes {
+            visited += 1
+            let role = element.string(kAXRoleAttribute)
+            if role == kAXTextAreaRole || role == kAXTextFieldRole {
+                return element
+            }
+            pending.append(contentsOf: element.children())
+        }
+        return nil
+    }
+
+    private func characterCount(of field: AXUIElement) -> Int? {
+        (field[kAXNumberOfCharactersAttribute] as? NSNumber)?.intValue
     }
 
     /// Windows left at the parking position by a helper that died can be put back without watching.
@@ -1015,7 +1162,9 @@ final class NotificationWatcher {
                 .map { Self.cleanedAppName(String($0)) }
         }
         let isAlert = banner.string(kAXSubroleAttribute) == NotificationPanelDetection.alertSubrole
-        let actions = isAlert ? buttons(of: banner).map(\.label).filter { !unfoldingActions.contains($0) } : []
+        let labels = buttons(of: banner).map(\.label)
+        let actions = isAlert ? labels.filter { !unfoldingActions.contains($0) } : []
+        let canReply = labels.contains { replyOpeners.contains(plainLabel($0)) }
 
         // The helper sets this again on the main queue with every start
         let onBanner = self.onBanner
@@ -1028,7 +1177,8 @@ final class NotificationWatcher {
                 subtitle: text.subtitle,
                 body: text.body,
                 isAlert: isAlert,
-                actions: actions
+                actions: actions,
+                canReply: canReply
             ))
         }
     }
