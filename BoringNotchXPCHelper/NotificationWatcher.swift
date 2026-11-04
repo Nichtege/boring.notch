@@ -54,6 +54,7 @@ private let replyClosers: Set<String> = ["detailsausblenden", "hidedetails", "we
 /// How long the reply field has to appear, and how long a sent reply has to leave the field.
 private let replyWaitTime: TimeInterval = 1.5
 private let replyPollInterval: TimeInterval = 0.1
+private let replyFocusWaitTime: TimeInterval = 0.6
 
 private func plainLabel(_ label: String) -> String {
     label.lowercased().filter { !". …".contains($0) }
@@ -943,7 +944,9 @@ final class NotificationWatcher {
     private func waitForReplyField(token: String, until deadline: Date, completion: @escaping (ReplyStart) -> Void) {
         scan()
         guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(.gone) }
-        if replyField(in: banner.element) != nil { return completion(.ready) }
+        if replyField(in: banner.element) != nil {
+            return waitForFieldFocus(until: Date().addingTimeInterval(replyFocusWaitTime)) { completion(.ready) }
+        }
         guard Date() < deadline else {
             endReply(token: token)
             return completion(.impossible)
@@ -951,6 +954,23 @@ final class NotificationWatcher {
         DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
             guard let self else { return completion(.impossible) }
             self.waitForReplyField(token: token, until: deadline, completion: completion)
+        }
+    }
+
+    /// Notification Center gives its field the keyboard a moment after it appears. Only then can the app
+    /// take the keyboard back for its own field, or it would lose it again at once.
+    private func waitForFieldFocus(until deadline: Date, then done: @escaping () -> Void) {
+        var focused: CFTypeRef?
+        var focusedRole: String?
+        if let appElement,
+           AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+           let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            focusedRole = (focused as! AXUIElement).string(kAXRoleAttribute)
+        }
+        guard focusedRole != kAXTextAreaRole, Date() < deadline else { return done() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return done() }
+            self.waitForFieldFocus(until: deadline, then: done)
         }
     }
 

@@ -59,6 +59,8 @@ final class NotificationCardModel: ObservableObject {
     @Published var replyingID: String?
     @Published var replyText = ""
     @Published var replyState = ReplyState.editing
+    /// The banner is unfolded and its field there: from then on the keyboard is this card's.
+    @Published var replyIsReady = false
     // A new image on every update would crossfade with the old one while the icon moves
     private var icons: [String: NSImage] = [:]
 
@@ -90,6 +92,12 @@ final class NotificationCardController {
     private var shrinkTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var keyObserver: NSObjectProtocol?
+    /// Notification Center takes the keyboard for its own field as it unfolds, maybe more than once.
+    /// For a moment after that, losing the keyboard means taking it back, not that a click went elsewhere.
+    private var replyReadyAt = Date.distantPast
+    private var keyboardRetakes = 0
+    private let retakeTime: TimeInterval = 1.5
+    private let maxKeyboardRetakes = 3
 
     private init() {}
 
@@ -98,32 +106,51 @@ final class NotificationCardController {
     var replyText: String { model.replyText }
     var replyState: NotificationCardModel.ReplyState { model.replyState }
 
-    /// The field opens on the card in front, and the keyboard goes to it without this app coming forward.
+    /// The field opens on the card in front. The keyboard comes once the banner behind it is ready.
     func startReplying(_ id: String, in notifications: [SystemNotification]) {
         guard let panel, show(notifications) else { return }
         withAnimation(Self.stackAnimation) {
             model.replyText = ""
             model.replyState = .editing
+            model.replyIsReady = false
             model.replyingID = id
             model.isExpanded = false
         }
-        panel.takesKeyboard = true
-        panel.makeKeyAndOrderFront(nil)
-        focusReplyField(in: panel)
 
         if keyObserver == nil {
             keyObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
             ) { _ in
-                // A click elsewhere with nothing typed means no reply. Anything typed stays for a click back.
-                Task { @MainActor in
-                    let model = NotificationCardController.shared.model
-                    if model.replyingID != nil, model.replyState == .editing,
-                       model.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        SystemNotificationManager.shared.cancelReply()
-                    }
-                }
+                Task { @MainActor in NotificationCardController.shared.keyboardLeft() }
             }
+        }
+    }
+
+    /// The keyboard goes to the card's field, without this app coming forward.
+    func replyBecameReady() {
+        guard let panel, model.replyingID != nil else { return }
+        model.replyIsReady = true
+        replyReadyAt = Date()
+        keyboardRetakes = 0
+        takeKeyboard(panel)
+    }
+
+    private func takeKeyboard(_ panel: NotificationCardPanel) {
+        panel.takesKeyboard = true
+        panel.makeKeyAndOrderFront(nil)
+        focusReplyField(in: panel)
+    }
+
+    /// A click elsewhere with nothing typed means no reply. Anything typed stays for a click back.
+    private func keyboardLeft() {
+        guard let panel, model.replyingID != nil, model.replyState == .editing, model.replyIsReady else { return }
+        if Date().timeIntervalSince(replyReadyAt) < retakeTime, keyboardRetakes < maxKeyboardRetakes {
+            keyboardRetakes += 1
+            takeKeyboard(panel)
+            return
+        }
+        if model.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            SystemNotificationManager.shared.cancelReply()
         }
     }
 
@@ -139,6 +166,7 @@ final class NotificationCardController {
             model.replyingID = nil
             model.replyText = ""
             model.replyState = .editing
+            model.replyIsReady = false
         }
         guard let panel else { return }
         panel.takesKeyboard = false
@@ -711,8 +739,8 @@ private struct ReplyField: View {
                     .foregroundStyle(.white)
                     .focused($isFocused)
                     .onSubmit { SystemNotificationManager.shared.sendReply() }
-                    .disabled(model.replyState == .sending)
-                if model.replyState == .sending {
+                    .disabled(model.replyState == .sending || !model.replyIsReady)
+                if model.replyState == .sending || !model.replyIsReady {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -732,7 +760,11 @@ private struct ReplyField: View {
             .padding(.trailing, 5)
             .padding(.vertical, 5)
             .background(Color.white.opacity(0.14), in: Capsule())
-            .onAppear { isFocused = true }
+            .onChange(of: model.replyIsReady) {
+                if model.replyIsReady {
+                    isFocused = true
+                }
+            }
         case .sent:
             Label("Sent", systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12, weight: .medium))

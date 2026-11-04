@@ -262,9 +262,11 @@ final class SystemNotificationManager {
         replyReady = Task { await start.value == 0 }
         Task {
             let answer = await start.value
-            guard answer != 0, replyingID == notification.id,
-                  NotificationCardController.shared.replyState == .editing
-            else { return }
+            guard replyingID == notification.id, NotificationCardController.shared.replyState == .editing else { return }
+            guard answer != 0 else {
+                NotificationCardController.shared.replyBecameReady()
+                return
+            }
             NotificationCardController.shared.setReplyState(.failed(answer == 1
                 ? String(localized: "macOS only keeps a message for 5 seconds. Answer in the app.")
                 : String(localized: "This can't be answered from here.")))
