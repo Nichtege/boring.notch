@@ -20,6 +20,9 @@ struct SystemNotification: Identifiable, Equatable {
     var title: String?
     var subtitle: String?
     var body: String?
+    /// An alert stays until it's answered, with these buttons. A banner's card goes by itself.
+    var isAlert = false
+    var actions: [String] = []
     var receivedAt = Date()
 
     func isFromSameSender(as other: SystemNotification) -> Bool {
@@ -28,7 +31,7 @@ struct SystemNotification: Identifiable, Equatable {
 
     /// A title that arrives before the body makes a banner look new to the helper.
     func isLongerReading(of other: SystemNotification) -> Bool {
-        title != nil && isFromSameSender(as: other)
+        title != nil && isFromSameSender(as: other) && isAlert == other.isAlert
             && receivedAt.timeIntervalSince(other.receivedAt) < 1
             && body?.hasPrefix(other.body ?? "") ?? (other.body == nil)
     }
@@ -38,8 +41,8 @@ struct SystemNotification: Identifiable, Equatable {
 final class SystemNotificationManager {
     static let shared = SystemNotificationManager()
 
-    /// The newest card and three behind it. An older one leaves the stack for the Notification Center,
-    /// which has it anyway.
+    /// The newest card and three behind it. An older banner leaves the stack for the Notification Center,
+    /// which has it anyway, and an older alert goes back to where it can still be answered.
     private let stackLimit = 4
     private let displayDuration: Duration = .seconds(8)
     // A check is two trips to the helper. While it's watching it looks after the permission itself and
@@ -76,6 +79,8 @@ final class SystemNotificationManager {
                 Task { @MainActor in
                     if FullscreenMediaDetector.shared.hidesClosedNotch {
                         self?.dismissAll()
+                    } else {
+                        self?.cardsMayShowAgain()
                     }
                 }
             }
@@ -140,6 +145,8 @@ final class SystemNotificationManager {
     /// The helper is gone and with it whatever it had parked: a new one looks for such windows when
     /// it starts. The short pause keeps a helper that keeps crashing from relaunching in a tight loop.
     private func helperLost() async {
+        // Its alerts are back on screen, or will be with the next helper
+        remove { $0.isAlert }
         try? await Task.sleep(for: .seconds(1))
         XPCHelperClient.shared.restoreStrandedNotifications()
         checkWatchingNow()
@@ -160,20 +167,30 @@ final class SystemNotificationManager {
             bundleID: nonEmpty(payload["bundleID"]),
             title: nonEmpty(payload["title"]),
             subtitle: nonEmpty(payload["subtitle"]),
-            body: nonEmpty(payload["body"])
+            body: nonEmpty(payload["body"]),
+            isAlert: payload["kind"] == "alert",
+            actions: (payload["actions"] ?? "").split(separator: "\u{1F}").map(String.init)
         )
 
         // The card it took the place of, whose banner may still be there too
         var replaced: SystemNotification?
-        if let index = notifications.firstIndex(where: { notification.isLongerReading(of: $0) }) {
-            replaced = notifications[index]
+        if let index = notifications.firstIndex(where: {
+            $0.token == notification.token || notification.isLongerReading(of: $0)
+        }) {
+            replaced = notifications[index].token == notification.token ? nil : notifications[index]
             notification.id = notifications[index].id
             notification.receivedAt = notifications[index].receivedAt
             notifications[index] = notification
         } else {
             notifications.insert(notification, at: 0)
             if notifications.count > stackLimit {
-                replaced = notifications.removeLast()
+                let oldest = notifications.dropFirst().lastIndex { !$0.isAlert } ?? notifications.count - 1
+                let pushedOut = notifications.remove(at: oldest)
+                if pushedOut.isAlert {
+                    releaseBanner(of: pushedOut)
+                } else {
+                    replaced = pushedOut
+                }
             }
         }
 
@@ -191,9 +208,24 @@ final class SystemNotificationManager {
     }
 
     /// The user dealt with this card. Its banner stays away until it's gone by itself: there's nothing
-    /// left to tell, and it would only flash back for a moment.
+    /// left to tell, and it would only flash back for a moment. An alert isn't dealt with by that, and
+    /// goes back to where it can be answered.
     func dismiss(_ notification: SystemNotification) {
         remove { $0.id == notification.id }
+        if notification.isAlert {
+            releaseBanner(of: notification)
+        }
+    }
+
+    /// The alert behind this card is gone, or the helper put it back on screen.
+    func alertDidEnd(_ token: String) {
+        remove { $0.isAlert && $0.token == token }
+    }
+
+    /// Alerts that went back on screen while no card could be shown get one again.
+    func cardsMayShowAgain() {
+        guard canShowCards else { return }
+        XPCHelperClient.shared.reofferNotificationAlerts()
     }
 
     /// Everything goes, and every banner still up comes back.
@@ -232,13 +264,29 @@ final class SystemNotificationManager {
 
     /// Opens the right place through the banner if it's still there, the app itself otherwise. If
     /// nothing opened the card stays, since it may be all that's left of the notification. What opened
-    /// is the whole conversation, so the sender's other cards are done as well.
+    /// is the whole conversation, so the sender's other banners are done as well. An alert is only done
+    /// once it was pressed, and the helper brings it back if that didn't answer it.
     func open(_ notification: SystemNotification) {
         Task {
             let pressed = await XPCHelperClient.shared.pressNotification(notification.token)
             let opened = if pressed { true } else { await activateApp(of: notification) }
             if opened {
-                remove { $0.isFromSameSender(as: notification) }
+                remove { card in
+                    card.id == notification.id
+                        ? pressed || !card.isAlert
+                        : card.isFromSameSender(as: notification) && !card.isAlert
+                }
+            }
+        }
+    }
+
+    /// One of an alert's buttons. If it can't be pressed from here, the alert goes back to where it can.
+    func answer(_ notification: SystemNotification, with action: String) {
+        Task {
+            let answered = await XPCHelperClient.shared.performNotificationAction(notification.token, label: action)
+            remove { $0.id == notification.id }
+            if !answered {
+                releaseBanner(of: notification)
             }
         }
     }
@@ -273,15 +321,17 @@ final class SystemNotificationManager {
         XPCHelperClient.shared.restoreNotification(notification.token)
     }
 
-    /// The stack goes as one, a while after the newest card came.
+    /// The banners go as one, a while after the newest card came. Alerts stay until they're answered.
     private func scheduleDismiss() {
         dismissTask?.cancel()
         dismissTask = nil
-        guard !isCardHovered, !notifications.isEmpty else { return }
+        guard !isCardHovered, notifications.contains(where: { !$0.isAlert }) else { return }
         dismissTask = Task { [weak self, displayDuration] in
             try? await Task.sleep(for: displayDuration)
-            guard !Task.isCancelled else { return }
-            self?.dismissAll()
+            guard let self, !Task.isCancelled else { return }
+            let banners = self.notifications.filter { !$0.isAlert }
+            self.remove { !$0.isAlert }
+            banners.forEach(self.releaseBanner)
         }
     }
 

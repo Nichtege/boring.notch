@@ -59,6 +59,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func onScreenUnlocked(_ notification: Notification) {
         adjustWindowPosition()
         MusicManager.shared.forceUpdate()
+        // The lock screen sent the alerts back to their place, and the session may still read as locked
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            SystemNotificationManager.shared.cardsMayShowAgain()
+        }
     }
 
     private func cleanupWindows(shouldInvert: Bool = false) {

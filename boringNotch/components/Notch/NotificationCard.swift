@@ -408,6 +408,13 @@ private struct NotificationCardView: View {
             .accessibilityAction(named: Text("Close")) {
                 SystemNotificationManager.shared.dismiss(notification)
             }
+            .accessibilityActions {
+                ForEach(notification.actions, id: \.self) { action in
+                    Button(action) {
+                        SystemNotificationManager.shared.answer(notification, with: action)
+                    }
+                }
+            }
             .modifier(NotificationBallDrop(
                 progress: !isFront || model.isPresented || reduceMotion ? 1 : 0,
                 restingCenter: NotchPanelLayout.shared.gapBelowNotch + shownHeight / 2,
@@ -499,6 +506,16 @@ private struct NotificationCardView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
+                if !notification.actions.isEmpty {
+                    ButtonRows {
+                        ForEach(notification.actions, id: \.self) { action in
+                            AlertButton(label: action) {
+                                SystemNotificationManager.shared.answer(notification, with: action)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                }
             }
         }
     }
@@ -527,9 +544,10 @@ private struct NotificationCardView: View {
                     .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
             }
-            .opacity(hoveredID == notification.id ? 0 : 1)
+            .opacity(hoveredID == notification.id && !notification.isAlert ? 0 : 1)
 
-            if hoveredID == notification.id {
+            // An alert is answered with its own buttons
+            if hoveredID == notification.id, !notification.isAlert {
                 Button {
                     SystemNotificationManager.shared.dismiss(notification)
                 } label: {
@@ -549,6 +567,82 @@ private struct NotificationCardView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return Text(formatter.localizedString(for: date, relativeTo: now))
+    }
+}
+
+/// One of an alert's own buttons, as Notification Center would have shown it.
+private struct AlertButton: View {
+    let label: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Color.white.opacity(isHovered ? 0.26 : 0.16), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Side by side, in as many rows as they need. One too long for a row is cut short.
+private struct ButtonRows: Layout {
+    var spacing: CGFloat = 6
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = self.size(of: subviews[index], width: bounds.width)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private func size(of subview: LayoutSubview, width: CGFloat) -> CGSize {
+        subview.sizeThatFits(ProposedViewSize(width: width.isFinite ? width : nil, height: nil))
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            let size = size(of: subviews[index], width: width)
+            if !row.indices.isEmpty, row.width + spacing + size.width > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+        }
+        if !row.indices.isEmpty {
+            rows.append(row)
+        }
+        return rows
     }
 }
 

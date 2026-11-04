@@ -41,6 +41,8 @@ private let stackTextDelay: TimeInterval = 0.5
 /// How long an alert stays where it is before a card's banner may take it along out of sight. All of them
 /// share one window on macOS 27, so an alert left standing would otherwise keep every banner on screen.
 private let alertSettleTime: TimeInterval = 3
+/// An answered alert leaves at once. One that's still there after this wanted more than a press.
+private let answerCheckDelay: TimeInterval = 1
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 /// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
@@ -145,6 +147,9 @@ struct CapturedNotification {
     let title: String?
     let subtitle: String?
     let body: String?
+    /// Stays until it's answered, with these buttons.
+    let isAlert: Bool
+    let actions: [String]
 }
 
 final class NotificationWatcher {
@@ -172,6 +177,7 @@ final class NotificationWatcher {
         /// that, and a neighbour's card on its way is no reason to bring the window back.
         var awaitsCard = false
         var isStack: Bool
+        let isAlert: Bool
         let foundAt = Date()
     }
 
@@ -182,6 +188,9 @@ final class NotificationWatcher {
     }
 
     var onBanner: ((CapturedNotification) -> Void)?
+    /// An alert's card has nothing left to stand in for: the alert is gone, or back on screen. A banner's
+    /// card goes by itself.
+    var onAlertEnded: ((String) -> Void)?
     /// The permission is gone and the watcher stopped by itself.
     var onStopped: (() -> Void)?
 
@@ -306,6 +315,10 @@ final class NotificationWatcher {
         scanWorkItem?.cancel()
         scanWorkItem = nil
         restoreRetries = 0
+        // Back on screen with everything else, or found again by a new start with a card of its own
+        for banner in liveBanners.values where banner.isAlert {
+            alertEnded(token: banner.token)
+        }
         liveBanners.removeAll()
         appElement = nil
         processIdentifier = nil
@@ -471,6 +484,10 @@ final class NotificationWatcher {
             if centerWasOpen {
                 centerWasOpen = false
                 centerClosedAt = Date()
+                // Nothing may happen after that to ask for the scan that sends the cards' banners away again
+                DispatchQueue.main.asyncAfter(deadline: .now() + centerClosingDelay + fastScanInterval) { [weak self] in
+                    self?.scheduleScan()
+                }
             }
             let centerIsClosing = centerClosedAt.map { Date().timeIntervalSince($0) < centerClosingDelay } ?? false
 
@@ -487,7 +504,7 @@ final class NotificationWatcher {
                 }
                 seen.formUnion(readings.map { $0.identity })
 
-                // A new alert has to be seen where it is, and everything in the window goes with it
+                // A new stack of alerts has to be seen where it is, and everything in the window goes with it
                 if readings.contains(where: {
                     !NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) && !isSettledAlert($0.identity)
                 }) {
@@ -509,7 +526,8 @@ final class NotificationWatcher {
                             token: UUID().uuidString,
                             element: reading.banner.element,
                             window: window,
-                            isStack: isStack
+                            isStack: isStack,
+                            isAlert: reading.banner.subrole == NotificationPanelDetection.alertSubrole
                         )
                         fresh.append(reading)
                     }
@@ -546,8 +564,30 @@ final class NotificationWatcher {
             for identity in Array(liveBanners.keys) where !seen.contains(identity) {
                 if let banner = liveBanners.removeValue(forKey: identity) {
                     releaseAfterSlideOut(token: banner.token)
+                    if banner.isAlert {
+                        alertEnded(token: banner.token)
+                    }
                 }
             }
+
+            if !centerIsClosing {
+                parkAgainUnderCards()
+            }
+        }
+    }
+
+    /// The open center brings back everything. What still has a card up goes away again once it's closed,
+    /// which matters for an alert: it would stay on screen next to its card until answered. The window
+    /// stays away for every card in it, as it would have before.
+    private func parkAgainUnderCards() {
+        for (identity, live) in liveBanners where live.hasCard {
+            let windowKey = key(for: live.window)
+            if parkedWindows[windowKey] != nil {
+                parkedWindows[windowKey]?.tokens.insert(live.token)
+                continue
+            }
+            guard case .banners(let banners) = inspect(live.window), canPark(banners, for: identity) else { continue }
+            _ = moveAway(live.window, token: live.token)
         }
     }
 
@@ -624,6 +664,11 @@ final class NotificationWatcher {
     /// A new banner leaves as soon as it's found. Nothing depends on the app for that: unless the app
     /// says in time that the card is up, the banner comes back by itself.
     private func parkBeforeCard(_ window: AXUIElement, banners: [Banner], identity: Int, token: String) -> Bool {
+        restoreUnlessCardInTime(token: token)
+        return canPark(banners, for: identity) && moveAway(window, token: token)
+    }
+
+    private func restoreUnlessCardInTime(token: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + cardConfirmationTime) { [weak self] in
             guard let self else { return }
             if let identity = self.liveBanners.first(where: { $0.value.token == token })?.key {
@@ -632,7 +677,17 @@ final class NotificationWatcher {
             }
             self.restore(token: token)
         }
-        return canPark(banners, for: identity) && moveAway(window, token: token)
+    }
+
+    /// Alerts that came back on screen without a card, as on the lock screen or in full screen, are offered
+    /// to the app again. They stay where they are until a card is up for them.
+    func reofferAlerts() {
+        guard AXIsProcessTrusted(), let appElement, !centerMayBeOpen(appElement) else { return }
+        for (identity, banner) in liveBanners where banner.isAlert && !banner.hasCard && !banner.awaitsCard {
+            liveBanners[identity]?.awaitsCard = true
+            restoreUnlessCardInTime(token: banner.token)
+            report(banner.element, text: readText(in: banner.element), token: banner.token)
+        }
     }
 
     /// Something new came, or it wouldn't be a stack now. New text makes a new identity and a new card. If
@@ -698,22 +753,23 @@ final class NotificationWatcher {
         var containsBanner = false
         for banner in banners {
             let other = self.identity(of: banner.element, showing: readText(in: banner.element))
-            guard NotificationPanelDetection.isMirrorable(subrole: banner.subrole) else {
-                if isSettledAlert(other) { continue }
-                return false
-            }
-            if other == identity {
+            let isMirrorable = NotificationPanelDetection.isMirrorable(subrole: banner.subrole)
+            if isMirrorable, other == identity {
                 containsBanner = true
-            } else if liveBanners[other]?.hasCard != true, liveBanners[other]?.awaitsCard != true {
+            } else if isMirrorable, liveBanners[other]?.hasCard == true || liveBanners[other]?.awaitsCard == true {
+                continue
+            } else if NotificationPanelDetection.waitsForAnswer(subrole: banner.subrole), isSettledAlert(other) {
+                continue
+            } else {
                 return false
             }
         }
         return containsBanner
     }
 
-    /// An alert waits for an answer, so it can't stand in a card's way for good. Once it has been seen it may
-    /// leave with a card's banner, and it's back as soon as that banner is: when the card goes or the
-    /// banner would have. A new alert brings the window back at once.
+    /// An alert without a card waits for an answer, so it can't stand in a card's way for good. Once it has
+    /// been seen it may leave with a card's banner, and it's back as soon as that banner is: when the card
+    /// goes or the banner would have. A new stack of alerts brings the window back at once.
     private func isSettledAlert(_ identity: Int) -> Bool {
         guard let live = liveBanners[identity] else { return false }
         return Date().timeIntervalSince(live.foundAt) >= alertSettleTime
@@ -745,14 +801,65 @@ final class NotificationWatcher {
     /// may only unfold it, out of sight, so that's a no too.
     func press(token: String) -> Bool {
         guard AXIsProcessTrusted(),
-              let banner = liveBanners.values.first(where: { $0.token == token })?.element,
-              banner.string(kAXSubroleAttribute) == NotificationPanelDetection.plainBannerSubrole
+              let live = liveBanners.values.first(where: { $0.token == token }),
+              [NotificationPanelDetection.plainBannerSubrole, NotificationPanelDetection.alertSubrole]
+                .contains(live.element.string(kAXSubroleAttribute))
         else { return false }
         var actions: CFArray?
-        guard AXUIElementCopyActionNames(banner, &actions) == .success,
-              (actions as? [String])?.contains(kAXPressAction) == true
+        guard AXUIElementCopyActionNames(live.element, &actions) == .success,
+              (actions as? [String])?.contains(kAXPressAction) == true,
+              AXUIElementPerformAction(live.element, kAXPressAction as CFString) == .success
         else { return false }
-        return AXUIElementPerformAction(banner, kAXPressAction as CFString) == .success
+        if live.isAlert {
+            handBackIfUnanswered(token: token)
+        }
+        return true
+    }
+
+    /// Presses one of an alert's buttons, found again by what it says.
+    func perform(token: String, action label: String) -> Bool {
+        guard AXIsProcessTrusted(),
+              let live = liveBanners.values.first(where: { $0.token == token }), live.isAlert,
+              let action = buttons(of: live.element).first(where: { $0.label == label }),
+              AXUIElementPerformAction(live.element, action.name as CFString) == .success
+        else { return false }
+        handBackIfUnanswered(token: token)
+        return true
+    }
+
+    /// An alert that's still there a moment after a press wanted more than that, like a reply to be typed
+    /// or a menu. It comes back on screen to be finished there, and its card goes.
+    private func handBackIfUnanswered(token: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + answerCheckDelay) { [weak self] in
+            guard let self else { return }
+            // Its leaving may not have been looked at yet
+            self.scan()
+            guard self.liveBanners.values.contains(where: { $0.token == token }) else { return }
+            self.restore(token: token)
+            self.alertEnded(token: token)
+        }
+    }
+
+    /// In the same order as the cards, which also come by the other queue.
+    private func alertEnded(token: String) {
+        let onAlertEnded = self.onAlertEnded
+        bundleIDQueue.async {
+            onAlertEnded?(token)
+        }
+    }
+
+    /// The buttons Notification Center offers as an alert's own actions, as "Name:<label>\nTarget:…".
+    private func buttons(of alert: AXUIElement) -> [(label: String, name: String)] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(alert, &names) == .success, let names = names as? [String] else {
+            return []
+        }
+        return names.compactMap { name in
+            guard name.hasPrefix("Name:") else { return nil }
+            let label = name.dropFirst(5).components(separatedBy: "\nTarget:")[0]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return label.isEmpty ? nil : (label, name)
+        }
     }
 
     /// Windows left at the parking position by a helper that died can be put back without watching.
@@ -904,6 +1011,8 @@ final class NotificationWatcher {
                 .first
                 .map { Self.cleanedAppName(String($0)) }
         }
+        let isAlert = banner.string(kAXSubroleAttribute) == NotificationPanelDetection.alertSubrole
+        let actions = isAlert ? buttons(of: banner).map(\.label) : []
 
         // The helper sets this again on the main queue with every start
         let onBanner = self.onBanner
@@ -914,7 +1023,9 @@ final class NotificationWatcher {
                 bundleID: appName.flatMap { self?.bundleID(forAppNamed: $0) },
                 title: text.title,
                 subtitle: text.subtitle,
-                body: text.body
+                body: text.body,
+                isAlert: isAlert,
+                actions: actions
             ))
         }
     }

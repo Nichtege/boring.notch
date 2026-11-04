@@ -17,10 +17,12 @@ enum NotificationPanelDetection {
         "AXNotificationCenterBannerWindow",
         "AXNotificationCenterAlertStack"
     ]
-    /// The surfaces a card can stand in for. Alerts stay until they're answered, and they stay where
-    /// they are. Notification Center on 27.2 itself only knows Banner, BannerStack, Alert and AlertStack.
+    /// The surfaces a card can stand in for. An alert stays until it's answered, and so does its card,
+    /// which has its buttons. A stack of alerts stays where it is. Notification Center on 27.2 itself only
+    /// knows Banner, BannerStack, Alert and AlertStack.
     static let plainBannerSubrole = "AXNotificationCenterBanner"
     static let stackSubrole = "AXNotificationCenterBannerStack"
+    static let alertSubrole = "AXNotificationCenterAlert"
 
     static func isPanel(
         subrole: String?,
@@ -44,7 +46,12 @@ enum NotificationPanelDetection {
     }
 
     static func isMirrorable(subrole: String?) -> Bool {
-        subrole == plainBannerSubrole || subrole == stackSubrole
+        subrole == plainBannerSubrole || subrole == stackSubrole || subrole == alertSubrole
+    }
+
+    /// Stays until it's answered, wherever it is.
+    static func waitsForAnswer(subrole: String?) -> Bool {
+        subrole != plainBannerSubrole && subrole != stackSubrole
     }
 }
 

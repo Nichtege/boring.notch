@@ -65,8 +65,14 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
                     "bundleID": notification.bundleID ?? "",
                     "title": notification.title ?? "",
                     "subtitle": notification.subtitle ?? "",
-                    "body": notification.body ?? ""
+                    "body": notification.body ?? "",
+                    "kind": notification.isAlert ? "alert" : "banner",
+                    // A string, like everything else in here: what the interface lets through without a list of classes
+                    "actions": notification.actions.joined(separator: "\u{1F}")
                 ])
+            }
+            watcher.onAlertEnded = { token in
+                delegate?.notificationAlertDidEnd(token)
             }
             watcher.onStopped = {
                 Self.stopWatching()
@@ -95,6 +101,14 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
 
     @objc func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void) {
         DispatchQueue.main.async { reply(Self.watcher.press(token: token)) }
+    }
+
+    @objc func performNotificationAction(_ token: String, label: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async { reply(Self.watcher.perform(token: token, action: label)) }
+    }
+
+    @objc func reofferNotificationAlerts() {
+        DispatchQueue.main.async { Self.watcher.reofferAlerts() }
     }
 
     @objc func restoreStrandedNotifications() {
