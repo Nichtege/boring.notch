@@ -38,6 +38,9 @@ private let restoreDelay: TimeInterval = 0.35
 private let cardConfirmationTime: TimeInterval = 1.5
 /// How long a banner that became a stack has to show what's new. Its text can come a moment after its role.
 private let stackTextDelay: TimeInterval = 0.5
+/// How long an alert stays where it is before a card's banner may take it along out of sight. All of them
+/// share one window on macOS 27, so an alert left standing would otherwise keep every banner on screen.
+private let alertSettleTime: TimeInterval = 3
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 /// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
@@ -169,6 +172,7 @@ final class NotificationWatcher {
         /// that, and a neighbour's card on its way is no reason to bring the window back.
         var awaitsCard = false
         var isStack: Bool
+        let foundAt = Date()
     }
 
     private struct ParkedWindow {
@@ -483,8 +487,10 @@ final class NotificationWatcher {
                 }
                 seen.formUnion(readings.map { $0.identity })
 
-                // An alert has to be answered where it is, and everything in the window goes with it
-                if !readings.allSatisfy({ NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) }) {
+                // A new alert has to be seen where it is, and everything in the window goes with it
+                if readings.contains(where: {
+                    !NotificationPanelDetection.isMirrorable(subrole: $0.banner.subrole) && !isSettledAlert($0.identity)
+                }) {
                     restoreWindow(forKey: key(for: window))
                 }
 
@@ -686,13 +692,16 @@ final class NotificationWatcher {
         return true
     }
 
-    /// Everything in the window has to be a banner, and either this one or one whose card is up or coming.
-    /// A repeat next to the original says the same, so the same card stands in for both.
+    /// Everything in the window has to be this banner, one whose card is up or coming, or an alert that has
+    /// been on screen a while. A repeat next to the original says the same, so the same card stands in for both.
     private func canPark(_ banners: [Banner], for identity: Int) -> Bool {
         var containsBanner = false
         for banner in banners {
-            guard NotificationPanelDetection.isMirrorable(subrole: banner.subrole) else { return false }
             let other = self.identity(of: banner.element, showing: readText(in: banner.element))
+            guard NotificationPanelDetection.isMirrorable(subrole: banner.subrole) else {
+                if isSettledAlert(other) { continue }
+                return false
+            }
             if other == identity {
                 containsBanner = true
             } else if liveBanners[other]?.hasCard != true, liveBanners[other]?.awaitsCard != true {
@@ -700,6 +709,14 @@ final class NotificationWatcher {
             }
         }
         return containsBanner
+    }
+
+    /// An alert waits for an answer, so it can't stand in a card's way for good. Once it has been seen it may
+    /// leave with a card's banner, and it's back as soon as that banner is: when the card goes or the
+    /// banner would have. A new alert brings the window back at once.
+    private func isSettledAlert(_ identity: Int) -> Bool {
+        guard let live = liveBanners[identity] else { return false }
+        return Date().timeIntervalSince(live.foundAt) >= alertSettleTime
     }
 
     /// The card for this banner is gone, or it never came. A banner that's still there has nothing standing
