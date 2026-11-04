@@ -43,6 +43,9 @@ private let stackTextDelay: TimeInterval = 0.5
 private let alertSettleTime: TimeInterval = 3
 /// An answered alert leaves at once. One that's still there after this wanted more than a press.
 private let answerCheckDelay: TimeInterval = 1
+/// Every banner and alert has this button, and it only unfolds the notification where it is. A card
+/// already shows what it says.
+private let unfoldingActions: Set<String> = ["Details einblenden", "Details ausblenden", "Show Details", "Hide Details"]
 /// A closing center has given up focus, but its old notifications are still there for a moment.
 private let centerClosingDelay: TimeInterval = 1
 /// For when no later scan will try again. Anywhere else one try will do, since waiting between tries
@@ -1012,7 +1015,7 @@ final class NotificationWatcher {
                 .map { Self.cleanedAppName(String($0)) }
         }
         let isAlert = banner.string(kAXSubroleAttribute) == NotificationPanelDetection.alertSubrole
-        let actions = isAlert ? buttons(of: banner).map(\.label) : []
+        let actions = isAlert ? buttons(of: banner).map(\.label).filter { !unfoldingActions.contains($0) } : []
 
         // The helper sets this again on the main queue with every start
         let onBanner = self.onBanner
