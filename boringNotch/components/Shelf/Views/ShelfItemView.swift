@@ -18,6 +18,7 @@ struct ShelfItemView: View {
     @StateObject private var viewModel: ShelfItemViewModel
     @EnvironmentObject private var quickLookService: QuickLookService
     @State private var cachedPreviewImage: NSImage?
+    @State private var isHovering = false
 
     private var isSelected: Bool { viewModel.isSelected }
 
@@ -52,6 +53,17 @@ struct ShelfItemView: View {
                 }
             )
         }
+        // Sits above the click handler so a click on it doesn't select or drag the item
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                removeButton
+                    .padding(4)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) { isHovering = hovering }
+        }
         .onAppear {
             Task { 
                 await viewModel.loadThumbnail()
@@ -74,6 +86,21 @@ struct ShelfItemView: View {
     }
 
     // MARK: - View Components
+
+    private var removeButton: some View {
+        Button {
+            ShelfActionService.remove(item)
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 16))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .gray.opacity(0.8))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Remove")
+        .accessibilityLabel("Remove")
+    }
 
     private var iconView: some View {
         Image(nsImage: viewModel.thumbnail ?? item.icon)
