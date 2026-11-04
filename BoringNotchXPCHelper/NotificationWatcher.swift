@@ -235,6 +235,8 @@ final class NotificationWatcher {
     private var lastOrigin: CGPoint?
     private var restoreRetries = 0
     private var centerWasOpen = false
+    /// The window that has Notification Center's focus because of a reply, until nothing has it.
+    private var replyFocusWindow: AXUIElement?
     private var centerClosedAt: Date?
     /// Finding an app can take long, and the main queue has windows to put back. Both caches are only
     /// used on this queue.
@@ -605,12 +607,16 @@ final class NotificationWatcher {
 
     /// The open center brings back everything. What still has a card up goes away again once it's closed,
     /// which matters for an alert: it would stay on screen next to its card until answered. The window
-    /// stays away for every card in it, as it would have before.
+    /// stays away for every card in it, as it would have before, and goes again if anything else put it back.
     private func parkAgainUnderCards() {
         for (identity, live) in liveBanners where live.hasCard {
             let windowKey = key(for: live.window)
             if parkedWindows[windowKey] != nil {
                 parkedWindows[windowKey]?.tokens.insert(live.token)
+                // Notification Center may have put it back itself, as when it lays out an unfolded banner
+                if let position = live.window.position(), !isParked(position) {
+                    _ = live.window.move(to: parkingPosition)
+                }
                 continue
             }
             guard case .banners(let banners) = inspect(live.window), canPark(banners, for: identity) else { continue }
@@ -685,10 +691,22 @@ final class NotificationWatcher {
         Int(bitPattern: CFHash(window))
     }
 
-    /// Only an answer of no focused window means closed. Anything else can't rule out the open center.
+    /// Only an answer of no focused window means closed. Anything else can't rule out the open center,
+    /// except the focus a reply put in the window banners use: an unfolded banner's field takes it, and
+    /// may keep it after folding. The open center still shows in that window as its panel, which isn't
+    /// a surface for banners and so comes back on screen anyway.
     private func centerMayBeOpen(_ appElement: AXUIElement) -> Bool {
         var value: CFTypeRef?
-        return AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &value) != .noValue
+        let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &value)
+        guard result != .noValue else {
+            replyFocusWindow = nil
+            return false
+        }
+        if result == .success, let value, let replyFocusWindow,
+           CFGetTypeID(value) == AXUIElementGetTypeID(), CFEqual(value, replyFocusWindow) {
+            return false
+        }
+        return true
     }
 
     // MARK: - Parking
@@ -898,35 +916,40 @@ final class NotificationWatcher {
 
     /// Unfolds the banner to its reply field, out of sight. Unfolded it also stays until it's answered or
     /// folded again. No if the field didn't come.
-    func beginReply(token: String, completion: @escaping (Bool) -> Void) {
-        guard AXIsProcessTrusted(),
-              let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+    enum ReplyStart: Int {
+        case ready, gone, impossible
+    }
+
+    func beginReply(token: String, completion: @escaping (ReplyStart) -> Void) {
+        guard AXIsProcessTrusted() else { return completion(.impossible) }
+        guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
               let banner = liveBanners[identity]
-        else { return completion(false) }
-        if banner.isReplying, replyField(in: banner.element) != nil { return completion(true) }
+        else { return completion(.gone) }
+        if banner.isReplying, replyField(in: banner.element) != nil { return completion(.ready) }
 
         guard let opener = buttons(of: banner.element).first(where: { replyOpeners.contains(plainLabel($0.label)) }) else {
-            return completion(false)
+            return completion(.impossible)
         }
-        // Before it changes, so the scans keep it for the same banner
+        // Before it changes, so the scans keep it for the same banner and don't take its focus for the center
         liveBanners[identity]?.isReplying = true
+        replyFocusWindow = banner.window
         guard !pressDidNothing(AXUIElementPerformAction(banner.element, opener.name as CFString)) else {
             liveBanners[identity]?.isReplying = false
-            return completion(false)
+            return completion(.impossible)
         }
         waitForReplyField(token: token, until: Date().addingTimeInterval(replyWaitTime), completion: completion)
     }
 
-    private func waitForReplyField(token: String, until deadline: Date, completion: @escaping (Bool) -> Void) {
+    private func waitForReplyField(token: String, until deadline: Date, completion: @escaping (ReplyStart) -> Void) {
         scan()
-        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(false) }
-        if replyField(in: banner.element) != nil { return completion(true) }
+        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(.gone) }
+        if replyField(in: banner.element) != nil { return completion(.ready) }
         guard Date() < deadline else {
             endReply(token: token)
-            return completion(false)
+            return completion(.impossible)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
-            guard let self else { return completion(false) }
+            guard let self else { return completion(.impossible) }
             self.waitForReplyField(token: token, until: deadline, completion: completion)
         }
     }

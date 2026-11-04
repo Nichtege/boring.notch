@@ -211,8 +211,9 @@ extension XPCHelperClient {
         send { $0.reofferNotificationAlerts() }
     }
 
-    nonisolated func beginNotificationReply(_ token: String) async -> Bool {
-        await ask { $0.beginNotificationReply(token, with: $1) } ?? false
+    /// 0 when the field is there, 1 when the banner is gone, 2 when it can't be answered or the helper's gone.
+    nonisolated func beginNotificationReply(_ token: String) async -> Int {
+        await ask { $0.beginNotificationReply(token, with: $1) } ?? 2
     }
 
     nonisolated func sendNotificationReply(_ token: String, text: String) async -> Bool {

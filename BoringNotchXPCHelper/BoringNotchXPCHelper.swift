@@ -112,8 +112,9 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         DispatchQueue.main.async { Self.watcher.reofferAlerts() }
     }
 
-    @objc func beginNotificationReply(_ token: String, with reply: @escaping (Bool) -> Void) {
-        DispatchQueue.main.async { Self.watcher.beginReply(token: token, completion: reply) }
+    /// 0 when the field is there, 1 when the banner is gone, 2 when it can't be answered.
+    @objc func beginNotificationReply(_ token: String, with reply: @escaping (Int) -> Void) {
+        DispatchQueue.main.async { Self.watcher.beginReply(token: token) { reply($0.rawValue) } }
     }
 
     /// What the user typed goes straight into the banner's field and nowhere else.

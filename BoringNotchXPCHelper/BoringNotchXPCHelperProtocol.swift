@@ -26,7 +26,7 @@ import Foundation
     func pressNotification(_ token: String, with reply: @escaping (Bool) -> Void)
     func performNotificationAction(_ token: String, label: String, with reply: @escaping (Bool) -> Void)
     func reofferNotificationAlerts()
-    func beginNotificationReply(_ token: String, with reply: @escaping (Bool) -> Void)
+    func beginNotificationReply(_ token: String, with reply: @escaping (Int) -> Void)
     func sendNotificationReply(_ token: String, text: String, with reply: @escaping (Bool) -> Void)
     func cancelNotificationReply(_ token: String)
     func restoreStrandedNotifications()

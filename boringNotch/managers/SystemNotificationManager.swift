@@ -258,13 +258,16 @@ final class SystemNotificationManager {
         NotificationCardController.shared.startReplying(notification.id, in: notifications)
 
         let token = notification.token
-        let ready = Task { await XPCHelperClient.shared.beginNotificationReply(token) }
-        replyReady = ready
+        let start = Task { await XPCHelperClient.shared.beginNotificationReply(token) }
+        replyReady = Task { await start.value == 0 }
         Task {
-            guard !(await ready.value), replyingID == notification.id,
+            let answer = await start.value
+            guard answer != 0, replyingID == notification.id,
                   NotificationCardController.shared.replyState == .editing
             else { return }
-            NotificationCardController.shared.setReplyState(.failed(String(localized: "This can't be answered from here.")))
+            NotificationCardController.shared.setReplyState(.failed(answer == 1
+                ? String(localized: "macOS only keeps a message for 5 seconds. Answer in the app.")
+                : String(localized: "This can't be answered from here.")))
         }
     }
 
