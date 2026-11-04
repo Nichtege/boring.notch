@@ -19,6 +19,8 @@ struct ShelfItemView: View {
     @EnvironmentObject private var quickLookService: QuickLookService
     @State private var cachedPreviewImage: NSImage?
     @State private var isHovering = false
+    /// Where the visible cover sits in the icon's square, see `coverBounds(of:)`
+    @State private var coverRect: CGRect?
 
     private var isSelected: Bool { viewModel.isSelected }
 
@@ -53,19 +55,28 @@ struct ShelfItemView: View {
                 }
             )
         }
-        // Sits above the click handler so a click on it doesn't select or drag the item
-        .overlay(alignment: .topTrailing) {
-            if isHovering {
-                removeButton
-                    .padding(4)
-                    .transition(.opacity)
+        // Sits above the click handler so a click on it doesn't select or drag the item.
+        // Centred on the top-right corner of the file's cover, so it hangs over its edge.
+        .overlayPreferenceValue(IconFrameKey.self) { anchor in
+            if isHovering, let anchor {
+                GeometryReader { proxy in
+                    let icon = proxy[anchor]
+                    let cover = coverRect ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+                    removeButton
+                        .position(
+                            x: icon.minX + cover.maxX * icon.width - 2,
+                            y: icon.minY + cover.minY * icon.height + 2
+                        )
+                }
+                .transition(.opacity)
             }
         }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.12)) { isHovering = hovering }
         }
         .onAppear {
-            Task { 
+            coverRect = coverBounds(of: viewModel.thumbnail ?? item.icon)
+            Task {
                 await viewModel.loadThumbnail()
                 // Pre-render drag preview once on appear
                 if cachedPreviewImage == nil {
@@ -77,6 +88,7 @@ struct ShelfItemView: View {
             }
         }
         .onChange(of: viewModel.thumbnail) { _, _ in
+            coverRect = coverBounds(of: viewModel.thumbnail ?? item.icon)
             // Invalidate cached preview when thumbnail changes
             Task {
                 cachedPreviewImage = await renderDragPreview()
@@ -107,6 +119,7 @@ struct ShelfItemView: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: 56, height: 56)
+            .anchorPreference(key: IconFrameKey.self, value: .bounds) { $0 }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
     }
@@ -156,6 +169,61 @@ struct ShelfItemView: View {
     }
 
     
+}
+
+// MARK: - Cover position for the X
+
+/// The icon's frame, so the X can be drawn above the click handler but still line up with the icon
+private struct IconFrameKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// Where the visible part of an icon sits in its square, from 0 to 1 with the origin top left.
+/// File icons have transparent margins and a wide picture doesn't fill the square, so the X
+/// would float in the air if it went on the square's corner.
+private func coverBounds(of image: NSImage) -> CGRect? {
+    let side = 64
+    let size = image.size
+    guard size.width > 0, size.height > 0,
+          let context = CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+          ) else { return nil }
+
+    // Drawn the way the view shows it: scaled to fit and centred
+    let scale = CGFloat(side) / max(size.width, size.height)
+    let drawn = CGRect(
+        x: (CGFloat(side) - size.width * scale) / 2,
+        y: (CGFloat(side) - size.height * scale) / 2,
+        width: size.width * scale,
+        height: size.height * scale
+    )
+    var proposed = drawn
+    guard let cgImage = image.cgImage(forProposedRect: &proposed, context: nil, hints: nil) else { return nil }
+    context.draw(cgImage, in: drawn)
+
+    guard let data = context.data else { return nil }
+    let pixels = data.bindMemory(to: UInt8.self, capacity: side * side * 4)
+    var minX = side, minY = side, maxX = -1, maxY = -1
+    // The first row in memory is the top of the picture. Faint shadows don't count as cover.
+    for y in 0..<side {
+        for x in 0..<side where pixels[(y * side + x) * 4 + 3] > 80 {
+            minX = min(minX, x); maxX = max(maxX, x)
+            minY = min(minY, y); maxY = max(maxY, y)
+        }
+    }
+    guard maxX >= minX, maxY >= minY else { return nil }
+    let s = CGFloat(side)
+    return CGRect(
+        x: CGFloat(minX) / s,
+        y: CGFloat(minY) / s,
+        width: CGFloat(maxX - minX + 1) / s,
+        height: CGFloat(maxY - minY + 1) / s
+    )
 }
 
 // MARK: - Draggable Click Handler with NSDraggingSource
