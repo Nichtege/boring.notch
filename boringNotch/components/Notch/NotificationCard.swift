@@ -80,7 +80,7 @@ final class NotificationCardController {
     func show(_ notifications: [SystemNotification]) -> Bool {
         let panel = panel ?? makePanel()
         self.panel = panel
-        guard NotchPanelLayout.shared.screen(for: panel) != nil else { return false }
+        guard NotchPanelLayout.shared.mainScreen != nil else { return false }
 
         motionTask?.cancel()
         panel.ignoresMouseEvents = false
@@ -251,16 +251,16 @@ final class NotificationCardController {
         }
     }
 
-    /// The panel's top edge is where the notch or the Atlas line ends, with the gap inside the panel.
-    /// That edge also cuts off the card on its way in, which makes it come out from behind them.
+    /// Always on the Mac's own screen, under its notch. The panel's top edge is where the notch or the Atlas
+    /// line ends, with the gap inside the panel. That edge also cuts off the card on its way in, which
+    /// makes it come out from behind them.
     private func place(_ panel: NSPanel, animated: Bool) {
         let layout = NotchPanelLayout.shared
-        let line = AtlasPromptController.shared.lineFrame
-        let lineScreen = line.flatMap { frame in NSScreen.screens.first { $0.frame.intersects(frame) } }
-        guard let screen = lineScreen ?? layout.screen(for: panel) else { return }
+        guard let screen = layout.mainScreen else { return }
 
-        // A line whose screen just went away is no place to line up with
-        let top = (lineScreen == nil ? nil : line?.minY) ?? layout.notchBottom(on: screen)
+        // A line on another screen, or whose screen just went away, is no place to line up with
+        let line = AtlasPromptController.shared.lineFrame.flatMap { $0.intersects(screen.frame) ? $0 : nil }
+        let top = line?.minY ?? layout.notchBottom(on: screen)
         let width = Self.width + 2 * Self.bleed
         let height = stackHeight + layout.gapBelowNotch + Self.bleed
         let frame = NSRect(x: screen.frame.midX - width / 2, y: top - height, width: width, height: height)

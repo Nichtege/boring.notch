@@ -47,6 +47,16 @@ final class NotchPanelLayout {
         return panel.isVisible ? (panel.screen ?? NSScreen.main) : (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)
     }
 
+    /// The Mac's own screen, where the notch is, whichever screen the mouse is on. With the lid closed
+    /// it's the one with the menu bar.
+    var mainScreen: NSScreen? {
+        NSScreen.screens.first { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            else { return false }
+            return CGDisplayIsBuiltin(CGDirectDisplayID(number.uint32Value)) != 0
+        } ?? NSScreen.screens.first
+    }
+
     /// Where the notch ends on this screen, open or closed.
     func notchBottom(on screen: NSScreen) -> CGFloat {
         let closedHeight = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
