@@ -224,6 +224,12 @@ extension XPCHelperClient {
         send { $0.cancelNotificationReply(token) }
     }
 
+    /// The banners to keep while the pointer is on their cards. Any others held so far are let go.
+    nonisolated func holdNotifications(_ tokens: [String]) {
+        let joined = tokens.joined(separator: "\u{1F}")
+        send { $0.holdNotifications(joined) }
+    }
+
     nonisolated func restoreStrandedNotifications() {
         send { $0.restoreStrandedNotifications() }
     }

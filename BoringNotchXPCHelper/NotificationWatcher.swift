@@ -51,6 +51,10 @@ private let unfoldingActions: Set<String> = ["Details einblenden", "Details ausb
 private let replyOpeners: Set<String> = ["mehranzeigen", "showmore", "antworten", "antwort", "antwortgeben", "reply"]
 private let replySenders: Set<String> = ["senden", "send"]
 private let replyClosers: Set<String> = ["detailsausblenden", "hidedetails", "wenigeranzeigen", "showless"]
+/// Unfolds a banner without a field, which keeps it until it's folded again. Folded, it has its 5 s anew.
+private let holdOpeners: Set<String> = ["detailseinblenden", "showdetails"]
+/// How soon an unfolded banner shows whether it brought up a field after all, which takes the keyboard.
+private let holdCheckDelay: TimeInterval = 0.15
 /// How long the reply field has to appear, and how long a sent reply has to leave the field.
 private let replyWaitTime: TimeInterval = 1.5
 private let replyPollInterval: TimeInterval = 0.1
@@ -206,6 +210,13 @@ final class NotificationWatcher {
         /// Its own name, which stays when its text changes as it unfolds for a reply.
         let axIdentifier: String?
         var isReplying = false
+        let canReply: Bool
+        /// Unfolded while the pointer is on its card, so it doesn't go before the card.
+        var isHeld = false
+        var cannotBeHeld = false
+
+        /// Unfolded, it may show more of its text, and it's still the same banner.
+        var keepsIdentifier: Bool { isReplying || isHeld }
     }
 
     private struct ParkedWindow {
@@ -344,6 +355,10 @@ final class NotificationWatcher {
         scanWorkItem?.cancel()
         scanWorkItem = nil
         restoreRetries = 0
+        // Unfolded it would never go
+        for (identity, banner) in liveBanners where banner.isHeld {
+            fold(identity: identity)
+        }
         // Back on screen with everything else, or found again by a new start with a card of its own
         for banner in liveBanners.values where banner.isAlert || banner.isReplying {
             ended(token: banner.token)
@@ -557,7 +572,8 @@ final class NotificationWatcher {
                             window: window,
                             isStack: isStack,
                             isAlert: reading.banner.subrole == NotificationPanelDetection.alertSubrole,
-                            axIdentifier: reading.banner.element.string(kAXIdentifierAttribute)
+                            axIdentifier: reading.banner.element.string(kAXIdentifierAttribute),
+                            canReply: buttons(of: reading.banner.element).contains { replyOpeners.contains(plainLabel($0.label)) }
                         )
                         fresh.append(reading)
                     }
@@ -675,10 +691,10 @@ final class NotificationWatcher {
     /// A banner keeps its identifier and text across scans, while its element may not. A second
     /// notification can reuse the identifier, and it mustn't pass for the first in a parked window.
     private func identity(of banner: AXUIElement, showing text: BannerText) -> Int {
-        // Unfolded for a reply it may show more of its text, and it's still the same banner
+        // Unfolded it may show more of its text, and it's still the same banner
         if let identifier = banner.string(kAXIdentifierAttribute),
-           let replying = liveBanners.first(where: { $0.value.isReplying && $0.value.axIdentifier == identifier }) {
-            return replying.key
+           let unfolded = liveBanners.first(where: { $0.value.keepsIdentifier && $0.value.axIdentifier == identifier }) {
+            return unfolded.key
         }
         var hasher = Hasher()
         if let identifier = banner.string(kAXIdentifierAttribute), !structuralIdentifiers.contains(identifier) {
@@ -911,6 +927,54 @@ final class NotificationWatcher {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return label.isEmpty ? nil : (label, name)
         }
+    }
+
+    // MARK: - Holding
+
+    /// The banners whose cards are under the pointer stay as long as it's there, and get their 5 s anew
+    /// once it's gone. A banner that can be replied to isn't held: unfolding a message may bring up its
+    /// field, which takes the keyboard. Nor is one being replied from, which is unfolded already.
+    func hold(tokens: Set<String>) {
+        guard AXIsProcessTrusted() else { return }
+        for (identity, banner) in liveBanners {
+            let wanted = tokens.contains(banner.token) && !banner.isAlert && !banner.isReplying
+                && !banner.canReply && !banner.cannotBeHeld
+            if wanted, !banner.isHeld {
+                guard let opener = buttons(of: banner.element).first(where: { holdOpeners.contains(plainLabel($0.label)) })
+                else { continue }
+                liveBanners[identity]?.isHeld = true
+                if pressDidNothing(AXUIElementPerformAction(banner.element, opener.name as CFString)) {
+                    liveBanners[identity]?.isHeld = false
+                    continue
+                }
+                foldIfItTookTheKeyboard(token: banner.token)
+            } else if !wanted, banner.isHeld, !banner.isReplying {
+                fold(identity: identity)
+            }
+        }
+    }
+
+    /// A field after all, or Notification Center has the focus: folded at once, and not held again.
+    private func foldIfItTookTheKeyboard(token: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + holdCheckDelay) { [weak self] in
+            guard let self, let appElement = self.appElement,
+                  let identity = self.liveBanners.first(where: { $0.value.token == token })?.key,
+                  let banner = self.liveBanners[identity], banner.isHeld
+            else { return }
+            var focused: CFTypeRef?
+            let hasFocus = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focused) != .noValue
+            guard hasFocus || self.replyField(in: banner.element) != nil else { return }
+            self.liveBanners[identity]?.cannotBeHeld = true
+            self.fold(identity: identity)
+        }
+    }
+
+    private func fold(identity: Int) {
+        guard let banner = liveBanners[identity] else { return }
+        if let closer = buttons(of: banner.element).first(where: { replyClosers.contains(plainLabel($0.label)) }) {
+            AXUIElementPerformAction(banner.element, closer.name as CFString)
+        }
+        liveBanners[identity]?.isHeld = false
     }
 
     // MARK: - Replying

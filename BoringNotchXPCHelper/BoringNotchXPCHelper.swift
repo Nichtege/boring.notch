@@ -122,6 +122,12 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         DispatchQueue.main.async { Self.watcher.sendReply(token: token, text: text, completion: reply) }
     }
 
+    /// Tokens joined by U+001F: a string is what the interface lets through without a list of classes.
+    @objc func holdNotifications(_ tokens: String) {
+        let tokens = Set(tokens.split(separator: "\u{1F}").map(String.init))
+        DispatchQueue.main.async { Self.watcher.hold(tokens: tokens) }
+    }
+
     @objc func cancelNotificationReply(_ token: String) {
         DispatchQueue.main.async { Self.watcher.cancelReply(token: token) }
     }

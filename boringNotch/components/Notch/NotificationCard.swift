@@ -42,6 +42,9 @@ final class NotificationCardModel: ObservableObject {
             if notifications.isEmpty {
                 icons.removeAll()
             }
+            if let openedID, !notifications.contains(where: { $0.id == openedID }) {
+                self.openedID = nil
+            }
             for bundleID in notifications.compactMap(\.bundleID) where icons[bundleID] == nil {
                 icons[bundleID] = AppIconAsNSImage(for: bundleID)
             }
@@ -61,6 +64,12 @@ final class NotificationCardModel: ObservableObject {
     @Published var replyState = ReplyState.editing
     /// The banner is unfolded and its field there: from then on the keyboard is this card's.
     @Published var replyIsReady = false
+    /// Held open to show all of what it says, like on the iPhone. A card being replied from is too.
+    @Published var openedID: String?
+
+    func isOpened(_ notification: SystemNotification) -> Bool {
+        openedID == notification.id || replyingID == notification.id
+    }
     // A new image on every update would crossfade with the old one while the icon moves
     private var icons: [String: NSImage] = [:]
 
@@ -100,6 +109,21 @@ final class NotificationCardController {
     private let maxKeyboardRetakes = 3
 
     private init() {}
+
+    // MARK: Holding open
+    /// Shows all of what this card says, until the pointer leaves the cards.
+    func openFully(_ id: String) {
+        withAnimation(Self.stackAnimation) {
+            model.openedID = id
+        }
+    }
+
+    func closeOpened() {
+        guard model.openedID != nil else { return }
+        withAnimation(Self.stackAnimation) {
+            model.openedID = nil
+        }
+    }
 
     // MARK: Replying
     var replyingID: String? { model.replyingID }
@@ -555,20 +579,19 @@ private struct NotificationCardView: View {
             .opacity(isFront ? (model.isPresented || !reduceMotion ? 1 : 0) : (isFrontOpened && model.isPresented ? 1 : 0))
     }
 
-    /// A click opens it. Held, a card that can be answered opens its reply field instead.
+    /// A click opens it. Held, it opens up to all it says, with the reply field if it can be answered.
     private func pressGesture(for notification: SystemNotification) -> AnyGesture<Void> {
         let open = TapGesture().onEnded {
             // Its field is for typing in, not a way into the app
             guard model.replyingID != notification.id else { return }
             SystemNotificationManager.shared.open(notification)
         }
-        guard notification.canReply else { return AnyGesture(open) }
         let hold = LongPressGesture(minimumDuration: 0.45)
             .updating($heldID) { isHeld, state, _ in
-                state = isHeld && model.replyingID == nil ? notification.id : nil
+                state = isHeld && model.replyingID == nil && model.openedID != notification.id ? notification.id : nil
             }
             .onEnded { _ in
-                SystemNotificationManager.shared.startReply(notification)
+                SystemNotificationManager.shared.hold(notification)
             }
         return AnyGesture(hold.exclusively(before: open).map { _ in })
     }
@@ -643,13 +666,14 @@ private struct NotificationCardView: View {
                     Text(subtitle)
                         .font(.system(size: 13))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
+                        .lineLimit(model.isOpened(notification) ? 3 : 1)
                 }
                 if let body = notification.body {
                     Text(body)
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.8))
-                        .lineLimit(2)
+                        // Held open it shows all of it, up to what still fits under the notch
+                        .lineLimit(model.isOpened(notification) ? 24 : 2)
                         .truncationMode(.tail)
                 }
                 if model.replyingID == notification.id {

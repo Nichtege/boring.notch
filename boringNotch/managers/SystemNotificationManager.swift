@@ -46,7 +46,9 @@ final class SystemNotificationManager {
     /// The newest card and three behind it. An older banner leaves the stack for the Notification Center,
     /// which has it anyway, and an older alert goes back to where it can still be answered.
     private let stackLimit = 4
-    private let displayDuration: Duration = .seconds(8)
+    private let displayDuration: TimeInterval = 8
+    /// What's left when the pointer leaves never runs out at once.
+    private let minimumRemaining: TimeInterval = 1.5
     // A check is two trips to the helper. While it's watching it looks after the permission itself and
     // says when it stops, so this is only a safety net.
     private let watchingCheckInterval: Duration = .seconds(30)
@@ -57,6 +59,11 @@ final class SystemNotificationManager {
     private var isCardHovered = false
     private var didAskForPermission = false
     private var dismissTask: Task<Void, Never>?
+    /// When the banners' cards go, while that clock runs, and how much it had left while it's stopped.
+    private var dismissAt: Date?
+    private var pausedRemaining: TimeInterval?
+    /// The banners last asked to be kept while the pointer is on their cards.
+    private var heldTokens: [String] = []
     private var permissionTask: Task<Void, Never>?
     private var settingCancellable: AnyCancellable?
     private var fullscreenCancellable: AnyCancellable?
@@ -205,6 +212,7 @@ final class SystemNotificationManager {
             return
         }
         scheduleDismiss()
+        syncHeldBanners()
 
         Task { await parkBanner(notification.token, whileShowing: notification) }
         if let replaced {
@@ -244,13 +252,23 @@ final class SystemNotificationManager {
     /// The helper unfolding the banner to its field, which takes a moment.
     private var replyReady: Task<Bool, Never>?
 
-    /// Held like on the iPhone: the card comes to the front with a field, and the keyboard goes to it.
+    /// Held like on the iPhone: the card opens up to all it says, and gets a field if it can be answered.
+    func hold(_ notification: SystemNotification) {
+        guard isShown(notification) else { return }
+        if notification.canReply {
+            startReply(notification)
+        } else {
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+            NotificationCardController.shared.openFully(notification.id)
+        }
+    }
+
+    /// The card comes to the front with a field, and the keyboard goes to it.
     func startReply(_ notification: SystemNotification) {
         guard notification.canReply, replyingID == nil,
               let index = notifications.firstIndex(where: { $0.id == notification.id })
         else { return }
-        dismissTask?.cancel()
-        dismissTask = nil
+        pauseDismiss()
         if index != 0 {
             notifications.insert(notifications.remove(at: index), at: 0)
         }
@@ -301,7 +319,7 @@ final class SystemNotificationManager {
             guard replyingID == id else { return }
             // Answered: the conversation's other banners are done as well
             remove { $0.id == id || $0.isFromSameSender(as: notification) && !$0.isAlert }
-            scheduleDismiss()
+            scheduleDismiss(resuming: true)
         }
     }
 
@@ -312,7 +330,7 @@ final class SystemNotificationManager {
             XPCHelperClient.shared.cancelNotificationReply(notification.token)
         }
         endReply()
-        scheduleDismiss()
+        scheduleDismiss(resuming: true)
     }
 
     /// After a reply that didn't go: the app, to answer there.
@@ -365,11 +383,15 @@ final class SystemNotificationManager {
             if !NotificationCardController.shared.show(notifications) {
                 dismissAll()
             }
+            syncHeldBanners()
             return
         }
         dismissTask?.cancel()
         dismissTask = nil
+        dismissAt = nil
+        pausedRemaining = nil
         isCardHovered = false
+        syncHeldBanners()
         NotificationCardController.shared.hide()
     }
 
@@ -378,11 +400,23 @@ final class SystemNotificationManager {
     func cardHoverChanged(_ hovering: Bool) {
         isCardHovered = hovering && !notifications.isEmpty
         if isCardHovered {
-            dismissTask?.cancel()
-            dismissTask = nil
+            pauseDismiss()
         } else {
-            scheduleDismiss()
+            NotificationCardController.shared.closeOpened()
+            scheduleDismiss(resuming: true)
         }
+        syncHeldBanners()
+    }
+
+    /// The pointer on the cards keeps their banners too, which would otherwise go after 5 s, and with
+    /// them the way to the conversation.
+    private func syncHeldBanners() {
+        let tokens = isCardHovered
+            ? notifications.filter { !$0.isAlert && $0.id != replyingID }.map(\.token)
+            : []
+        guard tokens != heldTokens else { return }
+        heldTokens = tokens
+        XPCHelperClient.shared.holdNotifications(tokens)
     }
 
     /// Opens the right place through the banner if it's still there, the app itself otherwise. If
@@ -444,18 +478,39 @@ final class SystemNotificationManager {
         XPCHelperClient.shared.restoreNotification(notification.token)
     }
 
-    /// The banners go as one, a while after the newest card came. Alerts stay until they're answered.
-    private func scheduleDismiss() {
+    /// The banners go as one, a while after the newest card came. The pointer on the cards, or a reply
+    /// being typed, stops that clock, and it goes on from where it stood. Alerts stay until they're answered.
+    private func scheduleDismiss(resuming: Bool = false) {
+        let remaining = resuming ? pausedRemaining ?? displayDuration : displayDuration
         dismissTask?.cancel()
         dismissTask = nil
-        guard !isCardHovered, replyingID == nil, notifications.contains(where: { !$0.isAlert }) else { return }
-        dismissTask = Task { [weak self, displayDuration] in
-            try? await Task.sleep(for: displayDuration)
+        dismissAt = nil
+        guard notifications.contains(where: { !$0.isAlert }) else {
+            pausedRemaining = nil
+            return
+        }
+        guard !isCardHovered, replyingID == nil else {
+            pausedRemaining = remaining
+            return
+        }
+        pausedRemaining = nil
+        dismissAt = Date().addingTimeInterval(remaining)
+        dismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(remaining))
             guard let self, !Task.isCancelled else { return }
             let banners = self.notifications.filter { !$0.isAlert }
             self.remove { !$0.isAlert }
             banners.forEach(self.releaseBanner)
         }
+    }
+
+    private func pauseDismiss() {
+        if let dismissAt {
+            pausedRemaining = max(minimumRemaining, dismissAt.timeIntervalSinceNow)
+        }
+        dismissTask?.cancel()
+        dismissTask = nil
+        dismissAt = nil
     }
 
     private func activateApp(of notification: SystemNotification) async -> Bool {
