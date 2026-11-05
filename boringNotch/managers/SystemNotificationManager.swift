@@ -498,9 +498,9 @@ final class SystemNotificationManager {
         dismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(remaining))
             guard let self, !Task.isCancelled else { return }
-            let banners = self.notifications.filter { !$0.isAlert }
+            // Their whole time was shown. A banner kept under the pointer has a few seconds left when it
+            // goes, and stays out of sight for them: back on screen it would only flash on the right.
             self.remove { !$0.isAlert }
-            banners.forEach(self.releaseBanner)
         }
     }
 
