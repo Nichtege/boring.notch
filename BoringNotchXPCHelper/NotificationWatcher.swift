@@ -50,6 +50,9 @@ private let unfoldingActions: Set<String> = ["Details einblenden", "Details ausb
 /// case, dots and spaces. "Mehr anzeigen" is what Messages offers on 27.2: it unfolds a text area and "Senden".
 private let replyOpeners: Set<String> = ["mehranzeigen", "showmore", "antworten", "antwort", "antwortgeben", "reply"]
 private let replySenders: Set<String> = ["senden", "send"]
+/// Where an unfolded banner has no "Senden", its reply button sends what's in the field. Seen on 27.2 with a
+/// notification whose app asks for a typed reply: it came back with the text.
+private let replyButtonSenders: Set<String> = ["antworten", "antwort", "reply"]
 private let replyClosers: Set<String> = ["detailsausblenden", "hidedetails", "wenigeranzeigen", "showless"]
 /// Unfolds a banner without a field, which keeps it until it's folded again. Folded, it has its 5 s anew.
 private let holdOpeners: Set<String> = ["detailseinblenden", "showdetails"]
@@ -1044,7 +1047,7 @@ final class NotificationWatcher {
         guard AXIsProcessTrusted(),
               let banner = liveBanners.values.first(where: { $0.token == token }), banner.isReplying,
               let field = replyField(in: banner.element),
-              let sender = buttons(of: banner.element).first(where: { replySenders.contains(plainLabel($0.label)) }),
+              let sender = replySender(of: banner.element),
               AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success,
               characterCount(of: field) == (text as NSString).length
         else {
@@ -1074,6 +1077,12 @@ final class NotificationWatcher {
             guard let self else { return completion(false) }
             self.waitForSent(token: token, until: deadline, completion: completion)
         }
+    }
+
+    private func replySender(of banner: AXUIElement) -> (label: String, name: String)? {
+        let buttons = buttons(of: banner)
+        return buttons.first { replySenders.contains(plainLabel($0.label)) }
+            ?? buttons.first { replyButtonSenders.contains(plainLabel($0.label)) }
     }
 
     /// Nothing typed stays behind in the banner, which comes back on screen if its card goes.
