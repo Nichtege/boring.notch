@@ -336,7 +336,7 @@ struct ContentView: View {
 
                             HStack {
                                 Image(systemName: coordinator.expandingView.type == .focus ? "timer" : "exclamationmark.bubble.fill")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(coordinator.expandingView.type == .focus ? NotchStyle.focus : NotchStyle.attention)
                             }
                             .frame(width: starlaneBannerSideWidth, alignment: .leading)
                         }
@@ -404,16 +404,14 @@ struct ContentView: View {
                     switch coordinator.currentView {
                     case .home:
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
-                    case .devices:
-                        MediaDevicesView()
+                    case .sound:
+                        SoundView()
                     case .shelf:
                         ShelfView()
                     case .starlane:
                         StarlaneView()
                     case .focus:
                         FocusView()
-                    case .mixer:
-                        MixerView()
                     }
                 }
                 .transition(
@@ -443,7 +441,7 @@ struct ContentView: View {
                 .overlay(alignment: .topTrailing) {
                     if (starlane.summary?.needs ?? 0) > 0 && sideBallActivity != .starlane {
                         Circle()
-                            .fill(.orange)
+                            .fill(NotchStyle.attention)
                             .frame(width: 7, height: 7)
                             .offset(x: 2, y: -2)
                     }
@@ -642,8 +640,7 @@ struct ContentView: View {
 
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
         guard vm.notchState == .open else { return }
-        if coordinator.currentView == .mixer && AppVolumeMixer.shared.scrolls { return }
-        if coordinator.currentView == .devices && RemoteMediaManager.shared.scrolls { return }
+        if coordinator.currentView == .sound && (AppVolumeMixer.shared.scrolls || RemoteMediaManager.shared.scrolls) { return }
 
         withAnimation(animationSpring) {
             gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20

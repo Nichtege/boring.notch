@@ -46,7 +46,7 @@ class MusicManager: ObservableObject {
     @Published var isFavoriteTrack: Bool = false
     /// Music's own, also while something else shows here
     @Published private(set) var musicState: PlaybackState?
-    /// Set while a device picked in the Devices tab shows instead of Music
+    /// Set while a device picked in the Sound tab shows instead of Music
     @Published private(set) var remoteDevice: RemoteNowPlaying?
 
     var isRemoteSource: Bool {
@@ -326,7 +326,7 @@ class MusicManager: ObservableObject {
         toggleMusicPlay()
     }
 
-    /// Also while something else shows, for Music's own row in the Devices tab.
+    /// Also while something else shows, for Music's own row in the Sound tab.
     func toggleMusicPlay() {
         Task {
             if musicState?.isPlaying != true {

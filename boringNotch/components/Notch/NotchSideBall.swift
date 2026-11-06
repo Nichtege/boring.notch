@@ -55,10 +55,10 @@ struct NotchSideBall: View {
                 // As on the iPhone, the ring alone tells the time; the exact number is one hover or click away
                 ZStack {
                     Circle()
-                        .stroke(.orange.opacity(0.28), lineWidth: 3)
+                        .stroke(NotchStyle.focus.opacity(0.28), lineWidth: 3)
                     Circle()
                         .trim(from: 0, to: max(0, 1 - timer.progress(at: context.date)))
-                        .stroke(.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .stroke(NotchStyle.focus, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
                 .padding(diameter * 0.2)
@@ -69,10 +69,10 @@ struct NotchSideBall: View {
                 Image(systemName: "exclamationmark.bubble.fill")
                     .font(.system(size: 10))
                 Text("\(starlane.summary?.needs ?? 0)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .monospacedDigit()
+                    .font(.system(size: 10, weight: .bold))
+                    .notchNumber()
             }
-            .foregroundStyle(.orange)
+            .foregroundStyle(NotchStyle.attention)
             .minimumScaleFactor(0.7)
             .lineLimit(1)
         }

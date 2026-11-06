@@ -2,7 +2,7 @@
 //  EqualizerView.swift
 //  boringNotch
 //
-//  One app's equalizer, in the place of the Mixer's list.
+//  One app's equalizer, in the place of the Sound tab's lists.
 //
 
 import AppKit

@@ -2,7 +2,7 @@
 //  MixerView.swift
 //  boringNotch
 //
-//  The Mixer tab: the Mac, Music, and every other app making sound.
+//  The right half of the Sound tab: the Mac, Music, and every other app making sound.
 //
 
 import AppKit
@@ -11,7 +11,8 @@ import SwiftUI
 struct MixerView: View {
     @ObservedObject var mixer = AppVolumeMixer.shared
     @ObservedObject var musicManager = MusicManager.shared
-    @State private var equalizedApp: EqualizerView.App?
+    /// Open, it takes the whole tab, as its bands need the width
+    @Binding var equalizedApp: EqualizerView.App?
 
     var body: some View {
         Group {
@@ -113,13 +114,14 @@ private struct MixerRow<Icon: View>: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: 120, alignment: .leading)
+                .frame(width: 84, alignment: .leading)
             if isFailing {
-                Text("Can't adjust right now")
+                // Half the tab has no room for the sentence, so it's what the sign says on hover
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.gray)
-                    .lineLimit(1)
-                    .fixedSize()
+                    .help(Text("Can't adjust right now"))
+                    .accessibilityLabel(Text("Can't adjust right now"))
             }
             CustomSlider(
                 value: $value,
@@ -131,12 +133,12 @@ private struct MixerRow<Icon: View>: View {
                     onRelease()
                 },
                 onDragChange: onChange,
-                detentCount: SliderDetents.mixerVolumeCount
+                detentCount: SliderDetents.volumeCount
             )
             .frame(height: 10)
             Text(verbatim: "\(Int((value * 100).rounded())) %")
                 .font(.caption2)
-                .monospacedDigit()
+                .notchNumber()
                 .foregroundStyle(.gray)
                 .frame(width: 38, alignment: .trailing)
             Group {

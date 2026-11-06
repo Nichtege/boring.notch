@@ -208,7 +208,7 @@ struct MusicControlsView: View {
     private func remoteLabel(_ device: RemoteNowPlaying) -> some View {
         Button {
             withAnimation(.smooth) {
-                BoringViewCoordinator.shared.currentView = .devices
+                BoringViewCoordinator.shared.currentView = .sound
             }
         } label: {
             OutputDeviceIcon(systemName: RemoteMediaManager.shared.outputIconName(of: device))
@@ -230,7 +230,7 @@ struct MusicControlsView: View {
             // Only Music has these
             Color.clear.frame(height: 1)
         case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? .red : .primary, scale: .medium) {
+            HoverButton(icon: "shuffle", isActive: musicManager.isShuffled, scale: .medium) {
                 MusicManager.shared.toggleShuffle()
             }
         case .previous:
@@ -246,7 +246,7 @@ struct MusicControlsView: View {
                 MusicManager.shared.nextTrack()
             }
         case .repeatMode:
-            HoverButton(icon: repeatIcon, iconColor: repeatIconColor, scale: .medium) {
+            HoverButton(icon: repeatIcon, isActive: musicManager.repeatMode != .off, scale: .medium) {
                 MusicManager.shared.toggleRepeat()
             }
         case .volume:
@@ -278,18 +278,9 @@ struct MusicControlsView: View {
             return "repeat.1"
         }
     }
-
-    private var repeatIconColor: Color {
-        switch musicManager.repeatMode {
-        case .off:
-            return .primary
-        case .all, .one:
-            return .red
-        }
-    }
 }
 
-/// Only the device's symbol, big as on the iPhone's lock screen: the names are in the picker and the Devices tab.
+/// Only the device's symbol, big as on the iPhone's lock screen: the names are in the picker and the Sound tab.
 struct OutputDeviceIcon: View {
     let systemName: String
 
@@ -408,17 +399,13 @@ struct FavoriteControlButton: View {
     @ObservedObject var musicManager = MusicManager.shared
 
     var body: some View {
-        HoverButton(icon: iconName, iconColor: iconColor, scale: .medium) {
+        HoverButton(icon: iconName, isActive: musicManager.isFavoriteTrack, scale: .medium) {
             MusicManager.shared.toggleFavoriteTrack()
         }
     }
 
     private var iconName: String {
         musicManager.isFavoriteTrack ? "heart.fill" : "heart"
-    }
-
-    private var iconColor: Color {
-        musicManager.isFavoriteTrack ? .red : .primary
     }
 }
 
@@ -518,7 +505,13 @@ struct VolumeControlView: View {
 struct NotchHomeView: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var coordinator = BoringViewCoordinator.shared
+    @ObservedObject var musicManager = MusicManager.shared
     let albumArtNamespace: Namespace.ID
+
+    /// As in the closed notch: the player while something plays or was paused a moment ago
+    private var showsPlayer: Bool {
+        musicManager.isPlaying || !musicManager.isPlayerIdle
+    }
 
     var body: some View {
         Group {
@@ -531,11 +524,15 @@ struct NotchHomeView: View {
     }
 
     private var mainContent: some View {
-        HStack(alignment: .top, spacing: 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
-
+        Group {
+            if showsPlayer {
+                MusicPlayerView(albumArtNamespace: albumArtNamespace)
+            } else {
+                HomeOverview()
+            }
         }
         .transition(.opacity)
+        .animation(.smooth(duration: 0.3), value: showsPlayer)
         .blur(radius: vm.notchState == .closed ? 30 : 0)
     }
 }
@@ -576,6 +573,7 @@ struct MusicSliderView: View {
                     ? Color(nsColor: color).ensureMinimumBrightness(factor: 0.6) : .gray
             )
             .font(.caption)
+            .notchNumber()
         }
         .onAppear(perform: syncWithPlayback)
         .onChange(of: currentDate, syncWithPlayback)
@@ -608,10 +606,8 @@ struct MusicSliderView: View {
 /// Clicks under the finger while a slider passes its steps, like the notches of a volume knob. Only a finger on
 /// a Force Touch trackpad feels them.
 struct SliderDetents {
-    /// Every 5%
+    /// Every 5%, also in the Mixer, whose sliders have half the tab
     static let volumeCount = 20
-    /// Every 2%, as the Mixer's sliders are long enough for it
-    static let mixerVolumeCount = 50
 
     private let minimumGap: TimeInterval = 0.03
     private var current: Int?

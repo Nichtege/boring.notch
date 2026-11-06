@@ -172,7 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             let viewModel = self.viewModelUnderPointer()
             self.closeNotchTask?.cancel()
-            self.coordinator.currentView = .devices
+            self.coordinator.currentView = .sound
             viewModel.open()
             self.closeNotchTask = Task { [weak viewModel] in
                 do {

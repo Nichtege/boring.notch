@@ -15,11 +15,12 @@ public enum NotchState {
 
 public enum NotchViews {
     case home
-    case devices
+    /// Where it plays and how loud each app is, side by side
+    case sound
     case shelf
     case starlane
+    /// Has no tab: reached from the timer at the right of the header, Home and the ball beside the notch
     case focus
-    case mixer
 }
 
 enum WindowHeightMode: String, Defaults.Serializable {

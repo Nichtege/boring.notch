@@ -2,7 +2,7 @@
 //  AppVolumeMixer.swift
 //  boringNotch
 //
-//  One volume and one equalizer per app, for the Mixer tab. An app at 100% with a flat equalizer gets nothing at
+//  One volume and one equalizer per app, for the Sound tab. An app at 100% with a flat equalizer gets nothing at
 //  all. Only an app that is changed and really plays gets a tap and an aggregate device, as a running one holds the
 //  output: AirPods held like that no longer switch or pause by themselves. The sound only passes through, nothing
 //  of it is kept. Music keeps its own volume, so it gets a tap for its equalizer alone.

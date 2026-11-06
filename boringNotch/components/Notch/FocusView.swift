@@ -2,7 +2,7 @@
 //  FocusView.swift
 //  boringNotch
 //
-//  The Focus tab, and what a running session shows in the closed notch.
+//  The Focus view, the timer that leads there, and what a running session shows in the closed notch.
 //
 
 import Defaults
@@ -11,7 +11,8 @@ import SwiftUI
 struct FocusView: View {
     @ObservedObject var timer = FocusTimer.shared
 
-    private let sessionLengths = [25, 45, 60]
+    /// In minutes, also for Home
+    static let sessionLengths = [25, 45, 60]
 
     var body: some View {
         HStack(alignment: .center, spacing: 28) {
@@ -23,7 +24,7 @@ struct FocusView: View {
                         .foregroundStyle(timer.isRunning ? .white : .gray)
                     ProgressView(value: timer.isRunning ? timer.progress(at: context.date) : 0)
                         .progressViewStyle(.linear)
-                        .tint(.orange)
+                        .tint(NotchStyle.focus)
                 }
                 .frame(width: 190, alignment: .leading)
             }
@@ -35,7 +36,7 @@ struct FocusView: View {
                     }
                 } else {
                     HStack(spacing: 8) {
-                        ForEach(sessionLengths, id: \.self) { minutes in
+                        ForEach(Self.sessionLengths, id: \.self) { minutes in
                             button("\(minutes) min", systemImage: "timer") {
                                 timer.start(seconds: TimeInterval(minutes) * 60)
                             }
@@ -63,10 +64,46 @@ struct FocusView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Capsule().fill(.white.opacity(0.15)))
+                .background(Capsule().fill(NotchStyle.control))
                 .contentShape(Capsule())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+/// At the right of the open notch's header, beside the battery. Focus has no tab, as it's more a state than a
+/// place; while a session runs this shows the minutes left.
+struct FocusHeaderButton: View {
+    @ObservedObject var timer = FocusTimer.shared
+    @ObservedObject var coordinator = BoringViewCoordinator.shared
+    @State private var isHovering = false
+
+    private var isSelected: Bool {
+        coordinator.currentView == .focus
+    }
+
+    var body: some View {
+        Button {
+            withAnimation(.smooth) {
+                coordinator.currentView = .focus
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "timer")
+                    .font(.body)
+                if timer.isRunning {
+                    FocusShortTime()
+                }
+            }
+            .foregroundStyle(timer.isRunning ? NotchStyle.focus : isSelected ? .white : .gray)
+            .padding(.horizontal, timer.isRunning ? 10 : 8)
+            .frame(height: 26)
+            .background(Capsule().fill(isSelected ? NotchStyle.control : isHovering ? NotchStyle.surface : .clear))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(Text("Focus"))
     }
 }
 
@@ -78,7 +115,7 @@ struct FocusLiveActivity: View {
         HStack(spacing: 0) {
             Image(systemName: "timer")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(NotchStyle.focus)
                 .frame(width: max(0, vm.effectiveClosedNotchHeight - 12) + 10)
 
             Rectangle()
@@ -101,8 +138,8 @@ struct FocusShortTime: View {
             Text(timer.shortText(at: context.date))
                 .font(.caption2)
                 .fontWeight(.semibold)
-                .monospacedDigit()
-                .foregroundStyle(.orange)
+                .notchNumber()
+                .foregroundStyle(NotchStyle.focus)
                 .lineLimit(1)
                 .fixedSize()
         }

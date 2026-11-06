@@ -17,11 +17,9 @@ struct TabModel: Identifiable {
 
 let tabs = [
     TabModel(label: "Home", icon: "house.fill", view: .home),
-    TabModel(label: "Mixer", icon: "slider.horizontal.3", view: .mixer),
+    TabModel(label: "Sound", icon: "speaker.wave.2.fill", view: .sound),
     TabModel(label: "Shelf", icon: "tray.fill", view: .shelf),
-    TabModel(label: "Starlane", icon: "sparkles", view: .starlane),
-    TabModel(label: "Focus", icon: "timer", view: .focus),
-    TabModel(label: "Devices", icon: "hifispeaker.2.fill", view: .devices)
+    TabModel(label: "Starlane", icon: "sparkles", view: .starlane)
 ]
 
 struct TabSelectionView: View {
@@ -35,17 +33,16 @@ struct TabSelectionView: View {
             switch tab.view {
             case .shelf: return Defaults[.boringShelf] && (!shelf.isEmpty || coordinator.alwaysShowTabs)
             case .starlane: return starlane.summary != nil
-            case .home, .devices, .focus, .mixer: return true
+            case .home, .sound: return true
+            case .focus: return false
             }
         }
     }
 
     var body: some View {
-        // With five or six they only fit beside the notch closer together
-        let padding: CGFloat = visibleTabs.count > 5 ? 6 : visibleTabs.count > 4 ? 10 : 15
         HStack(spacing: 0) {
             ForEach(visibleTabs) { tab in
-                    TabButton(label: tab.label, icon: tab.icon, horizontalPadding: padding) {
+                    TabButton(label: tab.label, icon: tab.icon) {
                         withAnimation(.smooth) {
                             coordinator.currentView = tab.view
                         }
@@ -55,7 +52,7 @@ struct TabSelectionView: View {
                     .overlay(alignment: .topTrailing) {
                         if tab.view == .starlane, (starlane.summary?.needs ?? 0) > 0 {
                             Circle()
-                                .fill(.orange)
+                                .fill(NotchStyle.attention)
                                 .frame(width: 7, height: 7)
                                 .padding(.top, 3)
                                 .padding(.trailing, 8)
@@ -64,11 +61,11 @@ struct TabSelectionView: View {
                     .background {
                         if tab.view == coordinator.currentView {
                             Capsule()
-                                .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
+                                .fill(coordinator.currentView == tab.view ? NotchStyle.control : Color.clear)
                                 .matchedGeometryEffect(id: "capsule", in: animation)
                         } else {
                             Capsule()
-                                .fill(coordinator.currentView == tab.view ? Color(nsColor: .secondarySystemFill) : Color.clear)
+                                .fill(coordinator.currentView == tab.view ? NotchStyle.control : Color.clear)
                                 .matchedGeometryEffect(id: "capsule", in: animation)
                                 .hidden()
                         }

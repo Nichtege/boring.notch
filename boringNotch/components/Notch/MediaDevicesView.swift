@@ -2,8 +2,8 @@
 //  MediaDevicesView.swift
 //  boringNotch
 //
-//  The Devices tab: everything in reach and what plays on it, like the media list in Control Center on an iPhone.
-//  What's picked here is what the notch shows, in the player and while closed.
+//  The left half of the Sound tab: everything in reach and what plays on it, like the media list in Control
+//  Center on an iPhone. What's picked here is what the notch shows, in the player and while closed.
 //
 
 import SwiftUI
@@ -26,8 +26,6 @@ struct MediaDevicesView: View {
         var isSelected = false
         var select: (() -> Void)?
         var toggle: (() -> Void)?
-        var next: (() -> Void)?
-        var previous: (() -> Void)?
 
         var id: String { name }
     }
@@ -48,9 +46,7 @@ struct MediaDevicesView: View {
             isPlaying: music.musicIsPlaying,
             isSelected: media.selected == nil,
             select: { pick(nil) },
-            toggle: { music.toggleMusicPlay() },
-            next: { music.nextMusicTrack() },
-            previous: { music.previousMusicTrack() }
+            toggle: { music.toggleMusicPlay() }
         )
     }
 
@@ -69,9 +65,7 @@ struct MediaDevicesView: View {
                 isPlaying: device.state.isPlaying,
                 isSelected: media.selected == device.deviceName,
                 select: { pick(device.deviceName) },
-                toggle: { media.send(.toggle, to: device.deviceName) },
-                next: { media.send(.next, to: device.deviceName) },
-                previous: { media.send(.previous, to: device.deviceName) }
+                toggle: { media.send(.toggle, to: device.deviceName) }
             )
         }
         // Speakers Music can reach, of which macOS hasn't told anything
@@ -132,19 +126,16 @@ struct MediaDevicesView: View {
             .buttonStyle(PlainButtonStyle())
             .disabled(row.select == nil)
 
-            if let toggle = row.toggle, let next = row.next, let previous = row.previous {
-                HStack(spacing: 2) {
-                    HoverButton(icon: "backward.fill", scale: .small, action: previous)
-                    HoverButton(icon: row.isPlaying ? "pause.fill" : "play.fill", scale: .small, action: toggle)
-                    HoverButton(icon: "forward.fill", scale: .small, action: next)
-                }
+            // Half the tab leaves room for one button; skipping is in the player, which a click on the row opens
+            if let toggle = row.toggle {
+                HoverButton(icon: row.isPlaying ? "pause.fill" : "play.fill", scale: .small, action: toggle)
             }
         }
         .padding(.horizontal, 4)
         .frame(height: 40)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(row.isSelected ? 0.08 : 0))
+            RoundedRectangle(cornerRadius: NotchStyle.boxRadius, style: .continuous)
+                .fill(row.isSelected ? NotchStyle.surface : .clear)
         )
     }
 
@@ -176,13 +167,13 @@ struct MediaDevicesView: View {
 
     private func coverView(_ row: Row) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.white.opacity(0.08))
+            RoundedRectangle(cornerRadius: NotchStyle.coverRadius, style: .continuous)
+                .fill(NotchStyle.surface)
             if let cover = row.cover {
                 Image(nsImage: cover)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: NotchStyle.coverRadius, style: .continuous))
             } else {
                 Image(systemName: row.icon)
                     .font(.system(size: 15))

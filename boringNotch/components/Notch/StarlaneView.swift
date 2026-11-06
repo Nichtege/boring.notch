@@ -27,7 +27,7 @@ struct StarlaneView: View {
 
             VStack(spacing: 8) {
                 HStack(alignment: .top, spacing: 14) {
-                    section(title: "Needs you", accent: .orange, count: attention.count, rows: attention, emptyText: "Nothing is waiting")
+                    section(title: "Needs you", accent: NotchStyle.attention, count: attention.count, rows: attention, emptyText: "Nothing is waiting")
                     section(title: "Done", accent: .green, count: done.count, rows: done, emptyText: "Nothing new")
                     if deadline != nil || !limit.isEmpty {
                         infoCard(deadline: deadline, limit: limit)
@@ -67,7 +67,7 @@ struct StarlaneView: View {
                     Text("\(count)")
                         .font(.caption2)
                         .fontWeight(.bold)
-                        .monospacedDigit()
+                        .notchNumber()
                         .foregroundStyle(.black)
                         .padding(.horizontal, 5)
                         .background(Capsule().fill(accent))
@@ -101,9 +101,9 @@ struct StarlaneView: View {
                         Text("Next deadline")
                             .foregroundStyle(.gray)
                         Spacer(minLength: 0)
-                        if let relative = relativeDay(deadline.date) {
+                        if let relative = Self.relativeDay(deadline.date) {
                             Text(relative)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Self.deadlineColor(deadline.date))
                         }
                     }
                     .font(.caption2)
@@ -125,7 +125,7 @@ struct StarlaneView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(.white.opacity(0.07)))
+        .background(RoundedRectangle(cornerRadius: NotchStyle.boxRadius, style: .continuous).fill(NotchStyle.surface))
     }
 
     // MARK: - Bottom row
@@ -154,10 +154,10 @@ struct StarlaneView: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(.white.opacity(isHoveringAtlasBar ? 0.16 : 0.09))
+                RoundedRectangle(cornerRadius: NotchStyle.boxRadius, style: .continuous)
+                    .fill(isHoveringAtlasBar ? NotchStyle.control : NotchStyle.surface)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: NotchStyle.boxRadius, style: .continuous))
         }
         .buttonStyle(PlainButtonStyle())
         .onHover { isHoveringAtlasBar = $0 }
@@ -179,7 +179,7 @@ struct StarlaneView: View {
         }
         .labelStyle(.titleAndIcon)
         .font(.caption)
-        .monospacedDigit()
+        .notchNumber()
         .foregroundStyle(.gray)
         .fixedSize()
     }
@@ -198,7 +198,8 @@ struct StarlaneView: View {
         .help(Text("Open Starlane"))
     }
 
-    private func relativeDay(_ date: String) -> String? {
+    /// Days from today to a yyyy-MM-dd: 0 today, below 0 once it's past.
+    static func daysUntil(_ date: String) -> Int? {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -206,7 +207,17 @@ struct StarlaneView: View {
         guard let day = formatter.date(from: date) else { return nil }
 
         let calendar = Calendar.current
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: day)).day ?? 0
+        return calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: day)).day
+    }
+
+    /// Orange only once it wants you: today, tomorrow or past. Further off it's just information.
+    static func deadlineColor(_ date: String) -> Color {
+        (daysUntil(date) ?? .max) <= 1 ? NotchStyle.attention : .gray
+    }
+
+    /// "tomorrow" for a yyyy-MM-dd, also for Home.
+    static func relativeDay(_ date: String) -> String? {
+        guard let days = daysUntil(date) else { return nil }
         let relative = RelativeDateTimeFormatter()
         relative.dateTimeStyle = .named
         relative.unitsStyle = .full
@@ -239,10 +250,10 @@ private struct StarlaneTerminalRow: View {
             .padding(.horizontal, 6)
             .frame(height: 19)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.white.opacity(isHovering ? 0.1 : 0))
+                RoundedRectangle(cornerRadius: NotchStyle.coverRadius, style: .continuous)
+                    .fill(isHovering ? NotchStyle.surface : .clear)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: NotchStyle.coverRadius, style: .continuous))
         }
         .buttonStyle(PlainButtonStyle())
         .onHover { isHovering = $0 }
@@ -265,7 +276,7 @@ private struct StarlaneTerminalRow: View {
                 .foregroundStyle(.green)
         default:
             Circle()
-                .fill(.orange)
+                .fill(NotchStyle.attention)
                 .frame(width: 6, height: 6)
         }
     }
@@ -285,7 +296,7 @@ private struct StarlaneLimitBar: View {
                 .frame(width: 22, alignment: .leading)
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.14))
+                    Capsule().fill(NotchStyle.control)
                     Capsule()
                         .fill(color)
                         .frame(width: geometry.size.width * min(1, max(0, window.usedPercent / 100)))
@@ -297,7 +308,7 @@ private struct StarlaneLimitBar: View {
                 .frame(width: 32, alignment: .trailing)
         }
         .font(.caption2)
-        .monospacedDigit()
+        .notchNumber()
         .help(Text("Usage limit, resets \(Date(timeIntervalSince1970: window.resetsAt).formatted(.dateTime.weekday(.abbreviated).hour().minute()))"))
     }
 }
@@ -311,7 +322,7 @@ struct StarlaneLiveActivity: View {
         HStack(spacing: 0) {
             Image(systemName: "exclamationmark.bubble.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(NotchStyle.attention)
                 .frame(width: max(0, vm.effectiveClosedNotchHeight - 12) + 10)
 
             Rectangle()
@@ -321,7 +332,8 @@ struct StarlaneLiveActivity: View {
             Text("\(needs)")
                 .font(.caption)
                 .fontWeight(.semibold)
-                .foregroundStyle(.orange)
+                .notchNumber()
+                .foregroundStyle(NotchStyle.attention)
                 .frame(width: max(0, vm.effectiveClosedNotchHeight - 12) + 10)
         }
         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)

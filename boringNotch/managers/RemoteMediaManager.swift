@@ -2,7 +2,7 @@
 //  RemoteMediaManager.swift
 //  boringNotch
 //
-//  What other devices play, for the Devices tab and the tile in Control Center.
+//  What other devices play, for the Sound tab and the tile in Control Center.
 //
 
 import Combine
@@ -15,7 +15,7 @@ final class RemoteMediaManager: ObservableObject {
     static let shared = RemoteMediaManager()
 
     @Published private(set) var devices: [RemoteNowPlaying] = []
-    /// What was picked in the Devices tab, nil for this Mac. Stays while the device is away, as an iPhone that
+    /// What was picked in the Sound tab, nil for this Mac. Stays while the device is away, as an iPhone that
     /// pauses goes away for a while, and it should show again when it's back. Also over a restart of this app.
     /// Music starting on this Mac clears it.
     @Published private(set) var selected = Defaults[.selectedMediaDevice]
@@ -114,7 +114,7 @@ final class RemoteMediaManager: ObservableObject {
         return devices.first { !$0.isPhone && $0.state.title == music.musicTitle && $0.state.artist == music.musicArtist }?.deviceName
     }
 
-    /// What the Devices tab lists. A speaker plays one thing at a time, but when the sound moves to another source
+    /// What the Sound tab lists. A speaker plays one thing at a time, but when the sound moves to another source
     /// macOS keeps telling of the old one for some seconds. So with one speaker, it's what plays and changed last.
     var listedDevices: [RemoteNowPlaying] {
         guard speakersInReach.count == 1 else { return devices }

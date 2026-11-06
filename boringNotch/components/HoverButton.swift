@@ -10,6 +10,8 @@ import SwiftUI
 struct HoverButton: View {
     var icon: String
     var iconColor: Color = .primary
+    /// Switched on, like shuffle: it then sits on a light capsule, as in Control Center
+    var isActive = false
     var scale: Image.Scale = .medium
     var action: () -> Void
     
@@ -25,7 +27,7 @@ struct HoverButton: View {
                 .frame(width: size, height: size)
                 .overlay {
                     Capsule()
-                        .fill(isHovering ? Color.gray.opacity(0.2) : .clear)
+                        .fill(isActive ? (isHovering ? NotchStyle.controlHovered : NotchStyle.control) : isHovering ? NotchStyle.control : .clear)
                         .frame(width: size, height: size)
                         .overlay {
                             Image(systemName: icon)
