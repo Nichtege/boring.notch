@@ -25,6 +25,8 @@ struct ShelfView: View {
                     handleDrop(providers: providers)
                 }
         }
+        // The selection outlives the view, so a file clicked or dragged out last time would still be marked
+        .onAppear { selection.clear() }
         // Bind Quick Look to shelf selection
         .onChange(of: selection.selectedIDs) {
             updateQuickLookSelection()

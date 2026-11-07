@@ -134,28 +134,10 @@ struct ShelfItemView: View {
             .frame(height: 30, alignment: .top)
     }
 
+    /// A picked file gets the same light box as a picked tab, not a blue frame
     private var backgroundView: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(backgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(
-                        strokeColor,
-                        lineWidth: strokeWidth
-                    )
-            )
-    }
-
-    private var backgroundColor: Color {
-        isSelected ? Color.accentColor.opacity(0.15) : Color.clear
-    }
-
-    private var strokeColor: Color {
-        isSelected ? Color.accentColor.opacity(0.8) : Color.clear
-    }
-
-    private var strokeWidth: CGFloat {
-        isSelected ? 2 : 1
+        RoundedRectangle(cornerRadius: NotchStyle.boxRadius, style: .continuous)
+            .fill(isSelected ? NotchStyle.control : Color.clear)
     }
 
     // MARK: - Drag Preview Rendering
