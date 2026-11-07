@@ -31,6 +31,7 @@ import Foundation
     func cancelNotificationReply(_ token: String)
     func holdNotifications(_ tokens: String)
     func restoreStrandedNotifications()
+    func listenToNotificationsAgain()
     // The microphone (set by the helper, which isn't sandboxed)
     func keepMicOnMacBook()
     // Where the Mac's sound goes (set by the helper too)

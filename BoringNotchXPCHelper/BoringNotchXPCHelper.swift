@@ -136,6 +136,11 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         DispatchQueue.main.async { Self.watcher.restoreStranded() }
     }
 
+    /// After sleep or the lock screen, when Notification Center may have stopped reporting banners.
+    @objc func listenToNotificationsAgain() {
+        DispatchQueue.main.async { Self.watcher.screenIsBack() }
+    }
+
     /// The app quit or crashed. Stop at once: the open transaction keeps the helper alive just long
     /// enough to put back whatever is parked.
     static func appConnectionDidInvalidate() {

@@ -30,6 +30,8 @@ private let minScanInterval: TimeInterval = 0.25
 private let fastScanInterval: TimeInterval = 0.05
 private let fastScanTime: TimeInterval = 1
 private let healthCheckInterval: TimeInterval = 5
+/// A window's creation asks for a scan at once. One that no scan has seen after this was never reported.
+private let missedWindowGrace: TimeInterval = 1
 private let parkingPosition = CGPoint(x: -10000, y: -10000)
 /// Notification Center slides a banner out before it orders the window out, and the window can only
 /// be moved until then (about half a second). Moving it back at once would show the end of that slide.
@@ -1251,10 +1253,78 @@ final class NotificationWatcher {
             } else if let processIdentifier = self.processIdentifier,
                       executablePath(of: processIdentifier) != notificationCenterPath {
                 self.notificationCenterExited()
+            } else {
+                self.checkListening()
             }
         }
         healthTimer = timer
         timer.resume()
+    }
+
+    // MARK: - Listening
+
+    /// Notification Center can stop telling the observer anything while its thread goes on waiting. On
+    /// 2026-11-07, after a night of sleep and wakes, every banner stayed on screen, and a new observer heard
+    /// them at once. True if the observer had to be renewed.
+    @discardableResult
+    private func checkListening() -> Bool {
+        guard let appElement, let observer = axObserver, let context = observerContext else { return false }
+
+        // Still registered, Notification Center says so. Registered anew, it had forgotten the observer.
+        let refcon = Unmanaged.passUnretained(context).toOpaque()
+        if AXObserverAddNotification(observer, appElement, kAXWindowCreatedNotification as CFString, refcon) == .success {
+            listenAgain(because: "the observer was forgotten")
+            return true
+        }
+
+        // Or it still knows the observer and tells it nothing: a window came that no scan has seen
+        guard Date().timeIntervalSince(lastScan) > missedWindowGrace, let windows = appElement.windows() else {
+            return false
+        }
+        let missed = windows.contains { window in
+            observedWindows[CFHash(window)] == nil && NotificationObservationPolicy.shouldObserveElement(
+                subrole: window.string(kAXSubroleAttribute),
+                identifier: window.string(kAXIdentifierAttribute)
+            )
+        }
+        if missed {
+            listenAgain(because: "a window came without a word")
+        }
+        return missed
+    }
+
+    /// The screen is back from sleep or the lock screen, which is when the observer went deaf. What can be
+    /// seen of that is logged, and the observer is renewed either way: a deaf one may not show it.
+    func screenIsBack() {
+        guard AXIsProcessTrusted(), isRunning, !checkListening() else { return }
+        listenAgain(because: nil)
+    }
+
+    /// A new observer, and nothing else changes: what's parked stays parked, and a scan right after finds
+    /// whatever came in between. If Notification Center won't take it, it's treated as if it had exited.
+    private func listenAgain(because reason: String?) {
+        guard let processIdentifier, let appElement else { return }
+        if let reason {
+            NSLog("[boringNotch] Notification Center stopped reporting banners (\(reason)), listening again")
+        }
+
+        if let observer = axObserver {
+            removeObserverNotifications(from: appElement, observer: observer)
+            for window in observedWindows.values {
+                removeObserverNotifications(from: window, observer: observer)
+            }
+        }
+        observedWindows.removeAll()
+        observerRunLoop?.stop()
+        axObserver = nil
+        observerRunLoop = nil
+        observerContext = nil
+
+        guard installObserver(for: processIdentifier) else {
+            notificationCenterExited()
+            return
+        }
+        scan()
     }
 
     /// The permission reads as gone. If it is, windows can't be moved any more: what's parked stays off

@@ -68,6 +68,7 @@ final class SystemNotificationManager {
     private var settingCancellable: AnyCancellable?
     private var fullscreenCancellable: AnyCancellable?
     private var helperLostObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -99,6 +100,19 @@ final class SystemNotificationManager {
         ) { [weak self] _ in
             Task { @MainActor in await self?.helperLost() }
         }
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.screenIsBack() }
+        }
+    }
+
+    /// After sleep or the lock screen. Notification Center once stopped reporting banners after a night like
+    /// that, and they all stayed on the right, so the helper listens anew.
+    func screenIsBack() {
+        guard Defaults[.showNotificationsInNotch] else { return }
+        XPCHelperClient.shared.listenToNotificationsAgain()
     }
 
     // MARK: - Watching
