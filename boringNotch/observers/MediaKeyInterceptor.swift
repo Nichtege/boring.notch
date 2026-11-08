@@ -54,6 +54,9 @@ final class MediaKeyInterceptor {
             }
         }
         
+        // Two starts can wait for the permission at once, at launch with the setting on: only one taps
+        guard eventTap == nil else { return }
+
         // The Option key can show this level before anything has changed it
         _ = BrightnessManager.shared
 
