@@ -45,7 +45,7 @@ final class SharingStateManager: ObservableObject {
 
 	func makeDelegate(onEnd: (() -> Void)? = nil) -> SharingLifecycleDelegate {
 		let id = UUID()
-		let delegate = SharingLifecycleDelegate(id: id, onEnd: { [weak self] in
+		let delegate = SharingLifecycleDelegate(onEnd: { [weak self] in
 			onEnd?()
 			self?.unregisterDelegate(id: id)
 		}, onBegin: { [weak self] in
@@ -63,7 +63,6 @@ final class SharingStateManager: ObservableObject {
 }
 
 final class SharingLifecycleDelegate: NSObject, NSSharingServiceDelegate, NSSharingServicePickerDelegate {
-	let id: UUID
 	private let onEnd: () -> Void
 	private let onBegin: () -> Void
 	private let onFinish: () -> Void
@@ -73,8 +72,7 @@ final class SharingLifecycleDelegate: NSObject, NSSharingServiceDelegate, NSShar
 	private var finished = false
 	private var timeoutTask: Task<Void, Never>?
 
-	init(id: UUID, onEnd: @escaping () -> Void, onBegin: @escaping () -> Void, onFinish: @escaping () -> Void) {
-		self.id = id
+	init(onEnd: @escaping () -> Void, onBegin: @escaping () -> Void, onFinish: @escaping () -> Void) {
 		self.onEnd = onEnd
 		self.onBegin = onBegin
 		self.onFinish = onFinish

@@ -47,10 +47,8 @@ struct StarlaneSummary: Decodable, Equatable {
         let date: String
     }
 
-    let live: Int
     let busy: Int
     let needs: Int
-    let done: Int
     let paused: Int
     let limited: Int
     let terminals: [Terminal]
@@ -58,16 +56,14 @@ struct StarlaneSummary: Decodable, Equatable {
     let limit: [LimitWindow]?
 
     enum CodingKeys: String, CodingKey {
-        case live, busy, needs, done, paused, limited, terminals, limit
+        case busy, needs, paused, limited, terminals, limit
         case nextDeadline = "next_deadline"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        live = try container.decode(Int.self, forKey: .live)
         busy = try container.decode(Int.self, forKey: .busy)
         needs = try container.decode(Int.self, forKey: .needs)
-        done = try container.decode(Int.self, forKey: .done)
         paused = try container.decode(Int.self, forKey: .paused)
         limited = try container.decode(Int.self, forKey: .limited)
         terminals = try container.decode([Terminal].self, forKey: .terminals)

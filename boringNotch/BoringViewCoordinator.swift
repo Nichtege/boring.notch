@@ -30,7 +30,6 @@ struct sneakPeek {
 struct ExpandedItem {
     var show: Bool = false
     var type: SneakContentType = .battery
-    var value: CGFloat = 0
 }
 
 @MainActor
@@ -161,7 +160,6 @@ class BoringViewCoordinator: ObservableObject {
     ) {
         sneakPeekDuration = duration
         if type != .music {
-            // close()
             if !Defaults[.hudReplacement] {
                 return
             }
@@ -205,16 +203,11 @@ class BoringViewCoordinator: ObservableObject {
         }
     }
 
-    func toggleExpandingView(
-        status: Bool,
-        type: SneakContentType,
-        value: CGFloat = 0
-    ) {
+    func toggleExpandingView(status: Bool, type: SneakContentType) {
         Task { @MainActor in
             withAnimation(.smooth) {
                 self.expandingView.show = status
                 self.expandingView.type = type
-                self.expandingView.value = value
             }
         }
     }
