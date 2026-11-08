@@ -331,6 +331,8 @@ final class SystemNotificationManager {
                     ? String(localized: "Not sent. Your text is in the clipboard.")
                     : String(localized: "Not sent.")))
                 XPCHelperClient.shared.cancelNotificationReply(notification.token)
+                // Notification Center's field may have taken the keyboard while the text went in
+                NotificationCardController.giveKeyboardBack()
                 return
             }
             cards.setReplyState(.sent)

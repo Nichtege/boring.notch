@@ -67,8 +67,10 @@ private let replyWaitTime: TimeInterval = 1.5
 private let replyPollInterval: TimeInterval = 0.1
 private let replyFocusWaitTime: TimeInterval = 0.6
 
+/// Only the letters count: Notification Center adds an ellipsis or an invisible mark to some apps' buttons,
+/// as to WhatsApp's "Antworten" on 27.2.
 private func plainLabel(_ label: String) -> String {
-    label.lowercased().filter { !". …".contains($0) }
+    label.lowercased().filter(\.isLetter)
 }
 
 /// Notification Center's answer to a press can be a failure although the press went through, as with
@@ -217,7 +219,8 @@ final class NotificationWatcher {
         /// Its own name, which stays when its text changes as it unfolds for a reply.
         let axIdentifier: String?
         var isReplying = false
-        let canReply: Bool
+        /// Learnt later too: a reply button may come a moment after the banner, or only its field shows it.
+        var canReply: Bool
         /// Unfolded while the pointer is on its card, so it doesn't go before the card.
         var isHeld = false
         var cannotBeHeld = false
@@ -568,6 +571,12 @@ final class NotificationWatcher {
                     if let live = liveBanners[reading.identity] {
                         liveBanners[reading.identity]?.element = reading.banner.element
                         liveBanners[reading.identity]?.window = window
+                        // Its reply button came after it: the card learns it can be answered
+                        if !live.canReply, !live.isAlert, !reading.text.isEmpty,
+                           buttons(of: reading.banner.element).contains(where: { replyOpeners.contains(plainLabel($0.label)) }) {
+                            liveBanners[reading.identity]?.canReply = true
+                            report(reading.banner.element, text: reading.text, token: live.token)
+                        }
                         if isStack, !live.isStack {
                             liveBanners[reading.identity]?.isStack = true
                             expectNewText(identity: reading.identity, token: live.token)
@@ -939,12 +948,12 @@ final class NotificationWatcher {
     // MARK: - Holding
 
     /// The banners whose cards are under the pointer stay as long as it's there, and get their 5 s anew
-    /// once it's gone. A banner that can be replied to unfolds to its field, which keeps it as well: then
-    /// a hold still finds it after its 5 s. That field takes the keyboard, so the answer is yes once it
-    /// has, and the app gives the keyboard straight back. Not one being replied from, unfolded already.
+    /// once it's gone. Unfolded, they stay: a banner that can be replied to unfolds to its field, so a
+    /// hold still finds it after its 5 s. That field takes the keyboard, and the answer is yes when it
+    /// did: the app gives it straight back. Not one being replied from, which is unfolded already.
     func hold(tokens: Set<String>, completion: @escaping (Bool) -> Void) {
         guard AXIsProcessTrusted() else { return completion(false) }
-        var unfoldedToField: [String] = []
+        var unfolded: [String] = []
         for (identity, banner) in liveBanners {
             let wanted = tokens.contains(banner.token) && !banner.isAlert && !banner.isReplying && !banner.cannotBeHeld
             if wanted, !banner.isHeld {
@@ -952,66 +961,94 @@ final class NotificationWatcher {
                 guard let opener = buttons(of: banner.element).first(where: { openers.contains(plainLabel($0.label)) })
                 else { continue }
                 liveBanners[identity]?.isHeld = true
-                if banner.canReply {
-                    // Before it changes, so the scans keep it for the same banner and don't take its focus for the center
-                    replyFocusWindow = banner.window
-                }
+                // Before it changes, so the scans keep it for the same banner, and the focus a field may take
+                // doesn't pass for the open center, which would bring every banner back on screen
+                replyFocusWindow = banner.window
                 if pressDidNothing(AXUIElementPerformAction(banner.element, opener.name as CFString)) {
                     liveBanners[identity]?.isHeld = false
                     continue
                 }
-                if banner.canReply {
-                    unfoldedToField.append(banner.token)
-                } else {
-                    foldIfItTookTheKeyboard(token: banner.token)
-                }
+                unfolded.append(banner.token)
             } else if !wanted, banner.isHeld, !banner.isReplying {
                 fold(identity: identity)
             }
         }
-        guard !unfoldedToField.isEmpty else { return completion(false) }
-        waitForHeldFields(tokens: unfoldedToField, until: Date().addingTimeInterval(replyWaitTime)) { [weak self] tookKeyboard in
+        guard !unfolded.isEmpty else { return completion(false) }
+        let now = Date()
+        settleHeld(tokens: unfolded, until: now.addingTimeInterval(replyWaitTime), fieldMayComeUntil: now.addingTimeInterval(holdCheckDelay)) {
+            [weak self] tookKeyboard in
             completion(tookKeyboard)
-            DispatchQueue.main.asyncAfter(deadline: .now() + heldFieldClearDelay) { self?.clearHeldFields() }
+            if tookKeyboard {
+                DispatchQueue.main.asyncAfter(deadline: .now() + heldFieldClearDelay) { self?.clearHeldFields() }
+            }
         }
     }
 
-    /// Notification Center gives a field the keyboard a moment after it appears. Only then can the app take
-    /// it back, or it would lose it again at once. Yes even if no field came, as the keyboard may be gone.
-    private func waitForHeldFields(tokens: [String], until deadline: Date, completion: @escaping (Bool) -> Void) {
+    /// A held banner that brought up a field can be answered, whatever its buttons are called, as WhatsApp's
+    /// on 27.2: it stays unfolded, and its card learns it. One whose field hasn't come yet is waited for.
+    /// Then Notification Center gives a field the keyboard, and only after that can the app take it back.
+    /// One without a field that took the keyboard anyway folds, and isn't held again. Any banner may still
+    /// bring up a field until `fieldMayComeUntil`, one known to have a reply button until `deadline`.
+    private func settleHeld(tokens: [String], until deadline: Date, fieldMayComeUntil: Date, completion: @escaping (Bool) -> Void) {
         scan()
-        let waiting = tokens.filter { token in
-            guard let banner = liveBanners.values.first(where: { $0.token == token }), banner.isHeld else { return false }
-            return replyField(in: banner.element) == nil
+        var waiting: [String] = []
+        var hasField = false
+        for token in tokens {
+            guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+                  let banner = liveBanners[identity], banner.isHeld
+            else { continue }
+            if replyField(in: banner.element) != nil {
+                hasField = true
+                if !banner.canReply {
+                    liveBanners[identity]?.canReply = true
+                    report(banner.element, text: readText(in: banner.element), token: token)
+                }
+            } else if banner.canReply ? Date() < deadline : Date() < fieldMayComeUntil {
+                waiting.append(token)
+            }
         }
-        guard !waiting.isEmpty, Date() < deadline else {
-            return waitForFieldFocus(until: Date().addingTimeInterval(replyFocusWaitTime)) { completion(true) }
+        if !waiting.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval / 2) { [weak self] in
+                guard let self else { return completion(true) }
+                self.settleHeld(tokens: tokens, until: deadline, fieldMayComeUntil: fieldMayComeUntil, completion: completion)
+            }
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
+        let finish = { [weak self] in
             guard let self else { return completion(true) }
-            self.waitForHeldFields(tokens: waiting, until: deadline, completion: completion)
+            let tookKeyboard = self.notificationCenterHasKeyboard()
+            if tookKeyboard {
+                for token in tokens {
+                    guard let identity = self.liveBanners.first(where: { $0.value.token == token })?.key,
+                          let banner = self.liveBanners[identity], banner.isHeld, !banner.canReply
+                    else { continue }
+                    self.liveBanners[identity]?.cannotBeHeld = true
+                    self.fold(identity: identity)
+                }
+            }
+            completion(tookKeyboard)
         }
+        guard hasField else { return finish() }
+        waitForFieldFocus(until: Date().addingTimeInterval(replyFocusWaitTime), then: finish)
+    }
+
+    /// Whether keys typed now would go to Notification Center. Its own focused window can't tell: it may
+    /// keep one after the keyboard has gone back.
+    private func notificationCenterHasKeyboard() -> Bool {
+        guard let processIdentifier else { return false }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXUIElementGetTypeID()
+        else { return false }
+        var focused: pid_t = 0
+        AXUIElementGetPid(value as! AXUIElement, &focused)
+        return focused == processIdentifier
     }
 
     /// Whatever reached a held banner's field before the app took the keyboard back goes, unsent.
     private func clearHeldFields() {
         for banner in liveBanners.values where banner.isHeld && !banner.isReplying {
             clearReplyField(token: banner.token)
-        }
-    }
-
-    /// A field after all, or Notification Center has the focus: folded at once, and not held again.
-    private func foldIfItTookTheKeyboard(token: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + holdCheckDelay) { [weak self] in
-            guard let self, let appElement = self.appElement,
-                  let identity = self.liveBanners.first(where: { $0.value.token == token })?.key,
-                  let banner = self.liveBanners[identity], banner.isHeld
-            else { return }
-            var focused: CFTypeRef?
-            let hasFocus = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focused) != .noValue
-            guard hasFocus || self.replyField(in: banner.element) != nil else { return }
-            self.liveBanners[identity]?.cannotBeHeld = true
-            self.fold(identity: identity)
         }
     }
 
@@ -1098,17 +1135,24 @@ final class NotificationWatcher {
         guard AXIsProcessTrusted(),
               let banner = liveBanners.values.first(where: { $0.token == token }), banner.isReplying,
               let field = replyField(in: banner.element),
-              let sender = replySender(of: banner.element),
-              AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success,
+              let sender = replySender(of: banner.element)
+        else {
+            clearReplyField(token: token)
+            return completion(false)
+        }
+        // Focused first: a field that isn't edited shows the text, but keeps what it had for the send. So it
+        // went with WhatsApp's on 27.2: the reply arrived empty, and WhatsApp said it couldn't send it.
+        // Messages has a field of its own, which took the text either way.
+        AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success,
               characterCount(of: field) == (text as NSString).length
         else {
             clearReplyField(token: token)
             return completion(false)
         }
-        guard !pressDidNothing(AXUIElementPerformAction(banner.element, sender.name as CFString)) else {
-            clearReplyField(token: token)
-            return completion(false)
-        }
+        // What the press answers doesn't count, only whether the text left: Notification Center answers some
+        // presses with an error though they went through, as "Mehr anzeigen", and a banner may go with it
+        AXUIElementPerformAction(banner.element, sender.name as CFString)
         waitForSent(token: token, until: Date().addingTimeInterval(replyWaitTime), completion: completion)
     }
 
@@ -1400,6 +1444,7 @@ final class NotificationWatcher {
         let labels = buttons(of: banner).map(\.label)
         let actions = isAlert ? labels.filter { !unfoldingActions.contains($0) } : []
         let canReply = labels.contains { replyOpeners.contains(plainLabel($0)) }
+            || liveBanners.values.contains { $0.token == token && $0.canReply }
 
         // The helper sets this again on the main queue with every start
         let onBanner = self.onBanner
