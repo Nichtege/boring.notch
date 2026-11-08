@@ -63,10 +63,10 @@ final class MediaKeyInterceptor {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
-            callback: { _, _, cgEvent, userInfo in
-                guard let userInfo else { return Unmanaged.passRetained(cgEvent) }
+            callback: { _, type, cgEvent, userInfo in
+                guard let userInfo else { return Unmanaged.passUnretained(cgEvent) }
                 let interceptor = Unmanaged<MediaKeyInterceptor>.fromOpaque(userInfo).takeUnretainedValue()
-                return interceptor.handleEvent(cgEvent)
+                return interceptor.handleEvent(type, cgEvent)
             },
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
@@ -94,15 +94,24 @@ final class MediaKeyInterceptor {
     
     // MARK: - Event Handling
     
-    private func handleEvent(_ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
+    /// An event passed on is returned as it came: the system owns it, and a retained one would never be
+    /// released.
+    private func handleEvent(_ type: CGEventType, _ cgEvent: CGEvent) -> Unmanaged<CGEvent>? {
+        // macOS turns a tap off if it was too slow once, and the keys would be dead until the next start
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return Unmanaged.passUnretained(cgEvent)
+        }
         // Ensure the CGEvent has a valid type before converting to NSEvent
         guard cgEvent.type != .null else {
-            return Unmanaged.passRetained(cgEvent)
+            return Unmanaged.passUnretained(cgEvent)
         }
         guard let nsEvent = NSEvent(cgEvent: cgEvent),
               nsEvent.type == .systemDefined,
               nsEvent.subtype.rawValue == 8 else {
-            return Unmanaged.passRetained(cgEvent)
+            return Unmanaged.passUnretained(cgEvent)
         }
         
         let data1 = nsEvent.data1
@@ -112,7 +121,7 @@ final class MediaKeyInterceptor {
         // 0xA = key down, 0xB = key up. Only handle key down.
         guard stateByte == 0xA,
               let keyType = NXKeyType(rawValue: keyCode) else {
-            return Unmanaged.passRetained(cgEvent)
+            return Unmanaged.passUnretained(cgEvent)
         }
         
         let flags = nsEvent.modifierFlags
@@ -122,9 +131,8 @@ final class MediaKeyInterceptor {
         
         // Handle option key action (without shift)
         if option && !shift {
-            if handleOptionAction(for: keyType, command: command) {
-                return nil
-            }
+            handleOptionAction(for: keyType, command: command)
+            return nil
         }
         
         // Handle normal key press
@@ -132,18 +140,14 @@ final class MediaKeyInterceptor {
         return nil
     }
     
-    private func handleOptionAction(for keyType: NXKeyType, command: Bool) -> Bool {
-        let action = Defaults[.optionKeyAction]
-        
-        switch action {
+    private func handleOptionAction(for keyType: NXKeyType, command: Bool) {
+        switch Defaults[.optionKeyAction] {
         case .openSettings:
             openSystemSettings(for: keyType, command: command)
-            return true
         case .showHUD:
             showHUD(for: keyType, command: command)
-            return true
         case .none:
-            return true
+            break
         }
     }
     
