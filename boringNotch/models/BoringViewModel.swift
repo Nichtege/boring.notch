@@ -89,7 +89,8 @@ class BoringViewModel: NSObject, ObservableObject {
     // Computed property for effective notch height
     var effectiveClosedNotchHeight: CGFloat {
         let currentScreen = screenUUID.flatMap { NSScreen.screen(withUUID: $0) }
-        let noNotchAndFullscreen = hideOnClosed && (currentScreen?.safeAreaInsets.top ?? 0 <= 0 || currentScreen == nil)
+        // No screen counts as no notch: its inset is taken as 0
+        let noNotchAndFullscreen = hideOnClosed && (currentScreen?.safeAreaInsets.top ?? 0) <= 0
         return noNotchAndFullscreen ? 0 : closedNotchSize.height
     }
 

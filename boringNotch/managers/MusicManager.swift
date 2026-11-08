@@ -117,15 +117,12 @@ class MusicManager: ObservableObject {
     @MainActor
     private func updateFromPlaybackState(_ state: PlaybackState) {
         // Check for playback state changes (playing/paused)
-        if state.isPlaying != self.isPlaying {
+        let playingChanged = state.isPlaying != self.isPlaying
+        if playingChanged {
             NSLog("Playback state changed: \(state.isPlaying ? "Playing" : "Paused")")
             withAnimation(.smooth) {
                 self.isPlaying = state.isPlaying
                 self.updateIdleState(state: state.isPlaying)
-            }
-
-            if state.isPlaying && !state.title.isEmpty && !state.artist.isEmpty {
-                self.updateSneakPeek()
             }
         }
 
@@ -161,11 +158,12 @@ class MusicManager: ObservableObject {
             self.lastArtworkArtist = state.artist
             self.lastArtworkAlbum = state.album
             self.lastArtworkBundleIdentifier = state.bundleIdentifier
+        }
 
-            // Only update sneak peek if there's actual content and something changed
-            if !state.title.isEmpty && !state.artist.isEmpty && state.isPlaying {
-                self.updateSneakPeek()
-            }
+        // Only update sneak peek if there's actual content and something changed. Once, also when a
+        // paused player starts a new track: that's both
+        if (playingChanged || hasContentChange) && state.isPlaying && !state.title.isEmpty && !state.artist.isEmpty {
+            self.updateSneakPeek()
         }
 
         let timeChanged = state.currentTime != self.elapsedTime
@@ -250,11 +248,10 @@ class MusicManager: ObservableObject {
     }
 
     private func updateIdleState(state: Bool) {
+        debounceIdleTask?.cancel()
         if state {
             isPlayerIdle = false
-            debounceIdleTask?.cancel()
         } else {
-            debounceIdleTask?.cancel()
             debounceIdleTask = Task { [weak self] in
                 guard let self = self else { return }
                 try? await Task.sleep(for: .seconds(Defaults[.waitInterval]))
@@ -284,11 +281,10 @@ class MusicManager: ObservableObject {
     }
 
     func calculateAverageColor() {
+        // Answers on the main queue
         albumArt.averageColor { [weak self] color in
-            DispatchQueue.main.async {
-                withAnimation(.smooth) {
-                    self?.avgColor = color ?? .white
-                }
+            withAnimation(.smooth) {
+                self?.avgColor = color ?? .white
             }
         }
     }

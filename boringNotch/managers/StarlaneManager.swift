@@ -181,10 +181,10 @@ final class StarlaneManager: NSObject, ObservableObject, URLSessionTaskDelegate 
     // MARK: - Settings
     /// Accepts the bare name, an https address or the whole phone link (then the key comes with it).
     static func parse(address: String, key: String) -> (host: String, key: String)? {
-        var text = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let original = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = original.lowercased()
         var key = key.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let original = address.trimmingCharacters(in: .whitespacesAndNewlines)
         if let components = URLComponents(string: original), components.scheme != nil {
             guard components.scheme?.lowercased() == "https", components.port == nil,
                   let host = components.host else { return nil }

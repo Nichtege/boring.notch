@@ -13,11 +13,7 @@ import CoreAudio
 import Defaults
 
 enum MicLock {
-    private static var address = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDefaultInputDevice,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-    )
+    private static var address = LocalAudioRoute.propertyAddress(kAudioHardwarePropertyDefaultInputDevice)
     private static var settingCancellable: AnyCancellable?
     private static let shortestPause: TimeInterval = 1
     private static var lastPutBack: Date = .distantPast
@@ -36,7 +32,7 @@ enum MicLock {
     private static var isDefaultInputBluetooth: Bool {
         let input = LocalAudioRoute.number(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
         let transport = LocalAudioRoute.number(input, kAudioDevicePropertyTransportType)
-        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+        return LocalAudioRoute.isBluetooth(transport)
     }
 
     private static func putBackIfEnabled() {

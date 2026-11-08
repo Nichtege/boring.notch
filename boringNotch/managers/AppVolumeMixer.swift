@@ -683,7 +683,7 @@ private final class AppVolumeTap: @unchecked Sendable {
         tapDescription = description
 
         // Tap and Bluetooth output follow the same clock. Compensating anyway makes it crackle.
-        let isBluetooth = transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+        let isBluetooth = LocalAudioRoute.isBluetooth(transport)
         let properties: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Boring Notch mixer",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,

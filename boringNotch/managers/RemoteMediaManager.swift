@@ -198,7 +198,8 @@ final class RemoteMediaManager: ObservableObject {
         let music = MusicManager.shared
         var tile: [String]?
         if music.musicIsPlaying {
-            tile = [music.musicTitle, musicSpeaker ?? "Mac", musicSpeaker == nil ? "laptopcomputer" : "homepod.fill"]
+            let speaker = musicSpeaker
+            tile = [music.musicTitle, speaker ?? "Mac", speaker == nil ? "laptopcomputer" : "homepod.fill"]
         } else if let playing = listedDevices.first(where: \.state.isPlaying) {
             tile = [playing.state.title, outputName(of: playing), outputIconName(of: playing)]
         }

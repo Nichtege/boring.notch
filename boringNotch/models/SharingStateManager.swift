@@ -100,9 +100,7 @@ final class SharingLifecycleDelegate: NSObject, NSSharingServiceDelegate, NSShar
 		timeoutTask = Task { @MainActor [weak self] in
 			try? await Task.sleep(for: .seconds(2))
 			guard let self = self, !Task.isCancelled else { return }
-			if !self.finished {
-				self.finishIfNeeded()
-			}
+			self.finishIfNeeded()
 		}
 	}
 

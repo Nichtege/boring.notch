@@ -55,6 +55,10 @@ enum LocalAudioRoute {
         route(of: defaultOutputDevice)
     }
 
+    static func isBluetooth(_ transport: UInt32) -> Bool {
+        transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+    }
+
     static var defaultOutputDevice: AudioObjectID {
         number(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)
     }
