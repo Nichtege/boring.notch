@@ -225,9 +225,10 @@ extension XPCHelperClient {
     }
 
     /// The banners to keep while the pointer is on their cards. Any others held so far are let go.
-    nonisolated func holdNotifications(_ tokens: [String]) {
+    /// True when a banner's field took the keyboard on the way, which has to be given back.
+    nonisolated func holdNotifications(_ tokens: [String]) async -> Bool {
         let joined = tokens.joined(separator: "\u{1F}")
-        send { $0.holdNotifications(joined) }
+        return await ask { $0.holdNotifications(joined, with: $1) } ?? false
     }
 
     nonisolated func restoreStrandedNotifications() {

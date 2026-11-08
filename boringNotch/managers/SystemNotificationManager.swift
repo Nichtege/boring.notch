@@ -11,6 +11,9 @@ import AppKit
 import Combine
 import Defaults
 
+/// A key pressed this recently means someone is typing, and the keyboard mustn't move.
+private let typingQuietTime: TimeInterval = 1
+
 struct SystemNotification: Identifiable, Equatable {
     var id = UUID().uuidString
     /// The helper's name for the banner behind this card.
@@ -64,6 +67,8 @@ final class SystemNotificationManager {
     private var pausedRemaining: TimeInterval?
     /// The banners last asked to be kept while the pointer is on their cards.
     private var heldTokens: [String] = []
+    /// Tried again once the keyboard has been quiet, if the pointer is still on the cards.
+    private var heldRetry: Task<Void, Never>?
     private var permissionTask: Task<Void, Never>?
     private var settingCancellable: AnyCancellable?
     private var fullscreenCancellable: AnyCancellable?
@@ -423,14 +428,32 @@ final class SystemNotificationManager {
     }
 
     /// The pointer on the cards keeps their banners too, which would otherwise go after 5 s, and with
-    /// them the way to the conversation.
+    /// them the way to the conversation and the reply. A message's banner is kept by unfolding it to its
+    /// field, which takes the keyboard for a moment until it's given back. So not while typing, when a key
+    /// could land in that field, nor during a reply, whose field has the keyboard.
     private func syncHeldBanners() {
+        heldRetry?.cancel()
+        heldRetry = nil
+        let typedJustNow = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) < typingQuietTime
+        let mayTakeKeyboard = !typedJustNow && replyingID == nil
         let tokens = isCardHovered
-            ? notifications.filter { !$0.isAlert && $0.id != replyingID }.map(\.token)
+            ? notifications.filter { !$0.isAlert && $0.id != replyingID && (mayTakeKeyboard || !$0.canReply) }.map(\.token)
             : []
+        if isCardHovered, typedJustNow, notifications.contains(where: { $0.canReply && !$0.isAlert }) {
+            heldRetry = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(typingQuietTime))
+                guard !Task.isCancelled else { return }
+                self?.syncHeldBanners()
+            }
+        }
         guard tokens != heldTokens else { return }
         heldTokens = tokens
-        XPCHelperClient.shared.holdNotifications(tokens)
+        Task {
+            guard await XPCHelperClient.shared.holdNotifications(tokens) else { return }
+            // A reply that started meanwhile has taken the keyboard for its own field
+            guard replyingID == nil else { return }
+            NotificationCardController.giveKeyboardBack()
+        }
     }
 
     /// Opens the right place through the banner if it's still there, the app itself otherwise. If

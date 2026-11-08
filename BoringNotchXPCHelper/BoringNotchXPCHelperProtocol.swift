@@ -29,7 +29,7 @@ import Foundation
     func beginNotificationReply(_ token: String, with reply: @escaping (Int) -> Void)
     func sendNotificationReply(_ token: String, text: String, with reply: @escaping (Bool) -> Void)
     func cancelNotificationReply(_ token: String)
-    func holdNotifications(_ tokens: String)
+    func holdNotifications(_ tokens: String, with reply: @escaping (Bool) -> Void)
     func restoreStrandedNotifications()
     func listenToNotificationsAgain()
     // The microphone (set by the helper, which isn't sandboxed)

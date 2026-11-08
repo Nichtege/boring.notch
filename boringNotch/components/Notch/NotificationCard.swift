@@ -184,8 +184,10 @@ final class NotificationCardController {
         }
     }
 
-    /// The keyboard goes back to where it was: a panel that lets go of it gives it to the app in front.
+    /// The keyboard goes back to the app in front, also when Notification Center may have taken it while
+    /// sending. Not after a click elsewhere, which put it where it was meant to go.
     func stopReplying() {
+        let wasSent = model.replyIsReady && model.replyState == .sent
         withAnimation(Self.stackAnimation) {
             model.replyingID = nil
             model.replyText = ""
@@ -193,11 +195,34 @@ final class NotificationCardController {
             model.replyIsReady = false
         }
         guard let panel else { return }
+        let isKey = panel.isKeyWindow
         panel.takesKeyboard = false
-        if panel.isKeyWindow {
+        if isKey || wasSent, !Self.giveKeyboardBack(), isKey {
             panel.orderOut(nil)
             panel.orderFrontRegardless()
         }
+    }
+
+    /// Notification Center's field takes the keyboard without bringing anything forward, and a panel that
+    /// lets go of it gives it back there, not to the app in front. Only a change of the active app moves
+    /// it: this app comes forward for a moment and hands over to the app that was in front. Tested on
+    /// 27.2: the keyboard was back in the same field, and nothing reached Notification Center's.
+    /// No when it can't: with Settings open this app is a regular one, which would come forward visibly.
+    @discardableResult
+    static func giveKeyboardBack() -> Bool {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              NSApp.activationPolicy() == .accessory
+        else { return false }
+        NSApp.activate(ignoringOtherApps: true)
+        Task { @MainActor in
+            for _ in 0..<20 where !NSApp.isActive {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            NSApp.yieldActivation(to: front)
+            front.activate(from: .current, options: [])
+        }
+        return true
     }
 
     /// SwiftUI's focus doesn't reach a field in a panel that only just took the keyboard, so AppKit is asked.

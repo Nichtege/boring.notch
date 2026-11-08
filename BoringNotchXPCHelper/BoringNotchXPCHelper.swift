@@ -123,9 +123,10 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
     }
 
     /// Tokens joined by U+001F: a string is what the interface lets through without a list of classes.
-    @objc func holdNotifications(_ tokens: String) {
+    /// Yes when a banner's field took the keyboard, which the app then gives back.
+    @objc func holdNotifications(_ tokens: String, with reply: @escaping (Bool) -> Void) {
         let tokens = Set(tokens.split(separator: "\u{1F}").map(String.init))
-        DispatchQueue.main.async { Self.watcher.hold(tokens: tokens) }
+        DispatchQueue.main.async { Self.watcher.hold(tokens: tokens, completion: reply) }
     }
 
     @objc func cancelNotificationReply(_ token: String) {

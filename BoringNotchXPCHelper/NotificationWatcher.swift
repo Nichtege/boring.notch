@@ -60,6 +60,8 @@ private let replyClosers: Set<String> = ["detailsausblenden", "hidedetails", "we
 private let holdOpeners: Set<String> = ["detailseinblenden", "showdetails"]
 /// How soon an unfolded banner shows whether it brought up a field after all, which takes the keyboard.
 private let holdCheckDelay: TimeInterval = 0.15
+/// By then the app has taken the keyboard back from a held banner's field.
+private let heldFieldClearDelay: TimeInterval = 0.5
 /// How long the reply field has to appear, and how long a sent reply has to leave the field.
 private let replyWaitTime: TimeInterval = 1.5
 private let replyPollInterval: TimeInterval = 0.1
@@ -937,25 +939,64 @@ final class NotificationWatcher {
     // MARK: - Holding
 
     /// The banners whose cards are under the pointer stay as long as it's there, and get their 5 s anew
-    /// once it's gone. A banner that can be replied to isn't held: unfolding a message may bring up its
-    /// field, which takes the keyboard. Nor is one being replied from, which is unfolded already.
-    func hold(tokens: Set<String>) {
-        guard AXIsProcessTrusted() else { return }
+    /// once it's gone. A banner that can be replied to unfolds to its field, which keeps it as well: then
+    /// a hold still finds it after its 5 s. That field takes the keyboard, so the answer is yes once it
+    /// has, and the app gives the keyboard straight back. Not one being replied from, unfolded already.
+    func hold(tokens: Set<String>, completion: @escaping (Bool) -> Void) {
+        guard AXIsProcessTrusted() else { return completion(false) }
+        var unfoldedToField: [String] = []
         for (identity, banner) in liveBanners {
-            let wanted = tokens.contains(banner.token) && !banner.isAlert && !banner.isReplying
-                && !banner.canReply && !banner.cannotBeHeld
+            let wanted = tokens.contains(banner.token) && !banner.isAlert && !banner.isReplying && !banner.cannotBeHeld
             if wanted, !banner.isHeld {
-                guard let opener = buttons(of: banner.element).first(where: { holdOpeners.contains(plainLabel($0.label)) })
+                let openers = banner.canReply ? replyOpeners : holdOpeners
+                guard let opener = buttons(of: banner.element).first(where: { openers.contains(plainLabel($0.label)) })
                 else { continue }
                 liveBanners[identity]?.isHeld = true
+                if banner.canReply {
+                    // Before it changes, so the scans keep it for the same banner and don't take its focus for the center
+                    replyFocusWindow = banner.window
+                }
                 if pressDidNothing(AXUIElementPerformAction(banner.element, opener.name as CFString)) {
                     liveBanners[identity]?.isHeld = false
                     continue
                 }
-                foldIfItTookTheKeyboard(token: banner.token)
+                if banner.canReply {
+                    unfoldedToField.append(banner.token)
+                } else {
+                    foldIfItTookTheKeyboard(token: banner.token)
+                }
             } else if !wanted, banner.isHeld, !banner.isReplying {
                 fold(identity: identity)
             }
+        }
+        guard !unfoldedToField.isEmpty else { return completion(false) }
+        waitForHeldFields(tokens: unfoldedToField, until: Date().addingTimeInterval(replyWaitTime)) { [weak self] tookKeyboard in
+            completion(tookKeyboard)
+            DispatchQueue.main.asyncAfter(deadline: .now() + heldFieldClearDelay) { self?.clearHeldFields() }
+        }
+    }
+
+    /// Notification Center gives a field the keyboard a moment after it appears. Only then can the app take
+    /// it back, or it would lose it again at once. Yes even if no field came, as the keyboard may be gone.
+    private func waitForHeldFields(tokens: [String], until deadline: Date, completion: @escaping (Bool) -> Void) {
+        scan()
+        let waiting = tokens.filter { token in
+            guard let banner = liveBanners.values.first(where: { $0.token == token }), banner.isHeld else { return false }
+            return replyField(in: banner.element) == nil
+        }
+        guard !waiting.isEmpty, Date() < deadline else {
+            return waitForFieldFocus(until: Date().addingTimeInterval(replyFocusWaitTime)) { completion(true) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + replyPollInterval) { [weak self] in
+            guard let self else { return completion(true) }
+            self.waitForHeldFields(tokens: waiting, until: deadline, completion: completion)
+        }
+    }
+
+    /// Whatever reached a held banner's field before the app took the keyboard back goes, unsent.
+    private func clearHeldFields() {
+        for banner in liveBanners.values where banner.isHeld && !banner.isReplying {
+            clearReplyField(token: banner.token)
         }
     }
 
@@ -976,6 +1017,7 @@ final class NotificationWatcher {
 
     private func fold(identity: Int) {
         guard let banner = liveBanners[identity] else { return }
+        clearReplyField(token: banner.token)
         if let closer = buttons(of: banner.element).first(where: { replyClosers.contains(plainLabel($0.label)) }) {
             AXUIElementPerformAction(banner.element, closer.name as CFString)
         }
@@ -996,6 +1038,13 @@ final class NotificationWatcher {
               let banner = liveBanners[identity]
         else { return completion(.gone) }
         if banner.isReplying, replyField(in: banner.element) != nil { return completion(.ready) }
+        // Unfolded to its field while the pointer was on its card: from now on it's being replied from
+        if banner.isHeld, banner.canReply, replyField(in: banner.element) != nil {
+            liveBanners[identity]?.isHeld = false
+            liveBanners[identity]?.isReplying = true
+            replyFocusWindow = banner.window
+            return completion(.ready)
+        }
 
         guard let opener = buttons(of: banner.element).first(where: { replyOpeners.contains(plainLabel($0.label)) }) else {
             return completion(.impossible)
