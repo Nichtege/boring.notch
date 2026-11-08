@@ -27,21 +27,15 @@ final class XPCHelperClient: NSObject {
         
         // Late handlers of an old connection must not touch a newer one, and the helper's state is
         // only lost once per connection.
-        conn.interruptionHandler = { [weak self, weak conn] in
+        let connectionLost: () -> Void = { [weak self, weak conn] in
             Task { @MainActor in
                 guard let self, let conn, self.connection === conn else { return }
                 self.connection = nil
                 NotificationCenter.default.post(name: .xpcHelperConnectionLost, object: nil)
             }
         }
-        
-        conn.invalidationHandler = { [weak self, weak conn] in
-            Task { @MainActor in
-                guard let self, let conn, self.connection === conn else { return }
-                self.connection = nil
-                NotificationCenter.default.post(name: .xpcHelperConnectionLost, object: nil)
-            }
-        }
+        conn.interruptionHandler = connectionLost
+        conn.invalidationHandler = connectionLost
         
         conn.resume()
         
@@ -119,16 +113,15 @@ final class XPCHelperClient: NSObject {
     }
     
     nonisolated func isAccessibilityAuthorized() async -> Bool {
-        let answer: Bool? = await ask { $0.isAccessibilityAuthorized(with: $1) }
-        guard let answer else { return false }
-        await MainActor.run {
-            notifyAuthorizationChange(answer)
-        }
-        return answer
+        await noted(await ask { $0.isAccessibilityAuthorized(with: $1) })
     }
     
     nonisolated func ensureAccessibilityAuthorization(promptIfNeeded: Bool) async -> Bool {
-        let answer: Bool? = await ask { $0.ensureAccessibilityAuthorization(promptIfNeeded, with: $1) }
+        await noted(await ask { $0.ensureAccessibilityAuthorization(promptIfNeeded, with: $1) })
+    }
+
+    /// The helper's answer, passed on to whoever watches the permission. No answer counts as no.
+    private nonisolated func noted(_ answer: Bool?) async -> Bool {
         guard let answer else { return false }
         await MainActor.run {
             notifyAuthorizationChange(answer)

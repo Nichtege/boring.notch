@@ -861,6 +861,7 @@ private struct ButtonRows: Layout {
 
     private struct Row {
         var indices: [Int] = []
+        var sizes: [CGSize] = []
         var width: CGFloat = 0
         var height: CGFloat = 0
     }
@@ -875,8 +876,7 @@ private struct ButtonRows: Layout {
         var y = bounds.minY
         for row in arrange(subviews, width: bounds.width) {
             var x = bounds.minX
-            for index in row.indices {
-                let size = self.size(of: subviews[index], width: bounds.width)
+            for (index, size) in zip(row.indices, row.sizes) {
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -900,6 +900,7 @@ private struct ButtonRows: Layout {
             row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
             row.height = max(row.height, size.height)
             row.indices.append(index)
+            row.sizes.append(size)
         }
         if !row.indices.isEmpty {
             rows.append(row)

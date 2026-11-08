@@ -349,19 +349,7 @@ final class NotificationWatcher {
         settleWorkItem = nil
         healthTimer?.cancel()
         healthTimer = nil
-        if let observer = axObserver {
-            if let appElement {
-                removeObserverNotifications(from: appElement, observer: observer)
-            }
-            for window in observedWindows.values {
-                removeObserverNotifications(from: window, observer: observer)
-            }
-        }
-        observedWindows.removeAll()
-        observerRunLoop?.stop()
-        axObserver = nil
-        observerRunLoop = nil
-        observerContext = nil
+        dropObserver()
         scanWorkItem?.cancel()
         scanWorkItem = nil
         restoreRetries = 0
@@ -435,12 +423,10 @@ final class NotificationWatcher {
             guard let refcon else { return }
             let context = Unmanaged<ObserverContext>.fromOpaque(refcon).takeUnretainedValue()
             let name = notification as String
-            let subrole = name == "AXUIElementDestroyed"
-                ? nil
-                : element.string(kAXSubroleAttribute)
-            let identifier = name == "AXUIElementDestroyed"
-                ? nil
-                : element.string(kAXIdentifierAttribute)
+            // A destroyed element can't answer, and a new window is scanned whatever it is
+            let readsElement = name != "AXUIElementDestroyed" && name != "AXWindowCreated"
+            let subrole = readsElement ? element.string(kAXSubroleAttribute) : nil
+            let identifier = readsElement ? element.string(kAXIdentifierAttribute) : nil
             DispatchQueue.main.async { [weak context] in
                 context?.watcher?.handleObserverEvent(
                     notification: name,
@@ -573,7 +559,7 @@ final class NotificationWatcher {
                         liveBanners[reading.identity]?.window = window
                         // Its reply button came after it: the card learns it can be answered
                         if !live.canReply, !live.isAlert, !reading.text.isEmpty,
-                           buttons(of: reading.banner.element).contains(where: { replyOpeners.contains(plainLabel($0.label)) }) {
+                           button(of: reading.banner.element, labelledAnyOf: replyOpeners) != nil {
                             liveBanners[reading.identity]?.canReply = true
                             report(reading.banner.element, text: reading.text, token: live.token)
                         }
@@ -589,7 +575,7 @@ final class NotificationWatcher {
                             isStack: isStack,
                             isAlert: reading.banner.subrole == NotificationPanelDetection.alertSubrole,
                             axIdentifier: reading.banner.element.string(kAXIdentifierAttribute),
-                            canReply: buttons(of: reading.banner.element).contains { replyOpeners.contains(plainLabel($0.label)) }
+                            canReply: button(of: reading.banner.element, labelledAnyOf: replyOpeners) != nil
                         )
                         fresh.append(reading)
                     }
@@ -677,23 +663,26 @@ final class NotificationWatcher {
 
             let subrole = element.string(kAXSubroleAttribute)
             let identifier = element.string(kAXIdentifierAttribute)
-            let stackingIdentifier = node.insideList && subrole == "AXButton"
+            let insideNotificationList = node.insideList && !node.insideBanner
+            // Only looked at there, so only read there
+            let stackingIdentifier = insideNotificationList && subrole == "AXButton"
                 ? element.string(stackingIdentifierAttribute)
                 : nil
             if NotificationPanelDetection.isPanel(
                 subrole: subrole,
                 identifier: identifier,
                 stackingIdentifier: stackingIdentifier,
-                insideNotificationList: node.insideList && !node.insideBanner
+                insideNotificationList: insideNotificationList
             ) || NotificationPanelDetection.isDesktopWidget(identifier: identifier) {
                 return .other
             }
 
-            if !node.insideBanner, NotificationPanelDetection.isBanner(subrole: subrole) {
+            let isBanner = NotificationPanelDetection.isBanner(subrole: subrole)
+            if !node.insideBanner, isBanner {
                 banners.append(Banner(element: element, subrole: subrole))
             }
 
-            let childInsideBanner = node.insideBanner || NotificationPanelDetection.isBanner(subrole: subrole)
+            let childInsideBanner = node.insideBanner || isBanner
             let childInsideList = node.insideList
                 || identifier == NotificationPanelDetection.panelListIdentifier
             pending.append(contentsOf: element.children().reversed().map {
@@ -716,13 +705,14 @@ final class NotificationWatcher {
     /// A banner keeps its identifier and text across scans, while its element may not. A second
     /// notification can reuse the identifier, and it mustn't pass for the first in a parked window.
     private func identity(of banner: AXUIElement, showing text: BannerText) -> Int {
+        let identifier = banner.string(kAXIdentifierAttribute)
         // Unfolded it may show more of its text, and it's still the same banner
-        if let identifier = banner.string(kAXIdentifierAttribute),
+        if let identifier,
            let unfolded = liveBanners.first(where: { $0.value.keepsIdentifier && $0.value.axIdentifier == identifier }) {
             return unfolded.key
         }
         var hasher = Hasher()
-        if let identifier = banner.string(kAXIdentifierAttribute), !structuralIdentifiers.contains(identifier) {
+        if let identifier, !structuralIdentifiers.contains(identifier) {
             hasher.combine(identifier)
         }
         hasher.combine(text)
@@ -941,6 +931,17 @@ final class NotificationWatcher {
     }
 
     /// The buttons Notification Center offers as an alert's own actions, as "Name:<label>\nTarget:…".
+    private func button(of element: AXUIElement, labelledAnyOf labels: Set<String>) -> (label: String, name: String)? {
+        buttons(of: element).first { labels.contains(plainLabel($0.label)) }
+    }
+
+    /// Folds an unfolded banner back, with or without a field in it. A folded one has nothing to press.
+    private func pressCloser(of banner: AXUIElement) {
+        if let closer = button(of: banner, labelledAnyOf: replyClosers) {
+            AXUIElementPerformAction(banner, closer.name as CFString)
+        }
+    }
+
     private func buttons(of alert: AXUIElement) -> [(label: String, name: String)] {
         var names: CFArray?
         guard AXUIElementCopyActionNames(alert, &names) == .success, let names = names as? [String] else {
@@ -967,7 +968,7 @@ final class NotificationWatcher {
             let wanted = tokens.contains(banner.token) && !banner.isAlert && !banner.isReplying && !banner.cannotBeHeld
             if wanted, !banner.isHeld {
                 let openers = banner.canReply ? replyOpeners : holdOpeners
-                guard let opener = buttons(of: banner.element).first(where: { openers.contains(plainLabel($0.label)) })
+                guard let opener = button(of: banner.element, labelledAnyOf: openers)
                 else { continue }
                 liveBanners[identity]?.isHeld = true
                 // Before it changes, so the scans keep it for the same banner, and the focus a field may take
@@ -1064,9 +1065,7 @@ final class NotificationWatcher {
     private func fold(identity: Int) {
         guard let banner = liveBanners[identity] else { return }
         clearReplyField(token: banner.token)
-        if let closer = buttons(of: banner.element).first(where: { replyClosers.contains(plainLabel($0.label)) }) {
-            AXUIElementPerformAction(banner.element, closer.name as CFString)
-        }
+        pressCloser(of: banner.element)
         liveBanners[identity]?.isHeld = false
     }
 
@@ -1092,7 +1091,7 @@ final class NotificationWatcher {
             return completion(.ready)
         }
 
-        guard let opener = buttons(of: banner.element).first(where: { replyOpeners.contains(plainLabel($0.label)) }) else {
+        guard let opener = button(of: banner.element, labelledAnyOf: replyOpeners) else {
             return completion(.impossible)
         }
         // Before it changes, so the scans keep it for the same banner and don't take its focus for the center
@@ -1208,9 +1207,7 @@ final class NotificationWatcher {
               let banner = liveBanners[identity]
         else { return }
         // Only an unfolded banner offers this, with or without a field in it
-        if let closer = buttons(of: banner.element).first(where: { replyClosers.contains(plainLabel($0.label)) }) {
-            AXUIElementPerformAction(banner.element, closer.name as CFString)
-        }
+        pressCloser(of: banner.element)
         liveBanners[identity]?.isReplying = false
     }
 
@@ -1404,14 +1401,12 @@ final class NotificationWatcher {
 
     /// A new observer, and nothing else changes: what's parked stays parked, and a scan right after finds
     /// whatever came in between. If Notification Center won't take it, it's treated as if it had exited.
-    private func listenAgain(because reason: String?) {
-        guard let processIdentifier, let appElement else { return }
-        if let reason {
-            NSLog("[boringNotch] Notification Center stopped reporting banners (\(reason)), listening again")
-        }
-
+    /// Notification Center stops telling this observer anything, and its thread ends.
+    private func dropObserver() {
         if let observer = axObserver {
-            removeObserverNotifications(from: appElement, observer: observer)
+            if let appElement {
+                removeObserverNotifications(from: appElement, observer: observer)
+            }
             for window in observedWindows.values {
                 removeObserverNotifications(from: window, observer: observer)
             }
@@ -1421,6 +1416,15 @@ final class NotificationWatcher {
         axObserver = nil
         observerRunLoop = nil
         observerContext = nil
+    }
+
+    private func listenAgain(because reason: String?) {
+        guard let processIdentifier, appElement != nil else { return }
+        if let reason {
+            NSLog("[boringNotch] Notification Center stopped reporting banners (\(reason)), listening again")
+        }
+
+        dropObserver()
 
         guard installObserver(for: processIdentifier) else {
             notificationCenterExited()
@@ -1442,8 +1446,8 @@ final class NotificationWatcher {
     /// The banner is read here and the rest happens on the other queue. If that takes too long, the banner
     /// comes back by itself in the meantime and the card follows when it's ready.
     private func report(_ banner: AXUIElement, text: BannerText, token: String) {
-        let description = (banner["AXAttributedDescription"] as? NSAttributedString)?.string
-            ?? banner["AXAttributedDescription"] as? String
+        let rawDescription = banner["AXAttributedDescription"]
+        let description = (rawDescription as? NSAttributedString)?.string ?? rawDescription as? String
         let appName = description.flatMap { value in
             value.split(separator: ",", maxSplits: 1)
                 .first
