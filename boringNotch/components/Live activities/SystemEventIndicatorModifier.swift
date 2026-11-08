@@ -9,16 +9,8 @@ import SwiftUI
 import Defaults
 
 struct SystemEventIndicatorModifier: View {
-    @EnvironmentObject var vm: BoringViewModel
     @Binding var eventType: SneakContentType
-    @Binding var value: CGFloat {
-        didSet {
-            DispatchQueue.main.async {
-                self.sendEventBack(value)
-                self.vm.objectWillChange.send()
-            }
-        }
-    }
+    @Binding var value: CGFloat
     @Binding var icon: String
     var sendEventBack: (CGFloat) -> Void
     
@@ -51,7 +43,8 @@ struct SystemEventIndicatorModifier: View {
                 default:
                     EmptyView()
             }
-            DraggableProgressBar(value: $value)
+            // A drag goes through the binding, which never ran a didSet here: the level is set by the bar
+            DraggableProgressBar(value: $value, onChange: sendEventBack)
             if Defaults[.showClosedNotchHUDPercentage] {
                 Text("\(Int(value * 100))%")
                     .font(.system(size: 12, weight: .medium))
