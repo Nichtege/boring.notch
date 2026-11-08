@@ -704,6 +704,15 @@ final class NotificationWatcher {
         return .banners(banners)
     }
 
+    /// The banner a card stands for, by the token the app knows it by.
+    private func liveIdentity(for token: String) -> Int? {
+        liveBanners.first(where: { $0.value.token == token })?.key
+    }
+
+    private func liveBanner(for token: String) -> LiveBanner? {
+        liveBanners.values.first(where: { $0.token == token })
+    }
+
     /// A banner keeps its identifier and text across scans, while its element may not. A second
     /// notification can reuse the identifier, and it mustn't pass for the first in a parked window.
     private func identity(of banner: AXUIElement, showing text: BannerText) -> Int {
@@ -754,7 +763,7 @@ final class NotificationWatcher {
     private func restoreUnlessCardInTime(token: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + cardConfirmationTime) { [weak self] in
             guard let self else { return }
-            if let identity = self.liveBanners.first(where: { $0.value.token == token })?.key {
+            if let identity = self.liveIdentity(for: token) {
                 self.liveBanners[identity]?.awaitsCard = false
                 if self.liveBanners[identity]?.hasCard == true { return }
             }
@@ -787,7 +796,7 @@ final class NotificationWatcher {
     func park(token: String) -> Bool {
         guard AXIsProcessTrusted(), let appElement,
               !centerMayBeOpen(appElement),
-              let identity = liveBanners.first(where: { $0.value.token == token })?.key
+              let identity = liveIdentity(for: token)
         else {
             restore(token: token)
             return false
@@ -863,7 +872,7 @@ final class NotificationWatcher {
     /// it here. This can't wait for the app's next call: a restore and a park can reach this in either order.
     /// A banner that's gone only lets go of the window.
     func restore(token: String) {
-        let identity = liveBanners.first(where: { $0.value.token == token })?.key
+        let identity = liveIdentity(for: token)
 
         // A repeat with the same identity can have the token in a second window as well
         for key in Array(parkedWindows.keys) where parkedWindows[key]?.tokens.contains(token) == true {
@@ -884,7 +893,7 @@ final class NotificationWatcher {
     /// may only unfold it, out of sight, so that's a no too.
     func press(token: String) -> Bool {
         guard AXIsProcessTrusted(),
-              let live = liveBanners.values.first(where: { $0.token == token }),
+              let live = liveBanner(for: token),
               [NotificationPanelDetection.plainBannerSubrole, NotificationPanelDetection.alertSubrole]
                 .contains(live.element.string(kAXSubroleAttribute))
         else { return false }
@@ -902,7 +911,7 @@ final class NotificationWatcher {
     /// Presses one of an alert's buttons, found again by what it says.
     func perform(token: String, action label: String) -> Bool {
         guard AXIsProcessTrusted(),
-              let live = liveBanners.values.first(where: { $0.token == token }), live.isAlert,
+              let live = liveBanner(for: token), live.isAlert,
               let action = buttons(of: live.element).first(where: { $0.label == label }),
               AXUIElementPerformAction(live.element, action.name as CFString) == .success
         else { return false }
@@ -917,7 +926,7 @@ final class NotificationWatcher {
             guard let self else { return }
             // Its leaving may not have been looked at yet
             self.scan()
-            guard self.liveBanners.values.contains(where: { $0.token == token }) else { return }
+            guard self.liveBanner(for: token) != nil else { return }
             self.restore(token: token)
             self.ended(token: token)
         }
@@ -994,7 +1003,7 @@ final class NotificationWatcher {
         var waiting: [String] = []
         var hasField = false
         for token in tokens {
-            guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+            guard let identity = liveIdentity(for: token),
                   let banner = liveBanners[identity], banner.isHeld
             else { continue }
             if replyField(in: banner.element) != nil {
@@ -1019,7 +1028,7 @@ final class NotificationWatcher {
             let tookKeyboard = self.notificationCenterHasKeyboard()
             if tookKeyboard {
                 for token in tokens {
-                    guard let identity = self.liveBanners.first(where: { $0.value.token == token })?.key,
+                    guard let identity = self.liveIdentity(for: token),
                           let banner = self.liveBanners[identity], banner.isHeld, !banner.canReply
                     else { continue }
                     self.liveBanners[identity]?.cannotBeHeld = true
@@ -1071,7 +1080,7 @@ final class NotificationWatcher {
 
     func beginReply(token: String, completion: @escaping (ReplyStart) -> Void) {
         guard AXIsProcessTrusted() else { return completion(.impossible) }
-        guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+        guard let identity = liveIdentity(for: token),
               let banner = liveBanners[identity]
         else { return completion(.gone) }
         if banner.isReplying, replyField(in: banner.element) != nil { return completion(.ready) }
@@ -1098,7 +1107,7 @@ final class NotificationWatcher {
 
     private func waitForReplyField(token: String, until deadline: Date, completion: @escaping (ReplyStart) -> Void) {
         scan()
-        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(.gone) }
+        guard let banner = liveBanner(for: token) else { return completion(.gone) }
         if replyField(in: banner.element) != nil {
             return waitForFieldFocus(until: Date().addingTimeInterval(replyFocusWaitTime)) { completion(.ready) }
         }
@@ -1133,7 +1142,7 @@ final class NotificationWatcher {
     /// sent if the field holds all of it, and only counted, never kept. Yes once the field let go of it.
     func sendReply(token: String, text: String, completion: @escaping (Bool) -> Void) {
         guard AXIsProcessTrusted(),
-              let banner = liveBanners.values.first(where: { $0.token == token }), banner.isReplying,
+              let banner = liveBanner(for: token), banner.isReplying,
               let field = replyField(in: banner.element),
               let sender = replySender(of: banner.element)
         else {
@@ -1158,7 +1167,7 @@ final class NotificationWatcher {
 
     private func waitForSent(token: String, until deadline: Date, completion: @escaping (Bool) -> Void) {
         scan()
-        guard let banner = liveBanners.values.first(where: { $0.token == token }) else { return completion(true) }
+        guard let banner = liveBanner(for: token) else { return completion(true) }
         guard let field = replyField(in: banner.element), characterCount(of: field) != 0 else {
             endReply(token: token)
             return completion(true)
@@ -1187,7 +1196,7 @@ final class NotificationWatcher {
     }
 
     private func clearReplyField(token: String) {
-        guard let banner = liveBanners.values.first(where: { $0.token == token }),
+        guard let banner = liveBanner(for: token),
               let field = replyField(in: banner.element)
         else { return }
         AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString)
@@ -1195,7 +1204,7 @@ final class NotificationWatcher {
 
     /// Folds the banner back if it's still unfolded. From then on it's an ordinary banner again.
     private func endReply(token: String) {
-        guard let identity = liveBanners.first(where: { $0.value.token == token })?.key,
+        guard let identity = liveIdentity(for: token),
               let banner = liveBanners[identity]
         else { return }
         // Only an unfolded banner offers this, with or without a field in it
@@ -1444,7 +1453,7 @@ final class NotificationWatcher {
         let labels = buttons(of: banner).map(\.label)
         let actions = isAlert ? labels.filter { !unfoldingActions.contains($0) } : []
         let canReply = labels.contains { replyOpeners.contains(plainLabel($0)) }
-            || liveBanners.values.contains { $0.token == token && $0.canReply }
+            || liveBanner(for: token)?.canReply == true
 
         // The helper sets this again on the main queue with every start
         let onBanner = self.onBanner
