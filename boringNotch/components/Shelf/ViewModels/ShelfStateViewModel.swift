@@ -63,12 +63,15 @@ final class ShelfStateViewModel: ObservableObject {
             
             guard let self = self else { return }
             
+            // All at once, so the file is written once and not per item
+            var updated = self.items
             for (itemID, bookmarkData) in self.pendingBookmarkUpdates {
-                if let idx = self.items.firstIndex(where: { $0.id == itemID }),
-                   case .file = self.items[idx].kind {
-                    self.items[idx].kind = .file(bookmark: bookmarkData)
+                if let idx = updated.firstIndex(where: { $0.id == itemID }),
+                   case .file = updated[idx].kind {
+                    updated[idx].kind = .file(bookmark: bookmarkData)
                 }
             }
+            if updated != self.items { self.items = updated }
             
             self.pendingBookmarkUpdates.removeAll()
         }
@@ -102,7 +105,10 @@ final class ShelfStateViewModel: ObservableObject {
                     keep.append(item)
                 }
             }
-            await MainActor.run { self.items = keep }
+            // Every save writes the file: opening the shelf with nothing to clean up writes nothing
+            await MainActor.run {
+                if self.items != keep { self.items = keep }
+            }
         }
     }
 

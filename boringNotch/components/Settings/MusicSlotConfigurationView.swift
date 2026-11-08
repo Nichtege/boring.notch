@@ -121,7 +121,7 @@ struct MusicSlotConfigurationView: View {
                                     if control != .none {
                                         Image(systemName: control.iconName)
                                             .font(.system(size: control.prefersLargeScale ? 18 : 15, weight: .medium))
-                                            .foregroundStyle(control == .none ? Color.secondary : Color.primary)
+                                            .foregroundStyle(Color.primary)
                                             .frame(width: 28, height: 28)
                                     }
                                 }

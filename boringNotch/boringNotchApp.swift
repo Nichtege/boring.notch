@@ -213,7 +213,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func createBoringNotchWindow(for screen: NSScreen, with viewModel: BoringViewModel) -> NSWindow {
+    private func createBoringNotchWindow(with viewModel: BoringViewModel) -> NSWindow {
         let rect = NSRect(x: 0, y: 0, width: windowSize.width, height: windowSize.height)
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         
@@ -399,14 +399,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if !Defaults[.showOnAllDisplays] {
-            let viewModel = self.vm
-            let window = createBoringNotchWindow(
-                for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
-            self.window = window
-            adjustWindowPosition()
-        } else {
-            adjustWindowPosition()
+            window = createBoringNotchWindow(with: vm)
         }
+        adjustWindowPosition()
 
         setupDragDetectors()
 
@@ -483,7 +478,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 if windows[uuid] == nil {
                     let viewModel = BoringViewModel(screenUUID: uuid)
-                    let window = createBoringNotchWindow(for: screen, with: viewModel)
+                    let window = createBoringNotchWindow(with: viewModel)
 
                     windows[uuid] = window
                     viewModels[uuid] = viewModel
@@ -520,7 +515,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             if window == nil {
-                window = createBoringNotchWindow(for: selectedScreen, with: vm)
+                window = createBoringNotchWindow(with: vm)
             }
 
             if let window = window {

@@ -56,6 +56,16 @@ struct ContentView: View {
         (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
     }
 
+    private var showsBatteryBanner: Bool {
+        coordinator.expandingView.type == .battery && coordinator.expandingView.show
+            && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
+    }
+
+    private var showsMusicLiveActivity: Bool {
+        (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
+            && vm.notchState == .closed && musicTakesNotch && !vm.hideOnClosed
+    }
+
     private var isBareClosedNotch: Bool {
         !coordinator.expandingView.show && vm.notchState == .closed && !musicTakesNotch && !vm.hideOnClosed
     }
@@ -99,16 +109,11 @@ struct ContentView: View {
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
-        if coordinator.expandingView.type == .battery && coordinator.expandingView.show
-            && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
-        {
+        if showsBatteryBanner {
             chinWidth = 640
         } else if isShowingWideBanner {
             chinWidth += 2 * starlaneBannerSideWidth + 10
-        } else if ((!coordinator.expandingView.show || coordinator.expandingView.type == .music)
-            && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
-            && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed)
-            || showsFocusLiveActivity || showsStarlaneLiveActivity
+        } else if showsMusicLiveActivity || showsFocusLiveActivity || showsStarlaneLiveActivity
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         }
@@ -143,7 +148,6 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 let mainLayout = NotchLayout()
-                    .frame(alignment: .top)
                     .padding(
                         .horizontal,
                         vm.notchState == .open
@@ -238,7 +242,6 @@ struct ContentView: View {
         .animation(.smooth, value: gestureProgress)
         .background(dragDetector)
         .preferredColorScheme(.dark)
-        .environmentObject(vm)
         .onChange(of: focusEndCanShow, initial: true) { _, canShow in
             if canShow {
                 focusTimer.endBannerPending = false
@@ -292,9 +295,7 @@ struct ContentView: View {
                     .padding(.top, 40)
                     Spacer()
                 } else {
-                    if coordinator.expandingView.type == .battery && coordinator.expandingView.show
-                        && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
-                    {
+                    if showsBatteryBanner {
                         HStack(spacing: 0) {
                             HStack {
                                 Text(batteryModel.statusText)
@@ -344,9 +345,8 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
-                      } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
+                      } else if showsMusicLiveActivity {
                           MusicLiveActivity()
-                              .frame(alignment: .center)
                       } else if showsFocusLiveActivity {
                           FocusLiveActivity()
                       } else if showsStarlaneLiveActivity {
@@ -420,7 +420,6 @@ struct ContentView: View {
                     .animation(.smooth(duration: 0.35))
                 )
                 .zIndex(1)
-                .allowsHitTesting(vm.notchState == .open)
                 .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
             }
         }
@@ -465,11 +464,7 @@ struct ContentView: View {
                                 minDuration: 0.4,
                                 frameWidth: 100
                             )
-                            .opacity(
-                                (coordinator.expandingView.show
-                                    && Defaults[.sneakPeekStyles] == .inline)
-                                    ? 1 : 0
-                            )
+                            .opacity(Defaults[.sneakPeekStyles] == .inline ? 1 : 0)
                             Spacer(minLength: vm.closedNotchSize.width)
                             // Song Artist
                             Text(musicManager.artistName)
@@ -480,12 +475,7 @@ struct ContentView: View {
                                         ? Color(nsColor: musicManager.avgColor)
                                         : Color.gray
                                 )
-                                .opacity(
-                                    (coordinator.expandingView.show
-                                        && coordinator.expandingView.type == .music
-                                        && Defaults[.sneakPeekStyles] == .inline)
-                                        ? 1 : 0
-                                )
+                                .opacity(Defaults[.sneakPeekStyles] == .inline ? 1 : 0)
                         }
                     }
                 )

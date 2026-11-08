@@ -62,7 +62,6 @@ struct GlowingSnake<
 >: View, Animatable {
     
     var progress: Double
-    var delay: Double = 1.0
     var fill: Fill
     var lineWidth = 4.0
     var blurRadius = 8.0
@@ -77,15 +76,7 @@ struct GlowingSnake<
     var body: some View {
         shape
             .trim(
-                from: {
-                    if progress > 1 - delay {
-                        2 * progress - 1.0
-                    } else if progress > delay {
-                        progress - delay
-                    } else {
-                        .zero
-                    }
-                }(),
+                from: progress > 0 ? 2 * progress - 1.0 : .zero,
                 to: progress
             )
             .glow(

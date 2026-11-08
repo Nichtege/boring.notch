@@ -22,7 +22,6 @@ struct DragPreviewView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
-                .frame(alignment: .top)
         }
         .frame(width: 105)
     }

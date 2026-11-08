@@ -188,7 +188,6 @@ struct MusicControlsView: View {
         return HStack(spacing: 6) {
             ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
                 slotView(for: slot)
-                    .frame(alignment: .center)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -270,9 +269,7 @@ struct MusicControlsView: View {
 
     private var repeatIcon: String {
         switch musicManager.repeatMode {
-        case .off:
-            return "repeat"
-        case .all:
+        case .off, .all:
             return "repeat"
         case .one:
             return "repeat.1"

@@ -22,9 +22,9 @@ final class ShelfItemViewModel: ObservableObject {
 
     private let selection = ShelfSelectionModel.shared
 
+    /// The thumbnail is loaded by the view as it appears, which waits for it before drawing the drag preview.
     init(item: ShelfItem) {
         self.item = item
-        Task { await loadThumbnail() }
     }
 
     var isSelected: Bool { selection.isSelected(item.id) }

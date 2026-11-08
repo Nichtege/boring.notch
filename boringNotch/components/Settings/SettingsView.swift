@@ -1048,7 +1048,6 @@ struct Advanced: View {
         let nsColor = NSColor(color)
         if let colorData = try? NSKeyedArchiver.archivedData(withRootObject: nsColor, requiringSecureCoding: false) {
             Defaults[.customAccentColorData] = colorData
-            forceUiUpdate()
         }
     }
     

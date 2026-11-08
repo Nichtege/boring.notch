@@ -67,7 +67,6 @@ struct BoringHeader: View {
             .zIndex(2)
         }
         .foregroundColor(.gray)
-        .environmentObject(vm)
     }
 
     private func headerButton(systemImage: String, action: @escaping () -> Void) -> some View {

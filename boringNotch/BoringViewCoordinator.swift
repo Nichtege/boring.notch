@@ -166,10 +166,7 @@ class BoringViewCoordinator: ObservableObject {
         }
         Task { @MainActor in
             withAnimation(.smooth) {
-                self.sneakPeek.show = status
-                self.sneakPeek.type = type
-                self.sneakPeek.value = value
-                self.sneakPeek.icon = icon
+                self.sneakPeek = .init(show: status, type: type, value: value, icon: icon)
             }
         }
     }
@@ -184,11 +181,9 @@ class BoringViewCoordinator: ObservableObject {
         sneakPeekTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(duration))
             guard let self = self, !Task.isCancelled else { return }
+            // It animates and resets the duration itself
             await MainActor.run {
-                withAnimation {
-                    self.toggleSneakPeek(status: false, type: .music)
-                    self.sneakPeekDuration = 1.5
-                }
+                self.toggleSneakPeek(status: false, type: .music)
             }
         }
     }
@@ -206,8 +201,7 @@ class BoringViewCoordinator: ObservableObject {
     func toggleExpandingView(status: Bool, type: SneakContentType) {
         Task { @MainActor in
             withAnimation(.smooth) {
-                self.expandingView.show = status
-                self.expandingView.type = type
+                self.expandingView = .init(show: status, type: type)
             }
         }
     }

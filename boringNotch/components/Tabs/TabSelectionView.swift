@@ -61,11 +61,11 @@ struct TabSelectionView: View {
                     .background {
                         if tab.view == coordinator.currentView {
                             Capsule()
-                                .fill(coordinator.currentView == tab.view ? NotchStyle.control : Color.clear)
+                                .fill(NotchStyle.control)
                                 .matchedGeometryEffect(id: "capsule", in: animation)
                         } else {
                             Capsule()
-                                .fill(coordinator.currentView == tab.view ? NotchStyle.control : Color.clear)
+                                .fill(Color.clear)
                                 .matchedGeometryEffect(id: "capsule", in: animation)
                                 .hidden()
                         }
