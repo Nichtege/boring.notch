@@ -15,6 +15,8 @@ struct LockLiquidGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
     /// How far the rim bends what is behind it, in points
     var refraction: Double
+    /// How far the rim pulls the colours apart, in points
+    var aberration: Double
     var blur: Double
     var saturation: Double
 
@@ -28,7 +30,7 @@ struct LockLiquidGlass: NSViewRepresentable {
     }
 
     func updateNSView(_ view: LockLiquidGlassView, context: Context) {
-        view.settings = .init(cornerRadius: cornerRadius, refraction: refraction, blur: blur, saturation: saturation)
+        view.settings = .init(cornerRadius: cornerRadius, refraction: refraction, aberration: aberration, blur: blur, saturation: saturation)
     }
 }
 
@@ -36,6 +38,7 @@ final class LockLiquidGlassView: NSView {
     struct Settings: Equatable {
         var cornerRadius: CGFloat = 28
         var refraction: Double = 40
+        var aberration: Double = 8
         var blur: Double = 2
         var saturation: Double = 1.5
     }
@@ -52,7 +55,7 @@ final class LockLiquidGlassView: NSView {
     private var builtFor: (size: CGSize, scale: CGFloat, settings: Settings)?
 
     /// How wide the bending rim is, in points
-    private static let rim: CGFloat = 28
+    private static let rim: CGFloat = 30
 
     override init(frame: NSRect) {
         backdrop = (NSClassFromString("CABackdropLayer") as? CALayer.Type)?.init()
@@ -97,15 +100,23 @@ final class LockLiquidGlassView: NSView {
         backdrop.cornerRadius = settings.cornerRadius
 
         var filters: [NSObject] = []
-        if settings.refraction > 0,
-           let map = Self.lensMap(size: bounds.size, scale: scale, cornerRadius: settings.cornerRadius),
-           let lens = Self.filter("displacementMap", [
-               "inputMaskImage": map,
-               "inputAmount": settings.refraction,
-               // The map's middle grey means "stay where you are"
-               "inputOffset": 0.5,
-           ]) {
-            filters.append(lens)
+        if settings.refraction > 0, let map = Self.lensMap(size: bounds.size, scale: scale, cornerRadius: settings.cornerRadius) {
+            if let lens = Self.filter("displacementMap", [
+                "inputMaskImage": map,
+                "inputAmount": settings.refraction,
+                // The map's middle grey means "stay where you are"
+                "inputOffset": 0.5,
+            ]) {
+                filters.append(lens)
+            }
+            // Real glass bends red and blue by different amounts, which gives the rim its faint coloured fringe
+            if settings.aberration > 0, let fringe = Self.filter("chromaticAberrationMap", [
+                "inputMaskImage": map,
+                "inputAmount": settings.aberration,
+                "inputOffset": 0.5,
+            ]) {
+                filters.append(fringe)
+            }
         }
         if settings.blur > 0, let blur = Self.filter("gaussianBlur", ["inputRadius": settings.blur, "inputNormalizeEdges": true]) {
             filters.append(blur)

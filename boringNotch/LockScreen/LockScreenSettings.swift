@@ -14,6 +14,8 @@ struct LockScreenSettings: View {
     @Default(.lockScreenProfiles) private var profiles
     @Default(.lockScreenActiveProfile) private var activeProfile
     @Default(.lockScreenDisplay) private var display
+    @Default(.lockScreenFullCover) private var coverTakesOver
+    @Default(.lockScreenCoverLayout) private var coverLayout
 
     @State private var selection: UUID?
     @State private var noRoom = false
@@ -52,14 +54,6 @@ struct LockScreenSettings: View {
                 Defaults.Toggle(key: .lockScreenWidgets) {
                     Text("Show widgets on the lock screen")
                 }
-                Defaults.Toggle(key: .lockScreenFullCover) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Cover fills the lock screen while music plays")
-                        Text("Covers the lock screen's own clock and shows one of its own. The bottom stays clear for the login.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
                 Picker("Display", selection: $display) {
                     Text("Main display").tag("")
                     ForEach(screens, id: \.uuid) { screen in
@@ -70,6 +64,21 @@ struct LockScreenSettings: View {
                 Text("General")
             } footer: {
                 Text("Drawing above the lock screen uses private parts of macOS and may stop working after a system update.")
+            }
+
+            Section {
+                Defaults.Toggle(key: .lockScreenFullCover) {
+                    Text("The cover takes over while music plays")
+                }
+                Picker("Arrangement", selection: $coverLayout) {
+                    Text("Cover in the middle").tag(LockCoverLayout.center)
+                    Text("Cover on the left, live lyrics on the right").tag(LockCoverLayout.side)
+                }
+                .disabled(!coverTakesOver)
+            } header: {
+                Text("Music")
+            } footer: {
+                Text("The cover fills the screen as a soft backdrop, with the sharp cover, the song and the buttons on top. It hides the lock screen's own clock and shows one instead, and it hides the music and lyrics widgets while it's there. With lyrics on the right, the cover stays in the middle for songs without synced lyrics.")
             }
 
             Section {
@@ -148,13 +157,16 @@ struct LockScreenSettings: View {
                 Defaults.Toggle(key: .lockScreenMotion) {
                     Text("Cover colours drift behind the music")
                 }
+                Defaults.Toggle(key: .lockScreenGlassAlive) {
+                    Text("Light on the glass follows the pointer")
+                }
                 Defaults.Toggle(key: .lockScreenLight) {
                     Text("Light wanders over the glass")
                 }
             } header: {
                 Text("Motion")
             } footer: {
-                Text("Both stop with Reduce Motion in System Settings, and while the screen is off. The widgets then also appear without fading.")
+                Text("All of it stops with Reduce Motion in System Settings, and while the screen is off. The widgets then also appear without fading.")
             }
         }
         .accentColor(.effectiveAccent)

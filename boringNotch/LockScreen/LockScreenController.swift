@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Defaults
 import SwiftUI
 
@@ -21,6 +22,9 @@ final class LockScreenController: ObservableObject {
     }
 
     private var panels: [NSPanel] = []
+    /// The stage's cover, which moves aside when lyrics come and back when they go
+    private var coverPanel: NSPanel?
+    private var lyricsWatch: AnyCancellable?
     private var refreshTimer: Timer?
 
     private static var reduceMotion: Bool {
@@ -80,9 +84,23 @@ final class LockScreenController: ObservableObject {
 
         if Defaults[.lockScreenFullCover] {
             // Goes in first and one level lower, so every widget lies on top of it
-            let cover = makePanel(frame: screen.frame, takesClicks: false, content: LockFullCover())
+            let background = makePanel(frame: screen.frame, takesClicks: false, content: LockStageBackground())
+            background.level = .mainMenu + 2
+            present(background)
+
+            let side = LockStage.coverSide(on: screen.frame.size)
+            let cover = makePanel(frame: coverFrame(on: screen), takesClicks: true, content: LockStageCover(side: side))
             cover.level = .mainMenu + 2
             present(cover)
+            coverPanel = cover
+            lyricsWatch = LyricsManager.shared.$lines
+                .map(\.isEmpty)
+                .removeDuplicates()
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    Task { @MainActor in self?.moveCover() }
+                }
         }
 
         let grid = LockGrid(screenSize: screen.frame.size)
@@ -95,10 +113,12 @@ final class LockScreenController: ObservableObject {
                 width: frame.width,
                 height: frame.height
             )
+            // The glass wants to know where on screen it is, without the room for its shadow
+            let glassFrame = rect.insetBy(dx: Self.shadowRoom, dy: Self.shadowRoom)
             present(makePanel(
                 frame: rect,
                 takesClicks: widget.kind.takesClicks,
-                content: LockWidgetPanelContent(widget: widget, room: Self.shadowRoom)
+                content: LockWidgetPanelContent(widget: widget, room: Self.shadowRoom, screenFrame: glassFrame)
             ))
         }
 
@@ -107,6 +127,33 @@ final class LockScreenController: ObservableObject {
             context.duration = 0.6
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panels.forEach { $0.animator().alphaValue = 1 }
+        }
+    }
+
+    /// The cover's panel, with the cover's middle on the screen's middle line, or left of it beside the lyrics.
+    private func coverFrame(on screen: NSScreen) -> NSRect {
+        let side = LockStage.coverSide(on: screen.frame.size)
+        let size = NSSize(width: side + LockStage.coverMargin.width * 2, height: side + LockStage.coverMargin.height * 2)
+        let centerX = screen.frame.minX + screen.frame.width * LockStage.coverCenterX(showsLyrics: LockStage.showsLyrics)
+        return NSRect(
+            x: (centerX - size.width / 2).rounded(),
+            y: (screen.frame.midY - size.height / 2).rounded(),
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func moveCover() {
+        guard let coverPanel, let screen else { return }
+        let frame = coverFrame(on: screen)
+        guard !Self.reduceMotion else {
+            coverPanel.setFrame(frame, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.7
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            coverPanel.animator().setFrame(frame, display: true)
         }
     }
 
@@ -135,6 +182,8 @@ final class LockScreenController: ObservableObject {
     private func hideWidgets(animated: Bool = true) {
         let leaving = panels
         panels = []
+        coverPanel = nil
+        lyricsWatch = nil
         guard animated, !Self.reduceMotion else {
             leaving.forEach { $0.close() }
             return
@@ -182,7 +231,7 @@ final class LockScreenController: ObservableObject {
         if kinds.contains(.calendar) || kinds.contains(.reminders) {
             LockEvents.shared.refreshIfStale()
         }
-        if kinds.contains(.lyrics) {
+        if kinds.contains(.lyrics) || (Defaults[.lockScreenFullCover] && Defaults[.lockScreenCoverLayout] == .side) {
             // Only asks when the song changed since the last time
             LyricsManager.shared.refresh()
         }
@@ -193,11 +242,23 @@ final class LockScreenController: ObservableObject {
 private struct LockWidgetPanelContent: View {
     let widget: LockWidget
     let room: CGFloat
+    let screenFrame: CGRect
     @ObservedObject private var controller = LockScreenController.shared
+    @ObservedObject private var music = MusicManager.shared
+    @Default(.lockScreenFullCover) private var coverTakesOver
+
+    /// While the cover has the screen, a music or lyrics widget would only say the same thing twice.
+    private var isStoodIn: Bool {
+        (widget.kind == .music || widget.kind == .lyrics) && coverTakesOver && LockStage.hasSong
+    }
 
     var body: some View {
         LockWidgetView(widget: widget)
             .padding(room)
             .environment(\.lockWidgetsPaused, !controller.isScreenAwake)
+            .environment(\.lockWidgetScreenFrame, screenFrame)
+            .opacity(isStoodIn ? 0 : 1)
+            .allowsHitTesting(!isStoodIn)
+            .animation(.smooth(duration: 0.5), value: isStoodIn)
     }
 }

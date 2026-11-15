@@ -17161,16 +17161,6 @@
         }
       }
     },
-    "Both stop with Reduce Motion in System Settings, and while the screen is off. The widgets then also appear without fading." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beides stoppt mit „Bewegung reduzieren“ in den Systemeinstellungen und solange der Bildschirm aus ist. Die Widgets erscheinen dann auch ohne Einblenden."
-          }
-        }
-      }
-    },
     "Profile %lld" : {
       "localizations" : {
         "de" : {
@@ -17421,22 +17411,72 @@
         }
       }
     },
-    "Cover fills the lock screen while music plays" : {
+    "The cover takes over while music plays" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cover füllt den Sperrbildschirm, solange Musik läuft"
+            "value" : "Das Cover übernimmt, solange Musik läuft"
           }
         }
       }
     },
-    "Covers the lock screen's own clock and shows one of its own. The bottom stays clear for the login." : {
+    "Arrangement" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verdeckt die Uhr des Sperrbildschirms und zeigt eine eigene. Unten bleibt Platz für die Anmeldung."
+            "value" : "Aufteilung"
+          }
+        }
+      }
+    },
+    "Cover in the middle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover in der Mitte"
+          }
+        }
+      }
+    },
+    "Cover on the left, live lyrics on the right" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover links, Live-Lyrics rechts"
+          }
+        }
+      }
+    },
+    "The cover fills the screen as a soft backdrop, with the sharp cover, the song and the buttons on top. It hides the lock screen's own clock and shows one instead, and it hides the music and lyrics widgets while it's there. With lyrics on the right, the cover stays in the middle for songs without synced lyrics." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Cover füllt den Bildschirm als weicher Hintergrund, darauf liegen das scharfe Cover, der Song und die Tasten. Es verdeckt die Uhr des Sperrbildschirms und zeigt eine eigene, und es blendet die Widgets für Musik und Lyrics aus, solange es da ist. Mit Lyrics rechts bleibt das Cover bei Songs ohne synchrone Texte in der Mitte."
+          }
+        }
+      }
+    },
+    "Light on the glass follows the pointer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Licht auf dem Glas folgt dem Mauszeiger"
+          }
+        }
+      }
+    },
+    "All of it stops with Reduce Motion in System Settings, and while the screen is off. The widgets then also appear without fading." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles stoppt mit „Bewegung reduzieren“ in den Systemeinstellungen und solange der Bildschirm aus ist. Die Widgets erscheinen dann auch ohne Einblenden."
           }
         }
       }

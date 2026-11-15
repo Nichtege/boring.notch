@@ -145,6 +145,14 @@ enum LockFont: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum LockCoverLayout: String, Codable, CaseIterable, Identifiable, Defaults.Serializable {
+    /// The cover in the exact middle of the screen
+    case center
+    /// The cover on the left and the lyrics on the right, for songs that have synced ones
+    case side
+    var id: String { rawValue }
+}
+
 struct LockWidgetStyle: Codable, Equatable {
     var glass: LockGlass = .liquid
     var accent: LockAccent = .white
@@ -234,8 +242,11 @@ extension Defaults.Keys {
     static let lyricsInNotch = Key<Bool>("lyricsInNotch", default: false)
     /// The cover's colours drifting behind the music widget
     static let lockScreenMotion = Key<Bool>("lockScreenMotion", default: true)
-    /// The cover over the whole lock screen while a song is on
+    /// The cover takes over the lock screen while a song is on
     static let lockScreenFullCover = Key<Bool>("lockScreenFullCover", default: false)
+    static let lockScreenCoverLayout = Key<LockCoverLayout>("lockScreenCoverLayout", default: .center)
+    /// The light on the glass follows the pointer and never quite stands still
+    static let lockScreenGlassAlive = Key<Bool>("lockScreenGlassAlive", default: true)
     /// A band of light wandering over the glass
     static let lockScreenLight = Key<Bool>("lockScreenLight", default: false)
 }

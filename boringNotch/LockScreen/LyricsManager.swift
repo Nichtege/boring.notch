@@ -54,7 +54,9 @@ final class LyricsManager: ObservableObject {
     private var isWanted: Bool {
         if Defaults[.lyricsInNotch] { return true }
         let lock = LockScreenController.shared
-        return lock.isLive && Defaults[.lockScreenWidgets] && LockProfiles.active.widgets.contains { $0.kind == .lyrics }
+        guard lock.isLive, Defaults[.lockScreenWidgets] else { return false }
+        if Defaults[.lockScreenFullCover], Defaults[.lockScreenCoverLayout] == .side { return true }
+        return LockProfiles.active.widgets.contains { $0.kind == .lyrics }
     }
 
     /// Loads the current song's lyrics unless they're already there. Also called when the screen locks.

@@ -5,6 +5,7 @@
 //  What every lock screen widget shares: its glass, its type and its clock tick.
 //
 
+import Defaults
 import SwiftUI
 
 private struct LockWidgetStyleKey: EnvironmentKey {
@@ -19,6 +20,10 @@ private struct LockWidgetsPausedKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct LockWidgetScreenFrameKey: EnvironmentKey {
+    static let defaultValue: CGRect? = nil
+}
+
 extension EnvironmentValues {
     var lockStyle: LockWidgetStyle {
         get { self[LockWidgetStyleKey.self] }
@@ -28,6 +33,12 @@ extension EnvironmentValues {
     var lockSize: LockWidgetSize {
         get { self[LockWidgetSizeKey.self] }
         set { self[LockWidgetSizeKey.self] = newValue }
+    }
+
+    /// Where the widget is on screen, in AppKit's coordinates. Missing in the settings preview.
+    var lockWidgetScreenFrame: CGRect? {
+        get { self[LockWidgetScreenFrameKey.self] }
+        set { self[LockWidgetScreenFrameKey.self] = newValue }
     }
 
     /// True while nobody can see the widgets, so nothing redraws on a timer.
@@ -68,10 +79,22 @@ struct LockGlassBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         ZStack {
+            // The pane's shadow, kept off the pane itself, which would only get murkier from it
+            shape
+                .fill(.black.opacity(0.32))
+                .blur(radius: 12)
+                .offset(y: 6)
+                .mask {
+                    Rectangle()
+                        .padding(-40)
+                        .overlay { shape.blendMode(.destinationOut) }
+                        .compositingGroup()
+                }
             if seesThrough {
                 LockLiquidGlass(
                     cornerRadius: cornerRadius,
-                    refraction: style.glass == .frosted ? 14 : 40,
+                    refraction: style.glass == .frosted ? 16 : 48,
+                    aberration: style.glass == .frosted ? 4 : 9,
                     blur: style.glass == .frosted ? 16 : style.glass == .liquidDark ? 3 : 2,
                     saturation: 1.5
                 )
@@ -81,12 +104,67 @@ struct LockGlassBackground: View {
             if style.accent != .white {
                 shape.fill(style.accent.color.opacity(0.12 * style.opacity))
             }
+            LockGlassLight(shape: shape)
+        }
+    }
+}
+
+/// The light on the glass: a glow along the rim and two bright arcs where light enters and leaves.
+/// The pointer is the lamp. The arcs turn towards it, the pane brightens near it, and with the pointer still
+/// the light keeps swaying a little, so the glass never sits there like a sticker.
+struct LockGlassLight: View {
+    let shape: RoundedRectangle
+    @Environment(\.lockWidgetScreenFrame) private var frame
+    @Environment(\.lockWidgetsPaused) private var paused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Default(.lockScreenGlassAlive) private var alive
+
+    /// Where the brighter arc sits in the gradient below, as an angle: up and to the left
+    private static let restAngle = 238.0
+
+    var body: some View {
+        if alive, !reduceMotion, let frame {
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: paused)) { timeline in
+                let pointer = NSEvent.mouseLocation
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                // AppKit counts up from the bottom, the gradient turns clockwise from the right
+                let towards = atan2(-(pointer.y - frame.midY), pointer.x - frame.midX) * 180 / .pi
+                let sway = sin(time * 0.45) * 10 + sin(time * 0.17 + 1) * 6
+                let local = UnitPoint(
+                    x: (pointer.x - frame.minX) / max(frame.width, 1),
+                    y: (frame.maxY - pointer.y) / max(frame.height, 1)
+                )
+                let reach = max(frame.width, frame.height)
+                let distance = hypot(
+                    max(frame.minX - pointer.x, 0, pointer.x - frame.maxX),
+                    max(frame.minY - pointer.y, 0, pointer.y - frame.maxY)
+                )
+                light(turn: towards - Self.restAngle + sway, glowAt: local, glow: max(0, 1 - distance / reach), breath: sin(time * 0.6))
+            }
+        } else {
+            light(turn: 0, glowAt: .topLeading, glow: 0, breath: 0)
+        }
+    }
+
+    private func light(turn: Double, glowAt: UnitPoint, glow: Double, breath: Double) -> some View {
+        ZStack {
             // The edge of a thick pane catches more light than its middle
             shape
-                .strokeBorder(.white.opacity(0.22), lineWidth: 8)
+                .strokeBorder(.white.opacity(0.2 + 0.04 * breath), lineWidth: 8)
                 .blur(radius: 8)
                 .clipShape(shape)
-            // Light enters at the top left and leaves at the bottom right
+            if glow > 0 {
+                shape
+                    .fill(
+                        RadialGradient(
+                            colors: [.white.opacity(0.22 * glow), .white.opacity(0.06 * glow), .clear],
+                            center: glowAt,
+                            startRadius: 0,
+                            endRadius: 220
+                        )
+                    )
+                    .blendMode(.plusLighter)
+            }
             shape.strokeBorder(
                 AngularGradient(
                     stops: [
@@ -99,12 +177,13 @@ struct LockGlassBackground: View {
                         .init(color: .white.opacity(0.06), location: 0.86),
                         .init(color: .white.opacity(0.1), location: 1),
                     ],
-                    center: .center
+                    center: .center,
+                    angle: .degrees(turn)
                 ),
-                lineWidth: 1.2
+                lineWidth: 1.3
             )
         }
-        .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+        .allowsHitTesting(false)
     }
 }
 
