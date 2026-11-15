@@ -316,6 +316,7 @@
 		11F748502EC9AABA00F841DB /* BoringNotchXPCHelper */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (11F7485C2EC9AABA00F841DB /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringNotchXPCHelper; sourceTree = "<group>"; };
 		A1F00014A1F00014A1F00014 /* RemoteNowPlayingAdapter */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = RemoteNowPlayingAdapter; sourceTree = "<group>"; };
 		A1F00025A1F00025A1F00025 /* BoringControls */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A1F00026A1F00026A1F00026 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringControls; sourceTree = "<group>"; };
+		1C5C4EE010C5C4EE010C5C4E /* LockScreen */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LockScreen; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -528,6 +529,7 @@
 				1443E7F42C609E650027C1FC /* Info.plist */,
 				14CEF41E2C5CAED400855D72 /* boringNotch.entitlements */,
 				14CEF41B2C5CAED400855D72 /* Preview Content */,
+				1C5C4EE010C5C4EE010C5C4E /* LockScreen */,
 				112FB72F2CCF12CC0015238C /* private */,
 				11CC44A12CEE614100C7244B /* BoringViewCoordinator.swift */,
 			);
@@ -735,6 +737,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				112FB72F2CCF12CC0015238C /* private */,
+				1C5C4EE010C5C4EE010C5C4E /* LockScreen */,
 			);
 			name = boringNotch;
 			packageProductDependencies = (
