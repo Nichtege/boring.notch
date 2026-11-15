@@ -30,6 +30,7 @@ final class LockClickRouter {
         guard active != isActive else { return }
         timer?.invalidate()
         timer = nil
+        pressed?.onPress?(false)
         pressed = nil
         guard active else { return }
         // Held down from before, like the click that locked the screen, is not a press on a button
@@ -48,7 +49,9 @@ final class LockClickRouter {
         defer { wasDown = isDown }
         if isDown && !wasDown {
             pressed = target(at: NSEvent.mouseLocation)
+            pressed?.onPress?(true)
         } else if !isDown && wasDown, let pressed {
+            pressed.onPress?(false)
             // Released somewhere else is how a click is taken back
             if target(at: NSEvent.mouseLocation) === pressed {
                 pressed.action?()
@@ -67,6 +70,8 @@ final class LockClickRouter {
 
 final class LockClickTargetView: NSView {
     var action: (() -> Void)?
+    /// Told when the pointer's button goes down on it and when it comes up again
+    var onPress: ((Bool) -> Void)?
     var isEnabled = true
 
     override func viewDidMoveToWindow() {
@@ -86,6 +91,7 @@ final class LockClickTargetView: NSView {
 /// Marks the area behind a button as one the router may click.
 struct LockClickTarget: NSViewRepresentable {
     let isEnabled: Bool
+    let onPress: (Bool) -> Void
     let action: () -> Void
 
     func makeNSView(context: Context) -> LockClickTargetView {
@@ -94,6 +100,7 @@ struct LockClickTarget: NSViewRepresentable {
 
     func updateNSView(_ view: LockClickTargetView, context: Context) {
         view.action = action
+        view.onPress = onPress
         view.isEnabled = isEnabled
     }
 }

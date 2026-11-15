@@ -176,6 +176,8 @@ struct LockMusicButton: View {
     let size: CGFloat
     let action: () -> Void
     @Environment(\.lockClicksEnabled) private var clicksEnabled
+    /// Held down through the router, which a plain button style never hears of
+    @State private var isPressed = false
 
     var body: some View {
         Button {
@@ -190,7 +192,10 @@ struct LockMusicButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(LockClickTarget(isEnabled: clicksEnabled, action: action))
+        .scaleEffect(isPressed ? 0.84 : 1)
+        .opacity(isPressed ? 0.6 : 1)
+        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: isPressed)
+        .background(LockClickTarget(isEnabled: clicksEnabled, onPress: { isPressed = $0 }, action: action))
     }
 }
 
