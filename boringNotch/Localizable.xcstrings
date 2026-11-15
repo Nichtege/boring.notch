@@ -17131,16 +17131,6 @@
         }
       }
     },
-    "Cover colours drift behind the music" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cover-Farben bewegen sich hinter der Musik"
-          }
-        }
-      }
-    },
     "Light wanders over the glass" : {
       "localizations" : {
         "de" : {
@@ -17477,6 +17467,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles stoppt mit „Bewegung reduzieren“ in den Systemeinstellungen und solange der Bildschirm aus ist. Die Widgets erscheinen dann auch ohne Einblenden."
+          }
+        }
+      }
+    },
+    "Blur behind the glass" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unschärfe hinter dem Glas"
+          }
+        }
+      }
+    },
+    "For all widgets with Liquid Glass. It shows on the lock screen, not in the preview above." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gilt für alle Widgets mit Liquid Glass. Zu sehen ist es auf dem Sperrbildschirm, nicht in der Vorschau oben."
+          }
+        }
+      }
+    },
+    "The cover moves behind the music" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Cover bewegt sich hinter der Musik"
           }
         }
       }

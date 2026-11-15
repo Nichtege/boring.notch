@@ -62,6 +62,8 @@ struct LockGlassBackground: View {
     var isPreview = false
     var cornerRadius: CGFloat = 28
 
+    @Default(.lockScreenGlassBlur) private var blur
+
     private var seesThrough: Bool {
         style.glass != .clear && !isPreview && LockLiquidGlass.isAvailable
     }
@@ -93,7 +95,7 @@ struct LockGlassBackground: View {
             if seesThrough {
                 LockLiquidGlass(
                     cornerRadius: cornerRadius,
-                    blur: style.glass == .frosted ? 9 : style.glass == .liquidDark ? 2.5 : 1.5,
+                    blur: style.glass == .frosted ? max(blur * 2, 9) : blur,
                     saturation: 1.25
                 )
             }

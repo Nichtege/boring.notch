@@ -389,7 +389,48 @@ struct LockStageBackground: View {
     }
 }
 
-/// The cover itself filling the screen: softened so it reads as a backdrop, and slowly breathing in and out.
+/// How loud the song is right now, for a backdrop that moves with it. Uses the notch's own meter, so it only
+/// has something to say when "Bars follow the real sound" is on and the music plays on this Mac.
+@MainActor
+final class LockStagePulse {
+    static let shared = LockStagePulse()
+
+    /// The low notes, 0 to 1, rising fast and falling slowly like a level meter's needle
+    private(set) var bass: Double = 0
+    private var target: Double = 0
+
+    private init() {}
+
+    var isListening = false {
+        didSet {
+            guard isListening != oldValue else { return }
+            if isListening {
+                MusicAudioMeter.shared.add(self, bundleID: MusicManager.shared.bundleIdentifier) { [weak self] levels in
+                    guard let self else { return }
+                    guard let levels, !levels.isEmpty else {
+                        self.target = 0
+                        return
+                    }
+                    let low = levels.prefix(max(1, levels.count / 3))
+                    self.target = Double(low.reduce(0, +)) / Double(low.count)
+                }
+            } else {
+                MusicAudioMeter.shared.remove(self)
+                target = 0
+                bass = 0
+            }
+        }
+    }
+
+    /// Called once per drawn frame, which is what moves the needle.
+    func step() -> Double {
+        bass += (target - bass) * (target > bass ? 0.55 : 0.12)
+        return bass
+    }
+}
+
+/// The cover itself filling the screen, softened so it reads as a backdrop. It is never still: it breathes
+/// slowly, swells and brightens with the song's low notes, and leans a little away from the pointer.
 struct LockBigCover: View {
     let artwork: NSImage
     @State private var soft: NSImage?
@@ -399,8 +440,10 @@ struct LockBigCover: View {
 
     var body: some View {
         GeometryReader { proxy in
-            TimelineView(.animation(minimumInterval: 1 / 24, paused: paused || reduceMotion || !motion || soft == nil)) { timeline in
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: paused || reduceMotion || !motion || soft == nil)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
+                let bass = LockStagePulse.shared.step()
+                let lean = Self.pointerLean()
                 ZStack {
                     Color.black
                     if let soft {
@@ -409,12 +452,23 @@ struct LockBigCover: View {
                             .interpolation(.high)
                             .aspectRatio(contentMode: .fill)
                             .frame(width: proxy.size.width, height: proxy.size.height)
-                            .scaleEffect(1.16 + sin(time / 11) * 0.06)
-                            .offset(x: cos(time / 13) * proxy.size.width * 0.02, y: sin(time / 9) * proxy.size.height * 0.03)
+                            .scaleEffect(1.16 + sin(time / 11) * 0.04 + bass * 0.045)
+                            .offset(
+                                x: cos(time / 13) * proxy.size.width * 0.015 - lean.x * proxy.size.width * 0.02,
+                                y: sin(time / 9) * proxy.size.height * 0.02 + lean.y * proxy.size.height * 0.02
+                            )
+                            .brightness(bass * 0.07)
+                            .saturation(1 + bass * 0.25)
                             .transition(.opacity)
                     }
-                    // Darker towards the edges, so the cover in the middle and the type on top stand out
-                    RadialGradient(colors: [.black.opacity(0.18), .black.opacity(0.5)], center: .center, startRadius: 0, endRadius: proxy.size.width * 0.6)
+                    // Darker towards the edges, so the cover in the middle and the type on top stand out.
+                    // A loud moment opens it up a little.
+                    RadialGradient(
+                        colors: [.black.opacity(0.18 - bass * 0.08), .black.opacity(0.5 - bass * 0.1)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: proxy.size.width * 0.6
+                    )
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
@@ -426,6 +480,16 @@ struct LockBigCover: View {
                 soft = next
             }
         }
+    }
+
+    /// Where the pointer is on its screen, from -0.5 to 0.5 with the middle at zero and up as positive.
+    private static func pointerLean() -> CGPoint {
+        let pointer = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) else { return .zero }
+        return CGPoint(
+            x: (pointer.x - screen.frame.midX) / screen.frame.width,
+            y: (pointer.y - screen.frame.midY) / screen.frame.height
+        )
     }
 }
 
@@ -450,6 +514,7 @@ struct LockStageCover: View {
                 .shadow(color: .black.opacity(0.5), radius: 34, y: 18)
                 .scaleEffect(music.isPlaying ? 1 : 0.93)
                 .animation(.spring(response: 0.5, dampingFraction: 0.7), value: music.isPlaying)
+                .modifier(LockBeat())
 
             VStack(spacing: 8) {
                 VStack(spacing: 1) {
@@ -472,5 +537,22 @@ struct LockStageCover: View {
         .opacity(LockStage.hasSong ? 1 : 0)
         .animation(.smooth(duration: 0.8), value: LockStage.hasSong)
         .environment(\.lockWidgetsPaused, !controller.isScreenAwake)
+    }
+}
+
+/// Lets the cover swell by a hair with the song's low notes.
+private struct LockBeat: ViewModifier {
+    @Environment(\.lockWidgetsPaused) private var paused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Default(.lockScreenMotion) private var motion
+
+    func body(content: Content) -> some View {
+        if reduceMotion || !motion {
+            content
+        } else {
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: paused)) { _ in
+                content.scaleEffect(1 + LockStagePulse.shared.bass * 0.02)
+            }
+        }
     }
 }

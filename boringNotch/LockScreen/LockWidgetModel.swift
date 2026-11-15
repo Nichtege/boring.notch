@@ -245,6 +245,8 @@ extension Defaults.Keys {
     /// The cover takes over the lock screen while a song is on
     static let lockScreenFullCover = Key<Bool>("lockScreenFullCover", default: false)
     static let lockScreenCoverLayout = Key<LockCoverLayout>("lockScreenCoverLayout", default: .center)
+    /// How much the glass softens what's behind it. The system's own glass uses 5 to 10.
+    static let lockScreenGlassBlur = Key<Double>("lockScreenGlassBlur", default: 5)
     /// The light on the glass follows the pointer and never quite stands still
     static let lockScreenGlassAlive = Key<Bool>("lockScreenGlassAlive", default: true)
     /// A band of light wandering over the glass

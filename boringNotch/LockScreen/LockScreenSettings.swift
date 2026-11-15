@@ -16,6 +16,7 @@ struct LockScreenSettings: View {
     @Default(.lockScreenDisplay) private var display
     @Default(.lockScreenFullCover) private var coverTakesOver
     @Default(.lockScreenCoverLayout) private var coverLayout
+    @Default(.lockScreenGlassBlur) private var glassBlur
 
     @State private var selection: UUID?
     @State private var noRoom = false
@@ -154,8 +155,18 @@ struct LockScreenSettings: View {
             }
 
             Section {
+                LabeledContent("Blur behind the glass") {
+                    Slider(value: $glassBlur, in: 0.5...14)
+                }
+            } header: {
+                Text("Glass")
+            } footer: {
+                Text("For all widgets with Liquid Glass. It shows on the lock screen, not in the preview above.")
+            }
+
+            Section {
                 Defaults.Toggle(key: .lockScreenMotion) {
-                    Text("Cover colours drift behind the music")
+                    Text("The cover moves behind the music")
                 }
                 Defaults.Toggle(key: .lockScreenGlassAlive) {
                     Text("Light on the glass follows the pointer")

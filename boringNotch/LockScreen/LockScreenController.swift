@@ -212,6 +212,9 @@ final class LockScreenController: ObservableObject {
         let live = isLive
         let kinds = Set(LockProfiles.active.widgets.map(\.kind))
         LockSystemStats.shared.isRunning = live && kinds.contains(.system)
+        // The stage's backdrop moves with the song, where the notch's bars are allowed to listen to it
+        LockStagePulse.shared.isListening = isLocked && isScreenAwake && coverPanel != nil
+            && Defaults[.liveMusicVisualizer] && Defaults[.lockScreenMotion]
 
         refreshTimer?.invalidate()
         refreshTimer = nil
