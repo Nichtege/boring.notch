@@ -241,6 +241,21 @@ final class AtlasChat: ObservableObject {
         task = Task { await deliver(text, withScreen: withScreen) }
     }
 
+    /// A ready-made question, as from the lock screen. What's typed or attached in the line stays there,
+    /// and neither the screen nor a file ever goes along.
+    func ask(_ text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isBusy, !text.isEmpty else { return }
+        sendingFiles = []
+        questionHasScreen = false
+        questionFileCount = 0
+        question = text
+        answer = ""
+        step = ""
+        phase = .sending
+        task = Task { await deliver(text, withScreen: false) }
+    }
+
     /// Forgets the conversation here. Atlas keeps it, so it stays readable in Starlane.
     func reset() {
         task?.cancel()

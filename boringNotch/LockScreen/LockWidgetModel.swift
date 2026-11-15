@@ -12,6 +12,7 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
     case clock, date, battery, weather, countdown, system
     case music, lyrics
     case note, calendar, reminders, worldClock, moon, sun, uptime, quote, starlane
+    case atlas, limits, deadline
 
     var id: String { rawValue }
 
@@ -34,6 +35,9 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .uptime: "Uptime"
         case .quote: "Quote of the day"
         case .starlane: "Starlane"
+        case .atlas: "Atlas"
+        case .limits: "Usage limits"
+        case .deadline: "Next deadline"
         }
     }
 
@@ -56,18 +60,21 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .uptime: "power"
         case .quote: "quote.opening"
         case .starlane: "sparkles"
+        case .atlas: "sparkle"
+        case .limits: "gauge.with.needle"
+        case .deadline: "flag"
         }
     }
 
     var defaultSize: LockWidgetSize {
         switch self {
-        case .clock, .weather, .countdown, .system, .music, .lyrics, .calendar, .reminders, .sun, .quote, .starlane: .medium
-        case .date, .battery, .note, .worldClock, .moon, .uptime: .small
+        case .clock, .weather, .countdown, .system, .music, .lyrics, .calendar, .reminders, .sun, .quote, .starlane, .atlas: .medium
+        case .date, .battery, .note, .worldClock, .moon, .uptime, .limits, .deadline: .small
         }
     }
 
     /// Only these get clicks. The rest let them through to the lock screen.
-    var takesClicks: Bool { self == .music }
+    var takesClicks: Bool { self == .music || self == .atlas }
 }
 
 enum LockWidgetSize: String, Codable, CaseIterable, Identifiable {
@@ -103,6 +110,8 @@ enum LockGlass: String, Codable, CaseIterable, Identifiable {
     /// Only drawn, with no view of what's behind. Not called "clear": an early build saved that name as
     /// every widget's default, and those widgets should get the real glass, which unknown names fall back to.
     case simple
+    /// No pane at all, only what the widget shows, like on the iPhone's home screen
+    case bare
     var id: String { rawValue }
 
     var title: LocalizedStringResource {
@@ -111,6 +120,7 @@ enum LockGlass: String, Codable, CaseIterable, Identifiable {
         case .liquidDark: "Liquid Glass, smoked"
         case .frosted: "Frosted"
         case .simple: "Simple"
+        case .bare: "No background"
         }
     }
 }

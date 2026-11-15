@@ -21,13 +21,17 @@ struct LockWidgetView: View {
         widget.kind == .lyrics && !isPreview && lyrics.lines.isEmpty
     }
 
+    private var isBare: Bool {
+        widget.style.glass == .bare && widget.kind != .note
+    }
+
     var body: some View {
         content
             .padding(widget.kind.fillsItsFrame ? 0 : 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(.white)
-            // Clear glass over a bright picture leaves white type with nothing to stand on
-            .shadow(color: .black.opacity(widget.kind == .note ? 0 : 0.28), radius: 3, y: 1)
+            // Clear glass over a bright picture leaves white type with nothing to stand on, and no glass even less
+            .shadow(color: .black.opacity(widget.kind == .note ? 0 : isBare ? 0.5 : 0.28), radius: isBare ? 5 : 3, y: 1)
             .background {
                 if widget.kind == .note {
                     LockNotePaper(widget: widget)
@@ -36,7 +40,7 @@ struct LockWidgetView: View {
                 }
             }
             .overlay {
-                if light && widget.kind != .note {
+                if light && widget.kind != .note && !isBare {
                     LockLightSweep(column: widget.column)
                 }
             }
@@ -67,6 +71,9 @@ struct LockWidgetView: View {
         case .uptime: LockUptimeWidget()
         case .quote: LockQuoteWidget()
         case .starlane: LockStarlaneWidget()
+        case .atlas: LockAtlasWidget(widget: widget)
+        case .limits: LockLimitsWidget()
+        case .deadline: LockDeadlineWidget()
         }
     }
 }

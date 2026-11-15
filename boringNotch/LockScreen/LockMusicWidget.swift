@@ -23,13 +23,15 @@ struct LockMusicWidget: View {
 
     var body: some View {
         ZStack {
-            LockArtworkBackdrop(artwork: music.albumArt)
-                .opacity(hasSong ? 0.92 * style.opacity : 0)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                }
+            if style.glass != .bare {
+                LockArtworkBackdrop(artwork: music.albumArt)
+                    .opacity(hasSong ? 0.92 * style.opacity : 0)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                    }
+            }
 
             Group {
                 if !hasSong {

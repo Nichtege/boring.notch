@@ -74,13 +74,19 @@ struct LockGlassBackground: View {
         case .liquid: 0.1
         case .liquidDark: 0.34
         case .frosted: seesThrough ? 0.14 : 0.4
-        case .simple: 0
+        case .simple, .bare: 0
         }
     }
 
     var body: some View {
+        if style.glass != .bare {
+            pane
+        }
+    }
+
+    private var pane: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        ZStack {
+        return ZStack {
             // The pane's shadow, kept off the pane itself, which would only get murkier from it
             shape
                 .fill(.black.opacity(0.32))

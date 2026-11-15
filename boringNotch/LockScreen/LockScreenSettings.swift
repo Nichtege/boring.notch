@@ -124,6 +124,12 @@ struct LockScreenSettings: View {
                         Label("Add widget", systemImage: "plus")
                     }
                     .fixedSize()
+                    if let selection, widgets.wrappedValue.contains(where: { $0.id == selection }) {
+                        Button("Remove widget", role: .destructive) {
+                            widgets.wrappedValue.removeAll { $0.id == selection }
+                            self.selection = nil
+                        }
+                    }
                     if noRoom {
                         Text("No room left for this size")
                             .foregroundStyle(.secondary)
@@ -133,7 +139,7 @@ struct LockScreenSettings: View {
             } header: {
                 Text("Layout")
             } footer: {
-                Text("Drag a widget to move it. Click one to change it. The middle belongs to the lock screen's own clock and login.")
+                Text("Drag a widget to move it. Click one to change or remove it, or right-click it. The middle belongs to the lock screen's own clock and login.")
             }
 
             if let index = widgets.wrappedValue.firstIndex(where: { $0.id == selection }) {
@@ -277,7 +283,27 @@ private struct LockLayoutEditor: View {
                             RoundedRectangle(cornerRadius: 28 * scale, style: .continuous)
                                 .strokeBorder(Color.effectiveAccent, lineWidth: selection == widget.id ? 2 : 0)
                         }
+                        .overlay(alignment: .topLeading) {
+                            if selection == widget.id {
+                                Button {
+                                    remove(widget)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 16))
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .red)
+                                }
+                                .buttonStyle(.plain)
+                                .offset(x: -5, y: -5)
+                                .help("Remove widget")
+                            }
+                        }
                         .contentShape(Rectangle())
+                        .contextMenu {
+                            Button("Remove widget", role: .destructive) {
+                                remove(widget)
+                            }
+                        }
                         .offset(
                             x: frame.minX * scale + (isDragged ? dragTranslation.width : 0),
                             y: frame.minY * scale + (isDragged ? dragTranslation.height : 0)
@@ -300,6 +326,13 @@ private struct LockLayoutEditor: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .aspectRatio(screenSize.width / screenSize.height, contentMode: .fit)
+    }
+
+    private func remove(_ widget: LockWidget) {
+        widgets.removeAll { $0.id == widget.id }
+        if selection == widget.id {
+            selection = nil
+        }
     }
 
     /// Snaps to the nearest cell, and goes back where it was when that spot is taken.
@@ -389,6 +422,12 @@ private struct LockWidgetEditor: View {
                         Text(verbatim: LockWorldClockWidget.city(zone)).tag(zone)
                     }
                 }
+            case .atlas:
+                TextField("Question", text: $widget.text, prompt: Text("What's on today?"), axis: .vertical)
+                    .lineLimit(1...4)
+                Text("With a question, the widget gets a button that sends it to Atlas, also while the Mac is locked. The widget shows Atlas's latest answer, so anyone who sees the lock screen can read it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             case .calendar:
                 LockAccessRow(type: .event)
             case .reminders:

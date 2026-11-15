@@ -16531,16 +16531,6 @@
         }
       }
     },
-    "Drag a widget to move it. Click one to change it. The middle belongs to the lock screen's own clock and login." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zieh ein Widget, um es zu verschieben. Klick eins an, um es zu ändern. Die Mitte gehört der Uhr und der Anmeldung des Sperrbildschirms."
-          }
-        }
-      }
-    },
     "Lock Screen" : {
       "localizations" : {
         "de" : {
@@ -17497,6 +17487,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Cover bewegt sich hinter der Musik"
+          }
+        }
+      }
+    },
+    "Usage limits" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungslimits"
+          }
+        }
+      }
+    },
+    "No background" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Hintergrund"
+          }
+        }
+      }
+    },
+    "Drag a widget to move it. Click one to change or remove it, or right-click it. The middle belongs to the lock screen's own clock and login." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zieh ein Widget, um es zu verschieben. Klick eins an, um es zu ändern oder zu entfernen, oder klick es mit rechts an. Die Mitte gehört der Uhr und der Anmeldung des Sperrbildschirms."
+          }
+        }
+      }
+    },
+    "Question" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frage"
+          }
+        }
+      }
+    },
+    "What's on today?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was steht heute an?"
+          }
+        }
+      }
+    },
+    "With a question, the widget gets a button that sends it to Atlas, also while the Mac is locked. The widget shows Atlas's latest answer, so anyone who sees the lock screen can read it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit einer Frage bekommt das Widget eine Taste, die sie an Atlas schickt, auch bei gesperrtem Mac. Das Widget zeigt die letzte Antwort von Atlas, also kann sie jeder lesen, der den Sperrbildschirm sieht."
+          }
+        }
+      }
+    },
+    "Ask Atlas from the notch, and the answer shows here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frag Atlas über die Notch, die Antwort steht dann hier."
+          }
+        }
+      }
+    },
+    "No limits from Starlane" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Limits von Starlane"
+          }
+        }
+      }
+    },
+    "No deadline from Starlane" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Deadline von Starlane"
           }
         }
       }
