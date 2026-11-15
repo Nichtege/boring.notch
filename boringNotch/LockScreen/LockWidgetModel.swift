@@ -234,6 +234,8 @@ extension Defaults.Keys {
     static let lyricsInNotch = Key<Bool>("lyricsInNotch", default: false)
     /// The cover's colours drifting behind the music widget
     static let lockScreenMotion = Key<Bool>("lockScreenMotion", default: true)
+    /// The cover over the whole lock screen while a song is on
+    static let lockScreenFullCover = Key<Bool>("lockScreenFullCover", default: false)
     /// A band of light wandering over the glass
     static let lockScreenLight = Key<Bool>("lockScreenLight", default: false)
 }

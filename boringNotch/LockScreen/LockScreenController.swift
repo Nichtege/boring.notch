@@ -78,6 +78,13 @@ final class LockScreenController: ObservableObject {
     private func showWidgets() {
         guard panels.isEmpty, Defaults[.lockScreenWidgets], LockScreenSpace.shared.isAvailable, let screen else { return }
 
+        if Defaults[.lockScreenFullCover] {
+            // Goes in first and one level lower, so every widget lies on top of it
+            let cover = makePanel(frame: screen.frame, takesClicks: false, content: LockFullCover())
+            cover.level = .mainMenu + 2
+            present(cover)
+        }
+
         let grid = LockGrid(screenSize: screen.frame.size)
         for widget in LockProfiles.active.widgets {
             let frame = grid.frame(of: widget).insetBy(dx: -Self.shadowRoom, dy: -Self.shadowRoom)
@@ -88,22 +95,11 @@ final class LockScreenController: ObservableObject {
                 width: frame.width,
                 height: frame.height
             )
-            let panel = NSPanel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = false
-            panel.isMovable = false
-            panel.isReleasedWhenClosed = false
-            panel.ignoresMouseEvents = !widget.kind.takesClicks
-            panel.level = .mainMenu + 3
-            panel.appearance = NSAppearance(named: .darkAqua)
-            panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
-            panel.contentView = NSHostingView(rootView: LockWidgetPanelContent(widget: widget, room: Self.shadowRoom))
-            panel.alphaValue = Self.reduceMotion ? 1 : 0
-
-            LockScreenSpace.shared.add(panel)
-            panel.orderFrontRegardless()
-            panels.append(panel)
+            present(makePanel(
+                frame: rect,
+                takesClicks: widget.kind.takesClicks,
+                content: LockWidgetPanelContent(widget: widget, room: Self.shadowRoom)
+            ))
         }
 
         guard !Self.reduceMotion else { return }
@@ -112,6 +108,28 @@ final class LockScreenController: ObservableObject {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panels.forEach { $0.animator().alphaValue = 1 }
         }
+    }
+
+    private func makePanel(frame: NSRect, takesClicks: Bool, content: some View) -> NSPanel {
+        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.isMovable = false
+        panel.isReleasedWhenClosed = false
+        panel.ignoresMouseEvents = !takesClicks
+        panel.level = .mainMenu + 3
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
+        panel.contentView = NSHostingView(rootView: content)
+        panel.alphaValue = Self.reduceMotion ? 1 : 0
+        return panel
+    }
+
+    private func present(_ panel: NSPanel) {
+        LockScreenSpace.shared.add(panel)
+        panel.orderFrontRegardless()
+        panels.append(panel)
     }
 
     private func hideWidgets(animated: Bool = true) {

@@ -7,6 +7,7 @@
 
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Defaults
 import SwiftUI
 
 // MARK: - Music
@@ -292,5 +293,84 @@ struct LockLyricsWidget: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Cover over the whole screen
+
+/// The cover and its colours over the whole lock screen while a song is on, as on the iPhone.
+/// It hides the lock screen's own clock, so it brings one. Towards the bottom it thins out to nothing,
+/// which leaves the login where macOS draws it.
+struct LockFullCover: View {
+    @ObservedObject private var music = MusicManager.shared
+    @ObservedObject private var controller = LockScreenController.shared
+    @Default(.lockScreenMotion) private var motion
+
+    private var hasSong: Bool {
+        (music.isPlaying || !music.isPlayerIdle) && !music.songTitle.isEmpty
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.height * 0.4, proxy.size.width * 0.3)
+            ZStack {
+                LockArtworkBackdrop(artwork: music.albumArt)
+
+                VStack(spacing: 0) {
+                    LockTick(every: 60) { date in
+                        VStack(spacing: -4) {
+                            Text(date, format: .dateTime.weekday(.wide).day().month(.wide))
+                                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                                .opacity(0.85)
+                            Text(date, format: .dateTime.hour().minute())
+                                .font(.system(size: 104, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                    }
+                    .padding(.top, proxy.size.height * 0.05)
+
+                    Spacer(minLength: 0)
+
+                    Image(nsImage: music.albumArt)
+                        .resizable()
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(width: side, height: side)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+                        .scaleEffect(music.isPlaying ? 1 : 0.93)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: music.isPlaying)
+                    VStack(spacing: 2) {
+                        Text(verbatim: music.songTitle)
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        Text(verbatim: music.artistName)
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .opacity(0.75)
+                    }
+                    .lineLimit(1)
+                    .padding(.top, 16)
+                    .padding(.horizontal, 40)
+
+                    Spacer(minLength: 0)
+                        .frame(height: proxy.size.height * 0.3)
+                }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
+            }
+            .mask {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.66),
+                        .init(color: .clear, location: 0.82),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+        .opacity(hasSong ? 1 : 0)
+        .animation(.smooth(duration: 0.8), value: hasSong)
+        .environment(\.lockMotion, motion)
+        .environment(\.lockWidgetsPaused, !controller.isScreenAwake)
     }
 }

@@ -17420,6 +17420,26 @@
           }
         }
       }
+    },
+    "Cover fills the lock screen while music plays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover füllt den Sperrbildschirm, solange Musik läuft"
+          }
+        }
+      }
+    },
+    "Covers the lock screen's own clock and shows one of its own. The bottom stays clear for the login." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verdeckt die Uhr des Sperrbildschirms und zeigt eine eigene. Unten bleibt Platz für die Anmeldung."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

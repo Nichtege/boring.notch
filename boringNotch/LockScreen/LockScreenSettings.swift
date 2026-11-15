@@ -52,6 +52,14 @@ struct LockScreenSettings: View {
                 Defaults.Toggle(key: .lockScreenWidgets) {
                     Text("Show widgets on the lock screen")
                 }
+                Defaults.Toggle(key: .lockScreenFullCover) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cover fills the lock screen while music plays")
+                        Text("Covers the lock screen's own clock and shows one of its own. The bottom stays clear for the login.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Picker("Display", selection: $display) {
                     Text("Main display").tag("")
                     ForEach(screens, id: \.uuid) { screen in
