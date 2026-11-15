@@ -17580,6 +17580,66 @@
           }
         }
       }
+    },
+    "Matches the wallpaper" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An den Hintergrund angepasst"
+          }
+        }
+      }
+    },
+    "Mixed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemischt"
+          }
+        }
+      }
+    },
+    "All widgets" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Widgets"
+          }
+        }
+      }
+    },
+    "Wallpaper colour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Farbe des Hintergrunds"
+          }
+        }
+      }
+    },
+    "Allow Screen Recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme erlauben"
+          }
+        }
+      }
+    },
+    "Changes every widget of this profile at once. Each one can still be set by itself below. To match the wallpaper, the app looks at the wallpaper's own window when the Mac locks or unlocks and keeps only its colour, which needs the Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellt alle Widgets dieses Profils auf einmal um. Jedes lässt sich weiter unten einzeln einstellen. Für die Anpassung an den Hintergrund schaut die App beim Sperren und Entsperren auf das Fenster des Hintergrundbilds und behält nur dessen Farbe. Dafür braucht sie die Erlaubnis für Bildschirmaufnahmen."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

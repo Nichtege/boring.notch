@@ -15,6 +15,7 @@ struct LockWidgetView: View {
     @ObservedObject private var lyrics = LyricsManager.shared
     @Default(.lockScreenMotion) private var motion
     @Default(.lockScreenLight) private var light
+    @ObservedObject private var tone = LockWallpaperTone.shared
 
     /// Lyrics leave the lock screen entirely for a song without synced ones.
     private var isHidden: Bool {
@@ -47,6 +48,8 @@ struct LockWidgetView: View {
             .environment(\.lockStyle, widget.style)
             .environment(\.lockSize, widget.size)
             .environment(\.lockMotion, motion)
+            // The accent is no input a view could watch, so a new wallpaper colour draws the widget afresh
+            .id(widget.style.accent == .wallpaper ? tone.version : 0)
             .opacity(isHidden ? 0 : 1)
             .animation(.smooth(duration: 0.4), value: isHidden)
     }

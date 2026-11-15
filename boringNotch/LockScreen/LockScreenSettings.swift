@@ -20,6 +20,8 @@ struct LockScreenSettings: View {
 
     @State private var selection: UUID?
     @State private var noRoom = false
+    @State private var canSeeWallpaper = LockWallpaperTone.shared.isAllowed
+    @ObservedObject private var tone = LockWallpaperTone.shared
     @State private var screens: [(uuid: String, name: String)] = NSScreen.screens.compactMap { screen in
         guard let uuid = screen.displayUUID else { return nil }
         return (uuid, screen.localizedName)
@@ -142,6 +144,50 @@ struct LockScreenSettings: View {
                 Text("Drag a widget to move it. Click one to change or remove it, or right-click it. The middle belongs to the lock screen's own clock and login.")
             }
 
+            Section {
+                Picker("Glass", selection: shared(\.glass)) {
+                    if shared(\.glass).wrappedValue == nil {
+                        Text("Mixed").tag(LockGlass?.none)
+                    }
+                    ForEach(LockGlass.allCases) { glass in
+                        Text(glass.title).tag(LockGlass?.some(glass))
+                    }
+                }
+                Picker("Accent", selection: shared(\.accent)) {
+                    if shared(\.accent).wrappedValue == nil {
+                        Text("Mixed").tag(LockAccent?.none)
+                    }
+                    ForEach(LockAccent.allCases) { accent in
+                        Label {
+                            Text(accent.title)
+                        } icon: {
+                            Image(systemName: "circle.fill").foregroundStyle(accent.color)
+                        }
+                        .tag(LockAccent?.some(accent))
+                    }
+                }
+                Picker("Font", selection: shared(\.font)) {
+                    if shared(\.font).wrappedValue == nil {
+                        Text("Mixed").tag(LockFont?.none)
+                    }
+                    ForEach(LockFont.allCases) { font in
+                        Text(font.title).tag(LockFont?.some(font))
+                    }
+                }
+                if tone.isWanted && !canSeeWallpaper {
+                    LabeledContent("Wallpaper colour") {
+                        Button("Allow Screen Recording") {
+                            CGRequestScreenCaptureAccess()
+                            canSeeWallpaper = tone.isAllowed
+                        }
+                    }
+                }
+            } header: {
+                Text("All widgets")
+            } footer: {
+                Text("Changes every widget of this profile at once. Each one can still be set by itself below. To match the wallpaper, the app looks at the wallpaper's own window when the Mac locks or unlocks and keeps only its colour, which needs the Screen Recording permission.")
+            }
+
             if let index = widgets.wrappedValue.firstIndex(where: { $0.id == selection }) {
                 LockWidgetEditor(
                     widget: Binding {
@@ -188,9 +234,16 @@ struct LockScreenSettings: View {
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Lock Screen")
-        .onAppear { LockScreenController.shared.isPreviewing = true }
+        .onAppear {
+            LockScreenController.shared.isPreviewing = true
+            canSeeWallpaper = tone.isAllowed
+            tone.refresh()
+        }
         .onDisappear { LockScreenController.shared.isPreviewing = false }
-        .onChange(of: profiles) { LockScreenController.shared.layoutChanged() }
+        .onChange(of: profiles) {
+            LockScreenController.shared.layoutChanged()
+            tone.refresh()
+        }
         .onChange(of: activeProfile) { LockScreenController.shared.layoutChanged() }
     }
 
@@ -210,8 +263,27 @@ struct LockScreenSettings: View {
         selection = nil
     }
 
+    /// One part of the look for all widgets, and empty where they differ.
+    private func shared<Value: Hashable>(_ part: WritableKeyPath<LockWidgetStyle, Value>) -> Binding<Value?> {
+        Binding {
+            let values = Set(widgets.wrappedValue.map { $0.style[keyPath: part] })
+            return values.count == 1 ? values.first : nil
+        } set: { newValue in
+            guard let newValue else { return }
+            var all = widgets.wrappedValue
+            for index in all.indices {
+                all[index].style[keyPath: part] = newValue
+            }
+            widgets.wrappedValue = all
+        }
+    }
+
     private func add(_ kind: LockWidgetKind) {
         var widget = LockWidget(kind, column: 0, row: 0)
+        // A look that all widgets share is the look the next one starts with
+        if let glass = shared(\.glass).wrappedValue { widget.style.glass = glass }
+        if let accent = shared(\.accent).wrappedValue { widget.style.accent = accent }
+        if let font = shared(\.font).wrappedValue { widget.style.font = font }
         if kind == .worldClock {
             widget.text = "America/New_York"
         }
@@ -511,6 +583,7 @@ extension LockAccent {
         case .pink: "Pink"
         case .purple: "Purple"
         case .yellow: "Yellow"
+        case .wallpaper: "Matches the wallpaper"
         }
     }
 }

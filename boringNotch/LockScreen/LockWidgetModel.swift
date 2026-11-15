@@ -127,6 +127,8 @@ enum LockGlass: String, Codable, CaseIterable, Identifiable {
 
 enum LockAccent: String, Codable, CaseIterable, Identifiable {
     case white, blue, green, orange, pink, purple, yellow
+    /// Taken from the wallpaper, see `LockWallpaperTone`
+    case wallpaper
     var id: String { rawValue }
 
     var color: Color {
@@ -138,6 +140,7 @@ enum LockAccent: String, Codable, CaseIterable, Identifiable {
         case .pink: Color(red: 1, green: 0.5, blue: 0.7)
         case .purple: Color(red: 0.74, green: 0.6, blue: 1)
         case .yellow: Color(red: 1, green: 0.86, blue: 0.35)
+        case .wallpaper: LockWallpaperColor.current
         }
     }
 }

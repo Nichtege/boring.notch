@@ -49,6 +49,7 @@ final class LockScreenController: ObservableObject {
 
     func screenLocked() {
         isLocked = true
+        LockWallpaperTone.shared.refresh()
         showWidgets()
         livenessChanged()
     }
@@ -56,6 +57,7 @@ final class LockScreenController: ObservableObject {
     func screenUnlocked() {
         isLocked = false
         hideWidgets()
+        LockWallpaperTone.shared.refresh()
         livenessChanged()
     }
 
