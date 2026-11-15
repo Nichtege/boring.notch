@@ -184,6 +184,9 @@ struct LockMusicButton: View {
             // On the lock screen no click gets here, and the router presses the button instead
             if !LockClickRouter.shared.isActive {
                 action()
+                if Defaults[.enableHaptics] {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                }
             }
         } label: {
             Image(systemName: symbol)

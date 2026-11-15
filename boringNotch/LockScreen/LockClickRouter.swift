@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import Defaults
 import SwiftUI
 
 @MainActor
@@ -50,14 +51,24 @@ final class LockClickRouter {
         if isDown && !wasDown {
             pressed = target(at: NSEvent.mouseLocation)
             pressed?.onPress?(true)
+            if pressed != nil {
+                tap(.generic)
+            }
         } else if !isDown && wasDown, let pressed {
             pressed.onPress?(false)
             // Released somewhere else is how a click is taken back
             if target(at: NSEvent.mouseLocation) === pressed {
                 pressed.action?()
+                tap(.levelChange)
             }
             self.pressed = nil
         }
+    }
+
+    /// A tick in the trackpad, where the notch's own haptics are on.
+    private func tap(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+        guard Defaults[.enableHaptics] else { return }
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }
 
     private func target(at point: NSPoint) -> LockClickTargetView? {
