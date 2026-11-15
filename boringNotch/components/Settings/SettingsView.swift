@@ -34,6 +34,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "LockScreen") {
+                    Label("Lock Screen", systemImage: "lock.display")
+                }
                 NavigationLink(value: "Starlane") {
                     Label("Starlane", systemImage: "sparkles")
                 }
@@ -66,6 +69,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "LockScreen":
+                    LockScreenSettings()
                 case "Starlane":
                     StarlaneSettings()
                 case "Shortcuts":

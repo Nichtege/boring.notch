@@ -53,12 +53,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SystemNotificationManager.shared.dismissAll()
         NotificationCardController.shared.hideAtOnce()
         cleanupWindows()
-        LockScreenWidgetController.shared.screenLocked()
+        LockScreenController.shared.screenLocked()
     }
 
     @MainActor
     @objc func onScreenUnlocked(_ notification: Notification) {
-        LockScreenWidgetController.shared.screenUnlocked()
+        LockScreenController.shared.screenUnlocked()
         adjustWindowPosition()
         MusicManager.shared.forceUpdate()
         SystemNotificationManager.shared.screenIsBack()
