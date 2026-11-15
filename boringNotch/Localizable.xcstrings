@@ -16650,6 +16650,56 @@
           }
         }
       }
+    },
+    "Live lyrics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Lyrics"
+          }
+        }
+      }
+    },
+    "Nothing playing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts läuft"
+          }
+        }
+      }
+    },
+    "Lyrics show here when the song has synced ones" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier stehen die Lyrics, wenn der Song synchrone hat"
+          }
+        }
+      }
+    },
+    "Show live lyrics in the notch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Lyrics in der Notch zeigen"
+          }
+        }
+      }
+    },
+    "The line being sung takes the artist's place. Lyrics come from LRCLIB, once per song, and only for songs with synced lyrics." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gerade gesungene Zeile steht an der Stelle des Interpreten. Die Lyrics kommen von LRCLIB, einmal pro Song und nur bei Songs mit synchronen Texten."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

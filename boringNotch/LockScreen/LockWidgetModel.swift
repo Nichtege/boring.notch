@@ -10,6 +10,7 @@ import SwiftUI
 
 enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
     case clock, date, battery, weather, countdown, system
+    case music, lyrics
 
     var id: String { rawValue }
 
@@ -21,6 +22,8 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .weather: "Weather"
         case .countdown: "Countdown"
         case .system: "System"
+        case .music: "Music"
+        case .lyrics: "Live lyrics"
         }
     }
 
@@ -32,18 +35,20 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .weather: "cloud.sun"
         case .countdown: "hourglass"
         case .system: "cpu"
+        case .music: "music.note"
+        case .lyrics: "quote.bubble"
         }
     }
 
     var defaultSize: LockWidgetSize {
         switch self {
-        case .clock, .weather, .countdown, .system: .medium
+        case .clock, .weather, .countdown, .system, .music, .lyrics: .medium
         case .date, .battery: .small
         }
     }
 
     /// Only these get clicks. The rest let them through to the lock screen.
-    var takesClicks: Bool { false }
+    var takesClicks: Bool { self == .music }
 }
 
 enum LockWidgetSize: String, Codable, CaseIterable, Identifiable {
@@ -195,6 +200,7 @@ extension Defaults.Keys {
     static let lockScreenDisplay = Key<String>("lockScreenDisplay", default: "")
     static let lockScreenWeatherPlace = Key<LockWeatherPlace?>("lockScreenWeatherPlace", default: nil)
     static let lockScreenWeather = Key<LockWeatherData?>("lockScreenWeather", default: nil)
+    static let lyricsInNotch = Key<Bool>("lyricsInNotch", default: false)
 }
 
 enum LockProfiles {

@@ -10,6 +10,14 @@ import SwiftUI
 
 struct LockWidgetView: View {
     let widget: LockWidget
+    /// In the settings every widget shows, so it can be picked up and moved
+    var isPreview = false
+    @ObservedObject private var lyrics = LyricsManager.shared
+
+    /// Lyrics leave the lock screen entirely for a song without synced ones.
+    private var isHidden: Bool {
+        widget.kind == .lyrics && !isPreview && lyrics.lines.isEmpty
+    }
 
     var body: some View {
         content
@@ -19,6 +27,8 @@ struct LockWidgetView: View {
             .background(LockGlassBackground(style: widget.style))
             .environment(\.lockStyle, widget.style)
             .environment(\.lockSize, widget.size)
+            .opacity(isHidden ? 0 : 1)
+            .animation(.smooth(duration: 0.4), value: isHidden)
     }
 
     @ViewBuilder
@@ -30,13 +40,15 @@ struct LockWidgetView: View {
         case .weather: LockWeatherWidget()
         case .countdown: LockCountdownWidget(widget: widget)
         case .system: LockSystemWidget()
+        case .music: LockMusicWidget()
+        case .lyrics: LockLyricsWidget()
         }
     }
 }
 
 extension LockWidgetKind {
     /// Draws up to its own edge instead of sitting inside the usual padding.
-    var fillsItsFrame: Bool { false }
+    var fillsItsFrame: Bool { self == .music }
 }
 
 // MARK: - Clock

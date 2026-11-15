@@ -156,6 +156,10 @@ final class LockScreenController: ObservableObject {
         if kinds.contains(.weather) {
             LockWeather.shared.refreshIfStale()
         }
+        if kinds.contains(.lyrics) {
+            // Only asks when the song changed since the last time
+            LyricsManager.shared.refresh()
+        }
     }
 }
 

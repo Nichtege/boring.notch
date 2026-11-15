@@ -177,7 +177,7 @@ private struct LockLayoutEditor: View {
                     let frame = grid.frame(of: widget)
                     let isDragged = draggedID == widget.id
 
-                    LockWidgetView(widget: widget)
+                    LockWidgetView(widget: widget, isPreview: true)
                         .frame(width: frame.width, height: frame.height)
                         .scaleEffect(scale, anchor: .topLeading)
                         .frame(width: frame.width * scale, height: frame.height * scale, alignment: .topLeading)

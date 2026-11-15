@@ -626,6 +626,14 @@ struct Media: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Defaults.Toggle(key: .lyricsInNotch) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show live lyrics in the notch")
+                        Text("The line being sung takes the artist's place. Lyrics come from LRCLIB, once per song, and only for songs with synced lyrics.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Toggle("Show sneak peek on playback changes", isOn: $enableSneakPeek)
                 Picker("Sneak Peek Style", selection: $sneakPeekStyles) {
                     ForEach(SneakPeekStyle.allCases) { style in

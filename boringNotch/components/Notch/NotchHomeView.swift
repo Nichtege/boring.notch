@@ -125,6 +125,8 @@ struct MusicControlsView: View {
     @State private var dragging: Bool = false
     @State private var lastDragged: Date = .distantPast
     @Default(.musicControlSlots) private var slotConfig
+    @ObservedObject private var lyrics = LyricsManager.shared
+    @Default(.lyricsInNotch) private var lyricsInNotch
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -150,17 +152,30 @@ struct MusicControlsView: View {
             MarqueeText(
                 $musicManager.songTitle, font: .headline, nsFont: .headline, textColor: .white,
                 frameWidth: width)
-            MarqueeText(
-                $musicManager.artistName,
-                font: .headline,
-                nsFont: .headline,
-                textColor: Defaults[.playerColorTinting]
-                    ? Color(nsColor: musicManager.avgColor)
-                        .ensureMinimumBrightness(factor: 0.6) : .gray,
-                frameWidth: width
-            )
-            .fontWeight(.medium)
+            if lyricsInNotch && !lyrics.lines.isEmpty {
+                // The line being sung takes the artist's place, so the player keeps its height
+                TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
+                    let index = lyrics.index(at: musicManager.estimatedPlaybackPosition(at: timeline.date))
+                    let line = index.map { lyrics.lines[$0].text } ?? ""
+                    secondLine(line.isEmpty ? musicManager.artistName : line, width: width)
+                }
+            } else {
+                secondLine(musicManager.artistName, width: width)
+            }
         }
+    }
+
+    private func secondLine(_ text: String, width: CGFloat) -> some View {
+        MarqueeText(
+            .constant(text),
+            font: .headline,
+            nsFont: .headline,
+            textColor: Defaults[.playerColorTinting]
+                ? Color(nsColor: musicManager.avgColor)
+                    .ensureMinimumBrightness(factor: 0.6) : .gray,
+            frameWidth: width
+        )
+        .fontWeight(.medium)
     }
 
     private var musicSlider: some View {
