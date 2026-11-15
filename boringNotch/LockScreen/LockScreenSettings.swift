@@ -6,6 +6,7 @@
 //
 
 import Defaults
+import EventKit
 import SwiftUI
 
 struct LockScreenSettings: View {
@@ -64,6 +65,32 @@ struct LockScreenSettings: View {
             }
 
             Section {
+                Picker("Profile", selection: Binding {
+                    profiles.indices.contains(profileIndex) ? profiles[profileIndex].id.uuidString : ""
+                } set: { newValue in
+                    activeProfile = newValue
+                    selection = nil
+                }) {
+                    ForEach(profiles) { profile in
+                        Text(verbatim: profile.name).tag(profile.id.uuidString)
+                    }
+                }
+                if profiles.indices.contains(profileIndex) {
+                    TextField("Name", text: $profiles[profileIndex].name)
+                }
+                HStack {
+                    Button("New profile", action: addProfile)
+                    Button("Delete profile", role: .destructive, action: deleteProfile)
+                        .disabled(profiles.count < 2)
+                    Spacer()
+                }
+            } header: {
+                Text("Profiles")
+            } footer: {
+                Text("Each profile has its own layout. A new one starts as a copy of the current one. Switch with a right-click on the notch.")
+            }
+
+            Section {
                 LockLayoutEditor(widgets: widgets, selection: $selection, screenSize: screenSize)
                     .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
                 HStack {
@@ -108,16 +135,49 @@ struct LockScreenSettings: View {
             if widgets.wrappedValue.contains(where: { $0.kind.needsPlace }) {
                 LockWeatherPlaceSection()
             }
+
+            Section {
+                Defaults.Toggle(key: .lockScreenMotion) {
+                    Text("Cover colours drift behind the music")
+                }
+                Defaults.Toggle(key: .lockScreenLight) {
+                    Text("Light wanders over the glass")
+                }
+            } header: {
+                Text("Motion")
+            } footer: {
+                Text("Both stop with Reduce Motion in System Settings, and while the screen is off. The widgets then also appear without fading.")
+            }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Lock Screen")
         .onAppear { LockScreenController.shared.isPreviewing = true }
         .onDisappear { LockScreenController.shared.isPreviewing = false }
-        .onChange(of: profiles) { LockScreenController.shared.isPreviewing = true }
+        .onChange(of: profiles) { LockScreenController.shared.layoutChanged() }
+        .onChange(of: activeProfile) { LockScreenController.shared.layoutChanged() }
+    }
+
+    private func addProfile() {
+        var profile = profiles.indices.contains(profileIndex) ? profiles[profileIndex] : LockProfile.standard
+        profile.id = UUID()
+        profile.name = String(localized: "Profile \(profiles.count + 1)")
+        profiles.append(profile)
+        activeProfile = profile.id.uuidString
+        selection = nil
+    }
+
+    private func deleteProfile() {
+        guard profiles.count > 1, profiles.indices.contains(profileIndex) else { return }
+        profiles.remove(at: profileIndex)
+        activeProfile = profiles[0].id.uuidString
+        selection = nil
     }
 
     private func add(_ kind: LockWidgetKind) {
         var widget = LockWidget(kind, column: 0, row: 0)
+        if kind == .worldClock {
+            widget.text = "America/New_York"
+        }
         guard let spot = grid.freeSpot(for: widget, in: widgets.wrappedValue) else {
             noRoom = true
             return
@@ -150,7 +210,7 @@ struct LockScreenSettings: View {
 
 extension LockWidgetKind {
     /// Shows something that depends on where the Mac is.
-    var needsPlace: Bool { self == .weather }
+    var needsPlace: Bool { self == .weather || self == .sun }
 }
 
 // MARK: - Arranging
@@ -278,13 +338,119 @@ private struct LockWidgetEditor: View {
             case .countdown:
                 TextField("Title", text: $widget.text, prompt: Text(verbatim: "Abi 2027"))
                 DatePicker("Day", selection: $widget.date, displayedComponents: .date)
+            case .clock:
+                Picker("Face", selection: $widget.variant) {
+                    ForEach(LockClockFace.allCases) { face in
+                        Text(face.title).tag(face == .digital ? "" : face.rawValue)
+                    }
+                }
+            case .note:
+                TextField("Text", text: $widget.text, prompt: Text("What do you want to remember?"), axis: .vertical)
+                    .lineLimit(2...6)
+                Picker("Paper", selection: $widget.variant) {
+                    ForEach(LockNoteColor.allCases) { color in
+                        Text(color.title).tag(color == .yellow ? "" : color.rawValue)
+                    }
+                }
+            case .worldClock:
+                Picker("City", selection: $widget.text) {
+                    ForEach(LockWorldClockWidget.zones, id: \.self) { zone in
+                        Text(verbatim: LockWorldClockWidget.city(zone)).tag(zone)
+                    }
+                }
+            case .calendar:
+                LockAccessRow(type: .event)
+            case .reminders:
+                LockAccessRow(type: .reminder)
             default:
                 EmptyView()
+            }
+
+            if widget.kind != .note {
+                Picker("Glass", selection: $widget.style.glass) {
+                    Text("Clear").tag(LockGlass.clear)
+                    Text("Frosted").tag(LockGlass.frosted)
+                }
+                Picker("Accent", selection: $widget.style.accent) {
+                    ForEach(LockAccent.allCases) { accent in
+                        Label {
+                            Text(accent.title)
+                        } icon: {
+                            Image(systemName: "circle.fill").foregroundStyle(accent.color)
+                        }
+                        .tag(accent)
+                    }
+                }
+            }
+            Picker("Font", selection: $widget.style.font) {
+                ForEach(LockFont.allCases) { font in
+                    Text(font.title).tag(font)
+                }
+            }
+            LabeledContent("Opacity") {
+                Slider(value: $widget.style.opacity, in: 0.3...1.6)
             }
 
             Button("Remove widget", role: .destructive, action: remove)
         } header: {
             Text(widget.kind.title)
+        }
+    }
+}
+
+/// Whether macOS lets the app read events or reminders, and the button to ask.
+private struct LockAccessRow: View {
+    let type: EKEntityType
+    @ObservedObject private var source = LockEvents.shared
+
+    var body: some View {
+        let allowed = type == .event ? source.canReadEvents : source.canReadReminders
+        LabeledContent("Access") {
+            if allowed {
+                Text("Allowed")
+            } else {
+                Button("Allow access") {
+                    source.requestAccess(to: type)
+                }
+            }
+        }
+    }
+}
+
+extension LockNoteColor {
+    var title: LocalizedStringResource {
+        switch self {
+        case .yellow: "Yellow"
+        case .pink: "Pink"
+        case .blue: "Blue"
+        case .green: "Green"
+        case .orange: "Orange"
+        case .purple: "Purple"
+        }
+    }
+}
+
+extension LockAccent {
+    var title: LocalizedStringResource {
+        switch self {
+        case .white: "White"
+        case .blue: "Blue"
+        case .green: "Green"
+        case .orange: "Orange"
+        case .pink: "Pink"
+        case .purple: "Purple"
+        case .yellow: "Yellow"
+        }
+    }
+}
+
+extension LockFont {
+    var title: LocalizedStringResource {
+        switch self {
+        case .rounded: "Rounded"
+        case .standard: "Standard"
+        case .serif: "Serif"
+        case .mono: "Monospaced"
         }
     }
 }
@@ -347,6 +513,31 @@ private struct LockWeatherPlaceSection: View {
             results = await LockWeather.search(name)
             foundNothing = results.isEmpty
             isSearching = false
+        }
+    }
+}
+
+// MARK: - Switching
+
+/// The profiles in the notch's right-click menu. Only there once there's more than one.
+struct LockProfileMenu: View {
+    @Default(.lockScreenProfiles) private var profiles
+    @Default(.lockScreenActiveProfile) private var activeProfile
+
+    var body: some View {
+        if profiles.count > 1 {
+            let activeID = LockProfiles.active.id
+            Menu("Lock screen profile") {
+                ForEach(profiles) { profile in
+                    Toggle(isOn: Binding {
+                        profile.id == activeID
+                    } set: { _ in
+                        activeProfile = profile.id.uuidString
+                    }) {
+                        Text(verbatim: profile.name)
+                    }
+                }
+            }
         }
     }
 }

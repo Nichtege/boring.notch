@@ -222,6 +222,7 @@ struct ContentView: View {
                             }
                         }
                         .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
+                        LockProfileMenu()
                     }
                 if vm.chinHeight > 0 {
                     Rectangle()

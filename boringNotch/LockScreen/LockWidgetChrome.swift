@@ -79,6 +79,39 @@ struct LockGlassBackground: View {
     }
 }
 
+/// A soft band of light that crosses the glass now and then. Widgets further right get it later,
+/// so it reads as one light moving over the whole screen.
+struct LockLightSweep: View {
+    let column: Int
+    @Environment(\.lockWidgetsPaused) private var paused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let period: TimeInterval = 14
+
+    var body: some View {
+        if !reduceMotion {
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: paused)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate - Double(column) * 0.12
+                let turn = time.truncatingRemainder(dividingBy: Self.period) / Self.period
+                GeometryReader { proxy in
+                    // Crosses in the first third of the period and is away for the rest
+                    let travel = min(turn * 3, 1)
+                    let band = proxy.size.width * 0.6
+                    LinearGradient(colors: [.clear, .white.opacity(0.16), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: band)
+                        .rotationEffect(.degrees(18))
+                        .scaleEffect(y: 1.6)
+                        .offset(x: -band + (proxy.size.width + band * 2) * travel - band / 2)
+                        .opacity(travel < 1 ? 1 : 0)
+                }
+                .blendMode(.plusLighter)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .allowsHitTesting(false)
+        }
+    }
+}
+
 /// Redraws its content on the clock, and not at all while the widgets are paused.
 struct LockTick<Content: View>: View {
     let every: TimeInterval

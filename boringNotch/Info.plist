@@ -8,7 +8,11 @@
 	<array>
 		<string>_airplay._tcp</string>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>This app shows your next events in a widget on the lock screen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app finds the speakers in your network, so the notch can set the volume of the HomePod your iPhone plays on.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>This app shows your open reminders in a widget on the lock screen.</string>
 </dict>
 </plist>

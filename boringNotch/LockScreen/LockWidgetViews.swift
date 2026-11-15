@@ -13,6 +13,8 @@ struct LockWidgetView: View {
     /// In the settings every widget shows, so it can be picked up and moved
     var isPreview = false
     @ObservedObject private var lyrics = LyricsManager.shared
+    @Default(.lockScreenMotion) private var motion
+    @Default(.lockScreenLight) private var light
 
     /// Lyrics leave the lock screen entirely for a song without synced ones.
     private var isHidden: Bool {
@@ -24,9 +26,21 @@ struct LockWidgetView: View {
             .padding(widget.kind.fillsItsFrame ? 0 : 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(.white)
-            .background(LockGlassBackground(style: widget.style))
+            .background {
+                if widget.kind == .note {
+                    LockNotePaper(widget: widget)
+                } else {
+                    LockGlassBackground(style: widget.style)
+                }
+            }
+            .overlay {
+                if light && widget.kind != .note {
+                    LockLightSweep(column: widget.column)
+                }
+            }
             .environment(\.lockStyle, widget.style)
             .environment(\.lockSize, widget.size)
+            .environment(\.lockMotion, motion)
             .opacity(isHidden ? 0 : 1)
             .animation(.smooth(duration: 0.4), value: isHidden)
     }
@@ -42,6 +56,15 @@ struct LockWidgetView: View {
         case .system: LockSystemWidget()
         case .music: LockMusicWidget()
         case .lyrics: LockLyricsWidget()
+        case .note: LockNoteWidget(widget: widget)
+        case .calendar: LockCalendarWidget()
+        case .reminders: LockRemindersWidget()
+        case .worldClock: LockWorldClockWidget(widget: widget)
+        case .moon: LockMoonWidget()
+        case .sun: LockSunWidget()
+        case .uptime: LockUptimeWidget()
+        case .quote: LockQuoteWidget()
+        case .starlane: LockStarlaneWidget()
         }
     }
 }
@@ -59,6 +82,15 @@ struct LockClockWidget: View {
     @Environment(\.lockSize) private var size
 
     var body: some View {
+        switch LockClockFace(rawValue: widget.variant) ?? .digital {
+        case .digital: digital
+        case .analog: LockAnalogClock()
+        case .minimal: LockMinimalClock()
+        case .words: LockWordClock()
+        }
+    }
+
+    private var digital: some View {
         LockTick(every: size == .wide ? 1 : 60) { date in
             VStack(spacing: 2) {
                 Text(date, format: size == .wide ? .dateTime.hour().minute().second() : .dateTime.hour().minute())

@@ -63,6 +63,11 @@ final class LockScreenController: ObservableObject {
         livenessChanged()
     }
 
+    /// Another widget may need a source that wasn't running yet.
+    func layoutChanged() {
+        livenessChanged()
+    }
+
     // MARK: - Panels
 
     private var screen: NSScreen? {
@@ -153,8 +158,11 @@ final class LockScreenController: ObservableObject {
     /// Each source decides for itself whether what it has is still fresh.
     private func refreshData() {
         let kinds = Set(LockProfiles.active.widgets.map(\.kind))
-        if kinds.contains(.weather) {
+        if kinds.contains(.weather) || kinds.contains(.sun) {
             LockWeather.shared.refreshIfStale()
+        }
+        if kinds.contains(.calendar) || kinds.contains(.reminders) {
+            LockEvents.shared.refreshIfStale()
         }
         if kinds.contains(.lyrics) {
             // Only asks when the song changed since the last time

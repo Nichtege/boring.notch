@@ -11,6 +11,7 @@ import SwiftUI
 enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
     case clock, date, battery, weather, countdown, system
     case music, lyrics
+    case note, calendar, reminders, worldClock, moon, sun, uptime, quote, starlane
 
     var id: String { rawValue }
 
@@ -24,6 +25,15 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .system: "System"
         case .music: "Music"
         case .lyrics: "Live lyrics"
+        case .note: "Note"
+        case .calendar: "Calendar"
+        case .reminders: "Reminders"
+        case .worldClock: "World clock"
+        case .moon: "Moon phase"
+        case .sun: "Sunrise and sunset"
+        case .uptime: "Uptime"
+        case .quote: "Quote of the day"
+        case .starlane: "Starlane"
         }
     }
 
@@ -37,13 +47,22 @@ enum LockWidgetKind: String, Codable, CaseIterable, Identifiable {
         case .system: "cpu"
         case .music: "music.note"
         case .lyrics: "quote.bubble"
+        case .note: "note.text"
+        case .calendar: "calendar.day.timeline.left"
+        case .reminders: "checklist"
+        case .worldClock: "globe"
+        case .moon: "moon.stars"
+        case .sun: "sun.horizon"
+        case .uptime: "power"
+        case .quote: "quote.opening"
+        case .starlane: "sparkles"
         }
     }
 
     var defaultSize: LockWidgetSize {
         switch self {
-        case .clock, .weather, .countdown, .system, .music, .lyrics: .medium
-        case .date, .battery: .small
+        case .clock, .weather, .countdown, .system, .music, .lyrics, .calendar, .reminders, .sun, .quote, .starlane: .medium
+        case .date, .battery, .note, .worldClock, .moon, .uptime: .small
         }
     }
 
@@ -201,6 +220,10 @@ extension Defaults.Keys {
     static let lockScreenWeatherPlace = Key<LockWeatherPlace?>("lockScreenWeatherPlace", default: nil)
     static let lockScreenWeather = Key<LockWeatherData?>("lockScreenWeather", default: nil)
     static let lyricsInNotch = Key<Bool>("lyricsInNotch", default: false)
+    /// The cover's colours drifting behind the music widget
+    static let lockScreenMotion = Key<Bool>("lockScreenMotion", default: true)
+    /// A band of light wandering over the glass
+    static let lockScreenLight = Key<Bool>("lockScreenLight", default: false)
 }
 
 enum LockProfiles {
