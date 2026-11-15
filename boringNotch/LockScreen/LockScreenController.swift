@@ -247,9 +247,9 @@ private struct LockWidgetPanelContent: View {
     @ObservedObject private var music = MusicManager.shared
     @Default(.lockScreenFullCover) private var coverTakesOver
 
-    /// While the cover has the screen, a music or lyrics widget would only say the same thing twice.
+    /// While the cover has the screen, it has all of it. The widgets come back when the music stops.
     private var isStoodIn: Bool {
-        (widget.kind == .music || widget.kind == .lyrics) && coverTakesOver && LockStage.hasSong
+        coverTakesOver && LockStage.hasSong
     }
 
     var body: some View {

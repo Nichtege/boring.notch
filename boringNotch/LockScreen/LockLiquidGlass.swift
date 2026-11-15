@@ -2,10 +2,14 @@
 //  LockLiquidGlass.swift
 //  boringNotch
 //
-//  Glass that shows what is really behind the widget: bent at the rim like a thick pane, lightly blurred
-//  and with its colours lifted. Core Animation's backdrop layer and filters do the work in the window server,
-//  so it follows a moving wallpaper for free. Both are private and may change with a macOS update, in which
-//  case `isAvailable` turns false and the widgets fall back to glass that is only drawn.
+//  Glass that shows what is really behind the widget, made the way macOS makes its own Liquid Glass:
+//  a backdrop layer that reads what the window server has behind the panel, a shape layer that tells it
+//  where the pane's edge is, and the system's `glassBackground` filter, which bends the picture along that
+//  edge. The values are the ones SwiftUI's `.glassEffect` sets, read off a live layer on macOS 27.2, except
+//  for blur and tone: the system's are tuned for controls over app content and come out as grey frost here.
+//
+//  All of this is private. When a class, the filter or one of its inputs is gone after an update,
+//  `isAvailable` is false or the view stays empty, and the widgets fall back to glass that is only drawn.
 //
 
 import AppKit
@@ -13,16 +17,16 @@ import SwiftUI
 
 struct LockLiquidGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
-    /// How far the rim bends what is behind it, in points
-    var refraction: Double
-    /// How far the rim pulls the colours apart, in points
-    var aberration: Double
+    /// How much the picture behind is softened. The system uses 5 to 10.
     var blur: Double
     var saturation: Double
 
     static let isAvailable: Bool = {
-        guard NSClassFromString("CABackdropLayer") is CALayer.Type, let filters = LockLiquidGlassView.filterClass else { return false }
-        return filters.responds(to: NSSelectorFromString("filterWithType:"))
+        NSClassFromString("CABackdropLayer") is CALayer.Type
+            && NSClassFromString("CASDFLayer") is CALayer.Type
+            && NSClassFromString("CASDFElementLayer") is CALayer.Type
+            && NSClassFromString("CASDFOutputEffect") is NSObject.Type
+            && LockLiquidGlassView.makeFilter(blur: 2, saturation: 1) != nil
     }()
 
     func makeNSView(context: Context) -> LockLiquidGlassView {
@@ -30,17 +34,15 @@ struct LockLiquidGlass: NSViewRepresentable {
     }
 
     func updateNSView(_ view: LockLiquidGlassView, context: Context) {
-        view.settings = .init(cornerRadius: cornerRadius, refraction: refraction, aberration: aberration, blur: blur, saturation: saturation)
+        view.settings = .init(cornerRadius: cornerRadius, blur: blur, saturation: saturation)
     }
 }
 
 final class LockLiquidGlassView: NSView {
     struct Settings: Equatable {
         var cornerRadius: CGFloat = 28
-        var refraction: Double = 40
-        var aberration: Double = 8
-        var blur: Double = 2
-        var saturation: Double = 1.5
+        var blur: Double = 1.5
+        var saturation: Double = 1.2
     }
 
     var settings = Settings() {
@@ -49,23 +51,31 @@ final class LockLiquidGlassView: NSView {
         }
     }
 
-    static let filterClass: AnyObject? = NSClassFromString("CAFilter")
+    private static let shapeName = "shape"
 
     private let backdrop: CALayer?
-    private var builtFor: (size: CGSize, scale: CGFloat, settings: Settings)?
-
-    /// How wide the bending rim is, in points
-    private static let rim: CGFloat = 30
+    private let shape: CALayer?
+    private let element: CALayer?
 
     override init(frame: NSRect) {
         backdrop = (NSClassFromString("CABackdropLayer") as? CALayer.Type)?.init()
+        shape = (NSClassFromString("CASDFLayer") as? CALayer.Type)?.init()
+        element = (NSClassFromString("CASDFElementLayer") as? CALayer.Type)?.init()
         super.init(frame: frame)
         wantsLayer = true
-        guard let backdrop else { return }
+
+        guard let backdrop, let shape, let element, let effect = (NSClassFromString("CASDFOutputEffect") as? NSObject.Type)?.init(),
+              shape.responds(to: NSSelectorFromString("setEffect:")) else { return }
         // Reads what the window server has behind this window, not just this window's own views
         backdrop.setValue(true, forKey: "windowServerAware")
-        backdrop.masksToBounds = true
-        backdrop.cornerCurve = .continuous
+        // The filter finds the pane's outline in this sublayer, by its name
+        shape.name = Self.shapeName
+        shape.setValue(effect, forKey: "effect")
+        let holder = CALayer()
+        element.cornerCurve = .continuous
+        holder.addSublayer(element)
+        shape.addSublayer(holder)
+        backdrop.addSublayer(shape)
         layer?.addSublayer(backdrop)
     }
 
@@ -83,56 +93,60 @@ final class LockLiquidGlassView: NSView {
         rebuild()
     }
 
-    override func viewDidChangeBackingProperties() {
-        super.viewDidChangeBackingProperties()
-        rebuild()
-    }
-
     private func rebuild() {
-        guard let backdrop, bounds.width > 1, bounds.height > 1 else { return }
-        let scale = window?.backingScaleFactor ?? 2
-        if let builtFor, builtFor.size == bounds.size, builtFor.scale == scale, builtFor.settings == settings { return }
-        builtFor = (bounds.size, scale, settings)
-
+        guard let backdrop, let shape, let element, backdrop.superlayer != nil, bounds.width > 1, bounds.height > 1 else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         backdrop.frame = bounds
-        backdrop.cornerRadius = settings.cornerRadius
-
-        var filters: [NSObject] = []
-        if settings.refraction > 0, let map = Self.lensMap(size: bounds.size, scale: scale, cornerRadius: settings.cornerRadius) {
-            if let lens = Self.filter("displacementMap", [
-                "inputMaskImage": map,
-                "inputAmount": settings.refraction,
-                // The map's middle grey means "stay where you are"
-                "inputOffset": 0.5,
-            ]) {
-                filters.append(lens)
-            }
-            // Real glass bends red and blue by different amounts, which gives the rim its faint coloured fringe
-            if settings.aberration > 0, let fringe = Self.filter("chromaticAberrationMap", [
-                "inputMaskImage": map,
-                "inputAmount": settings.aberration,
-                "inputOffset": 0.5,
-            ]) {
-                filters.append(fringe)
-            }
-        }
-        if settings.blur > 0, let blur = Self.filter("gaussianBlur", ["inputRadius": settings.blur, "inputNormalizeEdges": true]) {
-            filters.append(blur)
-        }
-        if let saturate = Self.filter("colorSaturate", ["inputAmount": settings.saturation]) {
-            filters.append(saturate)
-        }
-        backdrop.filters = filters
+        shape.frame = bounds
+        element.frame = bounds
+        element.cornerRadius = settings.cornerRadius
+        backdrop.filters = Self.makeFilter(blur: settings.blur, saturation: settings.saturation).map { [$0] } ?? []
         CATransaction.commit()
     }
 
-    /// A filter with these inputs, or nil when this macOS doesn't know the filter or one of the inputs.
-    private static func filter(_ type: String, _ inputs: [String: Any]) -> NSObject? {
+    /// The system's glass filter, or nil when this macOS doesn't have it with these inputs.
+    static func makeFilter(blur: Double, saturation: Double) -> NSObject? {
+        let inputs: [String: Any] = [
+            "inputSourceSublayerName": shapeName,
+            // The bend at the rim: how far the picture is pulled, and how wide the rim is. The system's own values.
+            "inputInnerRefractionAmount": -60,
+            "inputInnerRefractionHeight": 20,
+            "inputOuterRefractionAmount": 0,
+            "inputOuterRefractionHeight": 0,
+            "inputRefractionDistance0": -1,
+            "inputRefractionDistance1": 0,
+            "inputRefractionOpacity": 0,
+            "inputBlurRadius": blur,
+            "inputBlurOpacity0": 1,
+            "inputBlurOpacity1": 1,
+            "inputBlurOpacity2": 1,
+            "inputBlurOpacity3": 1,
+            // The pane's tone. The system darkens and greys it, here the picture keeps its light and colour.
+            "inputFaceOpacity": 1,
+            "inputFaceColorMatrixWhite": 1,
+            "inputFaceColorMatrixBlack": 0,
+            "inputFaceColorMatrixSaturation": saturation,
+            "inputFaceColorMatrixFillColor": CGColor(gray: 0, alpha: 0),
+            "inputFaceColorMatrixMaxLuma": 1,
+            "inputFaceColorMatrixMaxLumaSDR": 1,
+            "inputBleedDistance0": 1,
+            "inputBleedDarkenBlend": 1,
+            "inputBleedColorMatrixWhite": 1,
+            "inputBleedColorMatrixBlack": 0.75,
+            "inputBleedColorMatrixSaturation": 1.2,
+            "inputShadowColorMatrixWhite": 1,
+            "inputShadowColorMatrixSaturation": 1.2,
+            "inputSDRHoldingToneWhite": 1,
+            "inputSDRGradientDistance0": 1,
+            "inputSDRGradientDistance1": 1,
+            "inputMaxHeadroom": 9999,
+            "inputClamp": 1,
+        ]
         guard
-            let filterClass,
-            let filter = filterClass.perform(NSSelectorFromString("filterWithType:"), with: type)?.takeUnretainedValue() as? NSObject,
+            let filterClass = NSClassFromString("CAFilter") as AnyObject?,
+            filterClass.responds(to: NSSelectorFromString("filterWithType:")),
+            let filter = filterClass.perform(NSSelectorFromString("filterWithType:"), with: "glassBackground")?.takeUnretainedValue() as? NSObject,
             filter.responds(to: NSSelectorFromString("inputKeys")),
             let known = filter.perform(NSSelectorFromString("inputKeys"))?.takeUnretainedValue() as? [String],
             inputs.keys.allSatisfy(known.contains)
@@ -141,57 +155,5 @@ final class LockLiquidGlassView: NSView {
             filter.setValue(value, forKey: key)
         }
         return filter
-    }
-
-    /// Which way each pixel looks: red is the shift across, green the shift down, middle grey none.
-    /// Only the rim shifts, outwards and ever more towards the edge, the way a thick pane's rounded edge bends light.
-    private static func lensMap(size: CGSize, scale: CGFloat, cornerRadius: CGFloat) -> CGImage? {
-        let width = Int((size.width * scale).rounded())
-        let height = Int((size.height * scale).rounded())
-        guard width > 0, height > 0, width * height < 16_000_000 else { return nil }
-
-        let w = CGFloat(width)
-        let h = CGFloat(height)
-        let radius = min(cornerRadius * scale * 1.2, min(w, h) / 2)
-        let band = min(rim * scale, min(w, h) / 2)
-
-        /// Distance to the rounded rectangle's edge, negative inside
-        func distance(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
-            let qx = abs(x - w / 2) - (w / 2 - radius)
-            let qy = abs(y - h / 2) - (h / 2 - radius)
-            let outsideX = max(qx, 0)
-            let outsideY = max(qy, 0)
-            return (outsideX * outsideX + outsideY * outsideY).squareRoot() + min(max(qx, qy), 0) - radius
-        }
-
-        var pixels = [UInt8](repeating: 128, count: width * height * 4)
-        for row in 0..<height {
-            for column in 0..<width {
-                let index = (row * width + column) * 4
-                pixels[index + 3] = 255
-                let x = CGFloat(column) + 0.5
-                let y = CGFloat(row) + 0.5
-                let depth = -distance(x, y)
-                guard depth >= 0, depth < band else { continue }
-                let normalX = distance(x + 1, y) - distance(x - 1, y)
-                let normalY = distance(x, y + 1) - distance(x, y - 1)
-                let length = max((normalX * normalX + normalY * normalY).squareRoot(), 0.0001)
-                let closeness = 1 - depth / band
-                let strength = closeness * closeness * closeness
-                pixels[index] = UInt8(max(0, min(255, (0.5 + 0.5 * normalX / length * strength) * 255)))
-                pixels[index + 1] = UInt8(max(0, min(255, (0.5 + 0.5 * normalY / length * strength) * 255)))
-            }
-        }
-        return pixels.withUnsafeMutableBytes { buffer in
-            CGContext(
-                data: buffer.baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: width * 4,
-                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            )?.makeImage()
-        }
     }
 }

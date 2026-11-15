@@ -69,8 +69,8 @@ struct LockGlassBackground: View {
     /// How much black sits in the glass, so white type holds up on a bright picture
     private var smoke: Double {
         switch style.glass {
-        case .liquid: 0.05
-        case .liquidDark: 0.3
+        case .liquid: 0.1
+        case .liquidDark: 0.34
         case .frosted: seesThrough ? 0.14 : 0.4
         case .clear: 0
         }
@@ -93,10 +93,8 @@ struct LockGlassBackground: View {
             if seesThrough {
                 LockLiquidGlass(
                     cornerRadius: cornerRadius,
-                    refraction: style.glass == .frosted ? 16 : 48,
-                    aberration: style.glass == .frosted ? 4 : 9,
-                    blur: style.glass == .frosted ? 16 : style.glass == .liquidDark ? 3 : 2,
-                    saturation: 1.5
+                    blur: style.glass == .frosted ? 9 : style.glass == .liquidDark ? 2.5 : 1.5,
+                    saturation: 1.25
                 )
             }
             shape.fill(.black.opacity(min(smoke * style.opacity, 0.85)))
@@ -109,9 +107,8 @@ struct LockGlassBackground: View {
     }
 }
 
-/// The light on the glass: a glow along the rim and two bright arcs where light enters and leaves.
-/// The pointer is the lamp. The arcs turn towards it, the pane brightens near it, and with the pointer still
-/// the light keeps swaying a little, so the glass never sits there like a sticker.
+/// The light on the glass: a faint glow along the rim and two thin bright arcs where light enters and leaves.
+/// The arcs turn towards the pointer and the pane brightens a little near it, the way a real pane answers a lamp.
 struct LockGlassLight: View {
     let shape: RoundedRectangle
     @Environment(\.lockWidgetScreenFrame) private var frame
@@ -124,43 +121,40 @@ struct LockGlassLight: View {
 
     var body: some View {
         if alive, !reduceMotion, let frame {
-            TimelineView(.animation(minimumInterval: 1 / 20, paused: paused)) { timeline in
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: paused)) { _ in
                 let pointer = NSEvent.mouseLocation
-                let time = timeline.date.timeIntervalSinceReferenceDate
                 // AppKit counts up from the bottom, the gradient turns clockwise from the right
                 let towards = atan2(-(pointer.y - frame.midY), pointer.x - frame.midX) * 180 / .pi
-                let sway = sin(time * 0.45) * 10 + sin(time * 0.17 + 1) * 6
                 let local = UnitPoint(
                     x: (pointer.x - frame.minX) / max(frame.width, 1),
                     y: (frame.maxY - pointer.y) / max(frame.height, 1)
                 )
-                let reach = max(frame.width, frame.height)
                 let distance = hypot(
                     max(frame.minX - pointer.x, 0, pointer.x - frame.maxX),
                     max(frame.minY - pointer.y, 0, pointer.y - frame.maxY)
                 )
-                light(turn: towards - Self.restAngle + sway, glowAt: local, glow: max(0, 1 - distance / reach), breath: sin(time * 0.6))
+                light(turn: towards - Self.restAngle, glowAt: local, glow: max(0, 1 - distance / 260))
             }
         } else {
-            light(turn: 0, glowAt: .topLeading, glow: 0, breath: 0)
+            light(turn: 0, glowAt: .topLeading, glow: 0)
         }
     }
 
-    private func light(turn: Double, glowAt: UnitPoint, glow: Double, breath: Double) -> some View {
+    private func light(turn: Double, glowAt: UnitPoint, glow: Double) -> some View {
         ZStack {
             // The edge of a thick pane catches more light than its middle
             shape
-                .strokeBorder(.white.opacity(0.2 + 0.04 * breath), lineWidth: 8)
-                .blur(radius: 8)
+                .strokeBorder(.white.opacity(0.1), lineWidth: 6)
+                .blur(radius: 6)
                 .clipShape(shape)
             if glow > 0 {
                 shape
                     .fill(
                         RadialGradient(
-                            colors: [.white.opacity(0.22 * glow), .white.opacity(0.06 * glow), .clear],
+                            colors: [.white.opacity(0.1 * glow), .clear],
                             center: glowAt,
                             startRadius: 0,
-                            endRadius: 220
+                            endRadius: 180
                         )
                     )
                     .blendMode(.plusLighter)
@@ -168,19 +162,19 @@ struct LockGlassLight: View {
             shape.strokeBorder(
                 AngularGradient(
                     stops: [
-                        .init(color: .white.opacity(0.1), location: 0),
-                        .init(color: .white.opacity(0.55), location: 0.12),
+                        .init(color: .white.opacity(0.08), location: 0),
+                        .init(color: .white.opacity(0.32), location: 0.12),
                         .init(color: .white.opacity(0.08), location: 0.3),
-                        .init(color: .white.opacity(0.05), location: 0.5),
-                        .init(color: .white.opacity(0.95), location: 0.63),
-                        .init(color: .white.opacity(0.85), location: 0.7),
+                        .init(color: .white.opacity(0.06), location: 0.5),
+                        .init(color: .white.opacity(0.6), location: 0.63),
+                        .init(color: .white.opacity(0.5), location: 0.7),
                         .init(color: .white.opacity(0.06), location: 0.86),
-                        .init(color: .white.opacity(0.1), location: 1),
+                        .init(color: .white.opacity(0.08), location: 1),
                     ],
                     center: .center,
                     angle: .degrees(turn)
                 ),
-                lineWidth: 1.3
+                lineWidth: 1
             )
         }
         .allowsHitTesting(false)

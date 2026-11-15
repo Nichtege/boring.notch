@@ -357,8 +357,7 @@ enum LockStage {
     }
 }
 
-/// The cover, large and soft, over the whole lock screen, with a clock in place of the one it hides.
-/// Towards the bottom it thins out to nothing, which leaves the login where macOS draws it.
+/// The cover, large and soft, over the whole lock screen, and the lyrics when they have their side of it.
 struct LockStageBackground: View {
     @ObservedObject private var music = MusicManager.shared
     @ObservedObject private var lyrics = LyricsManager.shared
@@ -372,19 +371,6 @@ struct LockStageBackground: View {
             ZStack {
                 LockBigCover(artwork: music.albumArt)
 
-                LockTick(every: 60) { date in
-                    VStack(spacing: -4) {
-                        Text(date, format: .dateTime.weekday(.wide).day().month(.wide))
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
-                            .opacity(0.85)
-                        Text(date, format: .dateTime.hour().minute())
-                            .font(.system(size: 96, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                    }
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, proxy.size.height * 0.04)
-
                 if showsLyrics {
                     LockLyricsList(fontSize: 34)
                         .frame(width: proxy.size.width * 0.4, height: proxy.size.height * 0.5)
@@ -395,17 +381,6 @@ struct LockStageBackground: View {
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
             .animation(.smooth(duration: 0.6), value: showsLyrics)
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.74),
-                        .init(color: .clear, location: 0.88),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
         }
         .opacity(LockStage.hasSong ? 1 : 0)
         .animation(.smooth(duration: 0.8), value: LockStage.hasSong)

@@ -139,6 +139,9 @@ class AppleMusicController: NSObject {
     
     func previousTrack() async {
         await executeCommand("previous track")
+        // Going back inside a song only restarts it. Music announces nothing then, and the position would stay where it was.
+        try? await Task.sleep(for: .milliseconds(300))
+        await updatePlaybackInfo()
     }
     
     func seek(to time: Double) async {
