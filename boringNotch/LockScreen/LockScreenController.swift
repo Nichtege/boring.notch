@@ -85,12 +85,12 @@ final class LockScreenController: ObservableObject {
         if Defaults[.lockScreenFullCover] {
             // Goes in first and one level lower, so every widget lies on top of it
             let background = makePanel(frame: screen.frame, takesClicks: false, content: LockStageBackground())
-            background.level = .mainMenu + 2
+            background.level = Self.stageLevel
             present(background)
 
             let side = LockStage.coverSide(on: screen.frame.size)
             let cover = makePanel(frame: coverFrame(on: screen), takesClicks: true, content: LockStageCover(side: side))
-            cover.level = .mainMenu + 2
+            cover.level = Self.stageLevel
             present(cover)
             coverPanel = cover
             lyricsWatch = LyricsManager.shared.$lines
@@ -165,7 +165,9 @@ final class LockScreenController: ObservableObject {
         panel.isMovable = false
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = !takesClicks
-        panel.level = .mainMenu + 3
+        // The lock screen is a shield over everything. Only windows at its level or above get the pointer's clicks.
+        panel.level = Self.widgetLevel
+        panel.canBecomeVisibleWithoutLogin = true
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
         panel.contentView = NSHostingView(rootView: content)
@@ -197,6 +199,9 @@ final class LockScreenController: ObservableObject {
             }
         }
     }
+
+    private static let stageLevel = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+    private static let widgetLevel = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
 
     /// Around each widget, so its shadow isn't cut off at the panel's edge
     private static let shadowRoom: CGFloat = 26

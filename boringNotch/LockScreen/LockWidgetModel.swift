@@ -100,8 +100,9 @@ enum LockWidgetSize: String, Codable, CaseIterable, Identifiable {
 enum LockGlass: String, Codable, CaseIterable, Identifiable {
     /// See-through, bending what's behind them at the rim. `frosted` blurs it as well.
     case liquid, liquidDark, frosted
-    /// Only drawn, with no view of what's behind
-    case clear
+    /// Only drawn, with no view of what's behind. Not called "clear": an early build saved that name as
+    /// every widget's default, and those widgets should get the real glass, which unknown names fall back to.
+    case simple
     var id: String { rawValue }
 
     var title: LocalizedStringResource {
@@ -109,7 +110,7 @@ enum LockGlass: String, Codable, CaseIterable, Identifiable {
         case .liquid: "Liquid Glass"
         case .liquidDark: "Liquid Glass, smoked"
         case .frosted: "Frosted"
-        case .clear: "Simple"
+        case .simple: "Simple"
         }
     }
 }
@@ -245,8 +246,8 @@ extension Defaults.Keys {
     /// The cover takes over the lock screen while a song is on
     static let lockScreenFullCover = Key<Bool>("lockScreenFullCover", default: false)
     static let lockScreenCoverLayout = Key<LockCoverLayout>("lockScreenCoverLayout", default: .center)
-    /// How much the glass softens what's behind it. The system's own glass uses 5 to 10.
-    static let lockScreenGlassBlur = Key<Double>("lockScreenGlassBlur", default: 5)
+    /// How much the glass softens what's behind it. The system's own glass uses 5 to 10, which reads as frost here.
+    static let lockScreenGlassBlur = Key<Double>("lockScreenGlassBlur", default: 1.5)
     /// The light on the glass follows the pointer and never quite stands still
     static let lockScreenGlassAlive = Key<Bool>("lockScreenGlassAlive", default: true)
     /// A band of light wandering over the glass

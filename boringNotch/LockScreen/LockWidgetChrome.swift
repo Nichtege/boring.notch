@@ -65,7 +65,7 @@ struct LockGlassBackground: View {
     @Default(.lockScreenGlassBlur) private var blur
 
     private var seesThrough: Bool {
-        style.glass != .clear && !isPreview && LockLiquidGlass.isAvailable
+        style.glass != .simple && !isPreview && LockLiquidGlass.isAvailable
     }
 
     /// How much black sits in the glass, so white type holds up on a bright picture
@@ -74,7 +74,7 @@ struct LockGlassBackground: View {
         case .liquid: 0.1
         case .liquidDark: 0.34
         case .frosted: seesThrough ? 0.14 : 0.4
-        case .clear: 0
+        case .simple: 0
         }
     }
 
