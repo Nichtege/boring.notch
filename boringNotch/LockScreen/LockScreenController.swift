@@ -217,6 +217,7 @@ final class LockScreenController: ObservableObject {
         let live = isLive
         let kinds = Set(LockProfiles.active.widgets.map(\.kind))
         LockSystemStats.shared.isRunning = live && kinds.contains(.system)
+        LockClickRouter.shared.setActive(isLocked && isScreenAwake && !panels.isEmpty)
         // The stage's backdrop moves with the song, where the notch's bars are allowed to listen to it
         LockStagePulse.shared.isListening = isLocked && isScreenAwake && coverPanel != nil
             && Defaults[.liveMusicVisualizer] && Defaults[.lockScreenMotion]
@@ -265,6 +266,7 @@ private struct LockWidgetPanelContent: View {
             .padding(room)
             .environment(\.lockWidgetsPaused, !controller.isScreenAwake)
             .environment(\.lockWidgetScreenFrame, screenFrame)
+            .environment(\.lockClicksEnabled, !isStoodIn)
             .opacity(isStoodIn ? 0 : 1)
             .allowsHitTesting(!isStoodIn)
             .animation(.smooth(duration: 0.5), value: isStoodIn)

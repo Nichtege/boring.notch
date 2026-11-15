@@ -175,15 +175,22 @@ struct LockMusicButton: View {
     let symbol: String
     let size: CGFloat
     let action: () -> Void
+    @Environment(\.lockClicksEnabled) private var clicksEnabled
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            // On the lock screen no click gets here, and the router presses the button instead
+            if !LockClickRouter.shared.isActive {
+                action()
+            }
+        } label: {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .frame(width: size * 1.8, height: size * 1.5)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .background(LockClickTarget(isEnabled: clicksEnabled, action: action))
     }
 }
 
@@ -537,6 +544,7 @@ struct LockStageCover: View {
         .opacity(LockStage.hasSong ? 1 : 0)
         .animation(.smooth(duration: 0.8), value: LockStage.hasSong)
         .environment(\.lockWidgetsPaused, !controller.isScreenAwake)
+        .environment(\.lockClicksEnabled, LockStage.hasSong)
     }
 }
 
