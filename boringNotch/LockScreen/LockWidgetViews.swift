@@ -26,11 +26,13 @@ struct LockWidgetView: View {
             .padding(widget.kind.fillsItsFrame ? 0 : 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(.white)
+            // Clear glass over a bright picture leaves white type with nothing to stand on
+            .shadow(color: .black.opacity(widget.kind == .note ? 0 : 0.28), radius: 3, y: 1)
             .background {
                 if widget.kind == .note {
                     LockNotePaper(widget: widget)
                 } else {
-                    LockGlassBackground(style: widget.style)
+                    LockGlassBackground(style: widget.style, isPreview: isPreview)
                 }
             }
             .overlay {

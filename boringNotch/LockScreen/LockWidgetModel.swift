@@ -98,8 +98,20 @@ enum LockWidgetSize: String, Codable, CaseIterable, Identifiable {
 }
 
 enum LockGlass: String, Codable, CaseIterable, Identifiable {
-    case clear, frosted
+    /// See-through, bending what's behind them at the rim. `frosted` blurs it as well.
+    case liquid, liquidDark, frosted
+    /// Only drawn, with no view of what's behind
+    case clear
     var id: String { rawValue }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .liquid: "Liquid Glass"
+        case .liquidDark: "Liquid Glass, smoked"
+        case .frosted: "Frosted"
+        case .clear: "Simple"
+        }
+    }
 }
 
 enum LockAccent: String, Codable, CaseIterable, Identifiable {
@@ -134,7 +146,7 @@ enum LockFont: String, Codable, CaseIterable, Identifiable {
 }
 
 struct LockWidgetStyle: Codable, Equatable {
-    var glass: LockGlass = .clear
+    var glass: LockGlass = .liquid
     var accent: LockAccent = .white
     var font: LockFont = .rounded
     var opacity: Double = 1
@@ -144,7 +156,7 @@ struct LockWidgetStyle: Codable, Equatable {
     // Fields added later must not throw away a saved layout
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        glass = (try? values.decode(LockGlass.self, forKey: .glass)) ?? .clear
+        glass = (try? values.decode(LockGlass.self, forKey: .glass)) ?? .liquid
         accent = (try? values.decode(LockAccent.self, forKey: .accent)) ?? .white
         font = (try? values.decode(LockFont.self, forKey: .font)) ?? .rounded
         opacity = (try? values.decode(Double.self, forKey: .opacity)) ?? 1

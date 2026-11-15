@@ -43,36 +43,65 @@ extension LockWidgetStyle {
     }
 }
 
-/// Our own glass. The system's glass has nothing to look through on the lock screen and turns into a grey tile.
+/// The glass behind a widget. It looks through to what's behind the panel where macOS allows that,
+/// and is otherwise drawn to look the part.
 struct LockGlassBackground: View {
     let style: LockWidgetStyle
+    /// In the settings there is a stand-in wallpaper inside the window, which the real glass would look past
+    var isPreview = false
     var cornerRadius: CGFloat = 28
+
+    private var seesThrough: Bool {
+        style.glass != .clear && !isPreview && LockLiquidGlass.isAvailable
+    }
+
+    /// How much black sits in the glass, so white type holds up on a bright picture
+    private var smoke: Double {
+        switch style.glass {
+        case .liquid: 0.05
+        case .liquidDark: 0.3
+        case .frosted: seesThrough ? 0.14 : 0.4
+        case .clear: 0
+        }
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         ZStack {
-            switch style.glass {
-            case .clear:
-                shape.fill(.white.opacity(0.10 * style.opacity))
-            case .frosted:
-                shape.fill(.black.opacity(0.42 * style.opacity))
-                shape.fill(.white.opacity(0.07 * style.opacity))
-            }
-            // Light from the top left, as on real glass
-            shape.fill(
-                LinearGradient(
-                    colors: [.white.opacity(0.16 * style.opacity), .clear, .white.opacity(0.04 * style.opacity)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+            if seesThrough {
+                LockLiquidGlass(
+                    cornerRadius: cornerRadius,
+                    refraction: style.glass == .frosted ? 14 : 40,
+                    blur: style.glass == .frosted ? 16 : style.glass == .liquidDark ? 3 : 2,
+                    saturation: 1.5
                 )
-            )
+            }
+            shape.fill(.black.opacity(min(smoke * style.opacity, 0.85)))
+            shape.fill(.white.opacity(0.05 * style.opacity))
+            if style.accent != .white {
+                shape.fill(style.accent.color.opacity(0.12 * style.opacity))
+            }
+            // The edge of a thick pane catches more light than its middle
+            shape
+                .strokeBorder(.white.opacity(0.22), lineWidth: 8)
+                .blur(radius: 8)
+                .clipShape(shape)
+            // Light enters at the top left and leaves at the bottom right
             shape.strokeBorder(
-                LinearGradient(
-                    colors: [.white.opacity(0.5), .white.opacity(0.08), .white.opacity(0.22)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                AngularGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.1), location: 0),
+                        .init(color: .white.opacity(0.55), location: 0.12),
+                        .init(color: .white.opacity(0.08), location: 0.3),
+                        .init(color: .white.opacity(0.05), location: 0.5),
+                        .init(color: .white.opacity(0.95), location: 0.63),
+                        .init(color: .white.opacity(0.85), location: 0.7),
+                        .init(color: .white.opacity(0.06), location: 0.86),
+                        .init(color: .white.opacity(0.1), location: 1),
+                    ],
+                    center: .center
                 ),
-                lineWidth: 1
+                lineWidth: 1.2
             )
         }
         .shadow(color: .black.opacity(0.22), radius: 14, y: 6)

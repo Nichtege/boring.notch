@@ -368,8 +368,9 @@ private struct LockWidgetEditor: View {
 
             if widget.kind != .note {
                 Picker("Glass", selection: $widget.style.glass) {
-                    Text("Clear").tag(LockGlass.clear)
-                    Text("Frosted").tag(LockGlass.frosted)
+                    ForEach(LockGlass.allCases) { glass in
+                        Text(glass.title).tag(glass)
+                    }
                 }
                 Picker("Accent", selection: $widget.style.accent) {
                     ForEach(LockAccent.allCases) { accent in
