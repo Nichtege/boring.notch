@@ -22,17 +22,19 @@ enum LockClockFace: String, CaseIterable, Identifiable {
 }
 
 struct LockAnalogClock: View {
+    let options: LockClockOptions
     @Environment(\.lockStyle) private var style
 
     var body: some View {
-        LockTick(every: 1) { date in
+        LockTick(every: options.seconds ? 1 : 60) { date in
             let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
             let seconds = Double(parts.second ?? 0)
             let minutes = Double(parts.minute ?? 0) + seconds / 60
             let hours = Double((parts.hour ?? 0) % 12) + minutes / 60
 
             GeometryReader { proxy in
-                let side = min(proxy.size.width, proxy.size.height)
+                let side = min(proxy.size.width, proxy.size.height) * min(options.scale, 1.1)
+                let hands: Color = options.tinted ? style.accent.color : .white
                 ZStack {
                     ForEach(0..<12, id: \.self) { tick in
                         Capsule()
@@ -41,9 +43,11 @@ struct LockAnalogClock: View {
                             .offset(y: -side * 0.44)
                             .rotationEffect(.degrees(Double(tick) * 30))
                     }
-                    hand(length: side * 0.26, width: 5, turn: hours / 12, color: .white)
-                    hand(length: side * 0.39, width: 3.5, turn: minutes / 60, color: .white)
-                    hand(length: side * 0.42, width: 1.5, turn: seconds / 60, color: secondHand)
+                    hand(length: side * 0.26, width: 5, turn: hours / 12, color: hands)
+                    hand(length: side * 0.39, width: 3.5, turn: minutes / 60, color: hands)
+                    if options.seconds {
+                        hand(length: side * 0.42, width: 1.5, turn: seconds / 60, color: secondHand)
+                    }
                     Circle()
                         .fill(secondHand)
                         .frame(width: 8, height: 8)
@@ -54,7 +58,7 @@ struct LockAnalogClock: View {
     }
 
     private var secondHand: Color {
-        style.accent == .white ? Color(red: 1, green: 0.6, blue: 0.25) : style.accent.color
+        style.accent == .white || options.tinted ? Color(red: 1, green: 0.6, blue: 0.25) : style.accent.color
     }
 
     private func hand(length: CGFloat, width: CGFloat, turn: Double, color: Color) -> some View {
@@ -68,29 +72,27 @@ struct LockAnalogClock: View {
 }
 
 struct LockMinimalClock: View {
+    let options: LockClockOptions
     @Environment(\.lockStyle) private var style
     @Environment(\.lockSize) private var size
 
     var body: some View {
         LockTick(every: 60) { date in
-            let digits = size == .small || size == .large ? 64.0 : 84.0
+            let digits = (size == .large ? 130.0 : size == .small ? 64.0 : 84.0) * options.scale
+            let weight = options.weight.weight(or: .thin)
             let layout = size == .small || size == .large ? AnyLayout(VStackLayout(spacing: -digits * 0.2)) : AnyLayout(HStackLayout(spacing: 12))
             layout {
-                Text(Self.hour(date))
-                    .font(style.font(size == .large ? 130 : digits, .thin))
+                Text(verbatim: String(format: "%02d", options.hour(date)))
+                    .font(style.font(digits, weight))
+                    .foregroundStyle(options.tinted ? style.accent.color : .white)
                 Text(Self.minute(date))
-                    .font(style.font(size == .large ? 130 : digits, .thin))
-                    .foregroundStyle(style.accent.color.opacity(style.accent == .white ? 0.55 : 1))
+                    .font(style.font(digits, weight))
+                    .foregroundStyle(style.accent.color.opacity(style.accent == .white || options.tinted ? 0.55 : 1))
             }
             .monospacedDigit()
-            .minimumScaleFactor(0.5)
+            .minimumScaleFactor(0.3)
             .lineLimit(1)
         }
-    }
-
-    /// Bare digits. The system's hour format adds "Uhr" in German.
-    private static func hour(_ date: Date) -> String {
-        String(format: "%02d", Calendar.current.component(.hour, from: date))
     }
 
     private static func minute(_ date: Date) -> String {
@@ -99,6 +101,7 @@ struct LockMinimalClock: View {
 }
 
 struct LockWordClock: View {
+    let options: LockClockOptions
     @Environment(\.lockStyle) private var style
     @Environment(\.lockSize) private var size
 
@@ -109,9 +112,10 @@ struct LockWordClock: View {
                 Text(verbatim: words.lead)
                     .foregroundStyle(style.accent.color.opacity(style.accent == .white ? 0.55 : 1))
                 Text(verbatim: words.time)
+                    .foregroundStyle(options.tinted ? style.accent.color : .white)
             }
-            .font(style.font(size == .small ? 22 : size == .large ? 44 : 30, .bold))
-            .minimumScaleFactor(0.5)
+            .font(style.font((size == .small ? 22 : size == .large ? 44 : 30) * options.scale, options.weight.weight(or: .bold)))
+            .minimumScaleFactor(0.4)
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }

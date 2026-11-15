@@ -96,21 +96,23 @@ struct LockClockWidget: View {
     var body: some View {
         switch LockClockFace(rawValue: widget.variant) ?? .digital {
         case .digital: digital
-        case .analog: LockAnalogClock()
-        case .minimal: LockMinimalClock()
-        case .words: LockWordClock()
+        case .analog: LockAnalogClock(options: widget.clock)
+        case .minimal: LockMinimalClock(options: widget.clock)
+        case .words: LockWordClock(options: widget.clock)
         }
     }
 
     private var digital: some View {
-        LockTick(every: size == .wide ? 1 : 60) { date in
+        let options = widget.clock
+        return LockTick(every: options.seconds ? 1 : 60) { date in
             VStack(spacing: 2) {
-                Text(date, format: size == .wide ? .dateTime.hour().minute().second() : .dateTime.hour().minute())
-                    .font(style.font(size == .small ? 46 : size == .large ? 96 : 68, .semibold))
+                Text(verbatim: options.time(date))
+                    .font(style.font((size == .small ? 46 : size == .large ? 96 : 68) * options.scale, options.weight.weight(or: .semibold)))
+                    .foregroundStyle(options.tinted ? style.accent.color : .white)
                     .monospacedDigit()
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(0.3)
                     .lineLimit(1)
-                if size != .small {
+                if size != .small && options.showsDate {
                     Text(date, format: .dateTime.weekday(.wide).day().month(.wide))
                         .font(style.font(size == .large ? 20 : 15, .medium))
                         .foregroundStyle(style.accent.color.opacity(0.85))

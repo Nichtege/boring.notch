@@ -185,6 +185,70 @@ struct LockWidgetStyle: Codable, Equatable {
     }
 }
 
+enum LockClockFormat: String, Codable, CaseIterable, Identifiable {
+    case system, h24, h12
+    var id: String { rawValue }
+}
+
+enum LockClockWeight: String, Codable, CaseIterable, Identifiable {
+    /// What suits the face: thin for the bare digits, bold for the words
+    case standard
+    case thin, light, regular, semibold, bold, heavy
+    var id: String { rawValue }
+
+    func weight(or standard: Font.Weight) -> Font.Weight {
+        switch self {
+        case .standard: standard
+        case .thin: .thin
+        case .light: .light
+        case .regular: .regular
+        case .semibold: .semibold
+        case .bold: .bold
+        case .heavy: .heavy
+        }
+    }
+}
+
+/// How one clock widget shows the time, beyond its face.
+struct LockClockOptions: Codable, Equatable {
+    var format: LockClockFormat = .system
+    var weight: LockClockWeight = .standard
+    var seconds = false
+    var showsDate = true
+    /// The digits or hands take the accent's colour
+    var tinted = false
+    var scale: Double = 1
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        format = (try? values.decode(LockClockFormat.self, forKey: .format)) ?? .system
+        weight = (try? values.decode(LockClockWeight.self, forKey: .weight)) ?? .standard
+        seconds = (try? values.decode(Bool.self, forKey: .seconds)) ?? false
+        showsDate = (try? values.decode(Bool.self, forKey: .showsDate)) ?? true
+        tinted = (try? values.decode(Bool.self, forKey: .tinted)) ?? false
+        scale = (try? values.decode(Double.self, forKey: .scale)) ?? 1
+    }
+
+    /// The hour as this clock counts it, and the time written out.
+    func hour(_ date: Date) -> Int {
+        let hour = Calendar.current.component(.hour, from: date)
+        guard format == .h12 else { return hour }
+        return hour % 12 == 0 ? 12 : hour % 12
+    }
+
+    func time(_ date: Date) -> String {
+        if format == .system {
+            return date.formatted(seconds ? .dateTime.hour().minute().second() : .dateTime.hour().minute())
+        }
+        let parts = Calendar.current.dateComponents([.minute, .second], from: date)
+        let hours = format == .h12 ? "\(hour(date))" : String(format: "%02d", hour(date))
+        let minutes = String(format: ":%02d", parts.minute ?? 0)
+        return hours + minutes + (seconds ? String(format: ":%02d", parts.second ?? 0) : "")
+    }
+}
+
 struct LockWidget: Codable, Equatable, Identifiable {
     var id = UUID()
     var kind: LockWidgetKind
@@ -198,6 +262,7 @@ struct LockWidget: Codable, Equatable, Identifiable {
     var date = Date()
     /// The clock's face or the note's colour
     var variant = ""
+    var clock = LockClockOptions()
 
     init(_ kind: LockWidgetKind, size: LockWidgetSize? = nil, column: Int, row: Int, text: String = "", date: Date = Date()) {
         self.kind = kind
@@ -219,6 +284,7 @@ struct LockWidget: Codable, Equatable, Identifiable {
         text = (try? values.decode(String.self, forKey: .text)) ?? ""
         date = (try? values.decode(Date.self, forKey: .date)) ?? Date()
         variant = (try? values.decode(String.self, forKey: .variant)) ?? ""
+        clock = (try? values.decode(LockClockOptions.self, forKey: .clock)) ?? LockClockOptions()
     }
 }
 

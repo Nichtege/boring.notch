@@ -480,6 +480,31 @@ private struct LockWidgetEditor: View {
                         Text(face.title).tag(face == .digital ? "" : face.rawValue)
                     }
                 }
+                let face = LockClockFace(rawValue: widget.variant) ?? .digital
+                if face == .digital || face == .minimal {
+                    Picker("Time format", selection: $widget.clock.format) {
+                        Text("Like the system").tag(LockClockFormat.system)
+                        Text("24 hours").tag(LockClockFormat.h24)
+                        Text("12 hours").tag(LockClockFormat.h12)
+                    }
+                }
+                if face != .analog {
+                    Picker("Weight", selection: $widget.clock.weight) {
+                        ForEach(LockClockWeight.allCases) { weight in
+                            Text(weight.title).tag(weight)
+                        }
+                    }
+                }
+                if face == .digital || face == .analog {
+                    Toggle("Seconds", isOn: $widget.clock.seconds)
+                }
+                if face == .digital {
+                    Toggle("Date under the time", isOn: $widget.clock.showsDate)
+                }
+                Toggle("Time in the accent colour", isOn: $widget.clock.tinted)
+                LabeledContent("Size of the time") {
+                    Slider(value: $widget.clock.scale, in: 0.6...2.2)
+                }
             case .note:
                 TextField("Text", text: $widget.text, prompt: Text("What do you want to remember?"), axis: .vertical)
                     .lineLimit(2...6)
@@ -584,6 +609,20 @@ extension LockAccent {
         case .purple: "Purple"
         case .yellow: "Yellow"
         case .wallpaper: "Matches the wallpaper"
+        }
+    }
+}
+
+extension LockClockWeight {
+    var title: LocalizedStringResource {
+        switch self {
+        case .standard: "Standard"
+        case .thin: "Thin"
+        case .light: "Light"
+        case .regular: "Regular"
+        case .semibold: "Semibold"
+        case .bold: "Bold"
+        case .heavy: "Heavy"
         }
     }
 }
