@@ -24,5 +24,9 @@
 	<array>
 		<string>com.apple.Music</string>
 	</array>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/Atlas/</string>
+	</array>
 </dict>
 </plist>
