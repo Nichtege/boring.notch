@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @ObservedObject var starlane = StarlaneManager.shared
+    @ObservedObject var kalypso = KalypsoManager.shared
     @ObservedObject var focusTimer = FocusTimer.shared
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
@@ -88,6 +89,11 @@ struct ContentView: View {
         isBareClosedNotch && focusTimer.isRunning
     }
 
+    /// Kalypso is listening or answering: shown before music, since an open microphone must always be visible.
+    private var showsKalypsoLiveActivity: Bool {
+        !coordinator.expandingView.show && vm.notchState == .closed && !vm.hideOnClosed && kalypso.aktiv
+    }
+
     private var showsStarlaneLiveActivity: Bool {
         isBareClosedNotch && (starlane.summary?.needs ?? 0) > 0
     }
@@ -113,7 +119,7 @@ struct ContentView: View {
             chinWidth = 640
         } else if isShowingWideBanner {
             chinWidth += 2 * starlaneBannerSideWidth + 10
-        } else if showsMusicLiveActivity || showsFocusLiveActivity || showsStarlaneLiveActivity
+        } else if showsKalypsoLiveActivity || showsMusicLiveActivity || showsFocusLiveActivity || showsStarlaneLiveActivity
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         }
@@ -346,6 +352,8 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if showsKalypsoLiveActivity {
+                          KalypsoLiveActivity()
                       } else if showsMusicLiveActivity {
                           MusicLiveActivity()
                       } else if showsFocusLiveActivity {
